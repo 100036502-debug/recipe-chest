@@ -490,7 +490,11 @@ async function startBatch() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
+            if (!res.ok) {
+        const msg = data.error || 'Failed';
+        const extra = data.details ? ' — ' + data.details : '';
+        throw new Error(msg + extra);
+      }
       item.status = 'done';
       item.recipeId = data.id;
       item.title = data.title || 'Saved';
