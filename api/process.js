@@ -23,7 +23,7 @@ async function groqChat(apiKey, messages, options = {}, attempt = 0) {
       model: GROQ_MODEL,
       messages,
       temperature: options.temperature ?? 0.1,
-      max_tokens: options.max_tokens ?? 1500,
+      max_tokens: options.max_tokens ?? 1800,
     }),
   });
   const data = await res.json();
@@ -42,61 +42,106 @@ async function groqChat(apiKey, messages, options = {}, attempt = 0) {
   return data.choices[0].message.content || '';
 }
 
-// Parse the labeled plain-text format that the AI outputs
-function parseLabeledRecipe(text) {
+// Parse the delimiter-based format: ===LABEL===\n content
+function parseDelimitedRecipe(text) {
   if (!text) return null;
 
-  // Strip reasoning blocks and any content before "TITLE:"
   let t = String(text);
   t = t.replace(/<think[\s\S]*?<\/think>/gi, '');
   t = t.replace(/<\/?think>/gi, '');
-
-  // Find where the actual recipe starts
-  const titleIdx = t.search(/TITLE\s*:/i);
-  if (titleIdx === -1) return null;
-  t = t.substring(titleIdx);
-
-  // Normalize line endings
   t = t.replace(/\r\n/g, '\n');
 
-  // Helper: pull out a single-line field
-  const single = (label) => {
-    const re = new RegExp('^' + label + '\\s*:\\s*(.*)$', 'im');
-    const m = t.match(re);
-    return m ? m[1].trim() : '';
+  // Find first ===
+  const startIdx = t.indexOf('===');
+  if (startIdx === -1) return null;
+  t = t.substring(startIdx);
+
+  // Extract all sections
+  const sections = {};
+  const regex = /===\s*([A-Za-z_ ]+?)\s*===/g;
+  const matches = [];
+  let m;
+  while ((m = regex.exec(t)) !== null) {
+    matches.push({ label: m[1].toUpperCase().replace(/\s+/g, '_').trim(), idx: m.index, endIdx: regex.lastIndex });
+  }
+
+  if (matches.length === 0) return null;
+
+  for (let i = 0; i < matches.length; i++) {
+    const cur = matches[i];
+    const next = matches[i + 1];
+    const end = next ? next.idx : t.length;
+    let content = t.substring(cur.endIdx, end).trim();
+    if (!(cur.label in sections)) sections[cur.label] = content;
+  }
+
+  const firstLine = (key) => {
+    const v = sections[key] || '';
+    return v.split('\n')[0].trim();
   };
 
-  // Helper: pull out a list of "- item" lines under a section header
-  const list = (label, nextLabels) => {
-    const re = new RegExp('^' + label + '\\s*:\\s*\\n([\\s\\S]*?)(?=\\n(?:' + nextLabels + ')\\s*:|$)', 'im');
-    const m = t.match(re);
-    if (!m) return [];
-    return m[1]
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
-      .map(line => line.replace(/^[-*•]\s*/, '').replace(/^\d+[.)]\s*/, '').trim())
+  // Parse a list section — handles bullets, numbers, one-per-line, and one-line-separated formats
+  const parseList = (key) => {
+    const content = sections[key] || '';
+    if (!content) return [];
+
+    // Split into lines first
+    const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
+    const items = [];
+
+    for (const line of lines) {
+      // If line has multiple items separated by " - " or " • " or " * ", split them
+      const hasInlineSeparator = /\s[-•*]\s+/.test(line);
+      if (hasInlineSeparator) {
+        const parts = line.split(/\s+[-•*]\s+/).map(s => s.trim()).filter(Boolean);
+        for (const p of parts) items.push(p);
+        continue;
+      }
+      // Check for inline numbered items "1. x 2. y"
+      if (/^\d+[.)]\s+.+\s+\d+[.)]\s+/.test(line)) {
+        const parts = line.split(/\s+(?=\d+[.)]\s+)/).map(s => s.trim()).filter(Boolean);
+        for (const p of parts) items.push(p);
+        continue;
+      }
+      items.push(line);
+    }
+
+    // Strip leading bullets/numbers and clean
+    const cleaned = items
+      .map(item => item.replace(/^[-*•]\s+/, '').replace(/^[-*•]/, '').replace(/^\d+[.)]\s+/, '').trim())
       .filter(Boolean);
+
+    // If we only got 1 item, try comma/semicolon splitting
+    if (cleaned.length === 1 && (cleaned[0].includes(';') || cleaned[0].includes(', '))) {
+      const splitter = cleaned[0].includes(';') ? ';' : ',';
+      const parts = cleaned[0].split(splitter).map(s => s.trim()).filter(Boolean);
+      // Only accept comma splitting if items look independent (each has length > 3)
+      if (parts.length > 1 && parts.every(p => p.length > 2)) {
+        return parts;
+      }
+    }
+
+    return cleaned;
   };
 
-  const title = single('TITLE');
+  const title = firstLine('TITLE');
   if (!title) return null;
 
-  const description = single('DESCRIPTION');
-  const prepTime = single('PREP_?TIME');
-  const cookTime = single('COOK_?TIME');
-  const servings = single('SERVINGS');
-  const mealTypeRaw = single('MEAL_?TYPE').toLowerCase().replace(/[^a-z]/g, '');
-  const tagsRaw = single('TAGS');
-  const notes = single('NOTES');
+  const description = firstLine('DESCRIPTION');
+  const prepTime = firstLine('PREP_TIME') || firstLine('PREP TIME') || '';
+  const cookTime = firstLine('COOK_TIME') || firstLine('COOK TIME') || '';
+  const servings = firstLine('SERVINGS');
+  const mealTypeRaw = (firstLine('MEAL_TYPE') || firstLine('MEAL TYPE') || '').toLowerCase();
+  const tagsRaw = firstLine('TAGS');
+  const notes = sections['NOTES'] || '';
 
-  const ingredients = list('INGREDIENTS', 'INSTRUCTIONS|NOTES');
-  const instructions = list('INSTRUCTIONS', 'NOTES');
+  const ingredients = parseList('INGREDIENTS');
+  const instructions = parseList('INSTRUCTIONS');
 
   const validMeals = ['breakfast', 'lunch', 'dinner', 'dessert', 'snack', 'drink'];
   let mealType = 'default';
-  for (const m of validMeals) {
-    if (mealTypeRaw.includes(m)) { mealType = m; break; }
+  for (const vm of validMeals) {
+    if (mealTypeRaw.includes(vm)) { mealType = vm; break; }
   }
 
   const tags = tagsRaw
@@ -130,26 +175,45 @@ export default async function handler(req, res) {
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   if (!GROQ_API_KEY) return res.status(500).json({ error: 'Groq API key not configured' });
 
-  const prompt = `Read the recipe from the attached image. Output the recipe using EXACTLY this labeled format. Nothing else — no reasoning, no commentary, no markdown, no JSON.
+  const prompt = `Read the recipe from the attached image. Output using EXACTLY this delimiter format. Nothing else — no reasoning, no commentary, no markdown.
 
-TITLE: <recipe name>
-DESCRIPTION: <one short sentence>
-PREP_TIME: <time or leave blank>
-COOK_TIME: <time or leave blank>
-SERVINGS: <number or leave blank>
-MEAL_TYPE: <one of: breakfast, lunch, dinner, dessert, snack, drink>
-TAGS: <comma-separated keywords, 2-5 items>
-INGREDIENTS:
-- <ingredient 1>
-- <ingredient 2>
-INSTRUCTIONS:
-- <step 1>
-- <step 2>
-NOTES: <optional, or leave blank>
+===TITLE===
+<recipe name>
 
-If there is no recipe in the image, output exactly: NO_RECIPE
+===DESCRIPTION===
+<one short sentence>
 
-Start with TITLE: on the first line.`;
+===PREP_TIME===
+<time or blank>
+
+===COOK_TIME===
+<time or blank>
+
+===SERVINGS===
+<number or blank>
+
+===MEAL_TYPE===
+<one of: breakfast, lunch, dinner, dessert, snack, drink>
+
+===TAGS===
+<comma-separated keywords, 2-5 items>
+
+===INGREDIENTS===
+<one ingredient per line, no bullet points>
+
+===INSTRUCTIONS===
+<one step per line, no numbering>
+
+===NOTES===
+<optional, or blank>
+
+IMPORTANT RULES:
+- Each ingredient must be on its OWN line.
+- Each instruction step must be on its OWN line.
+- Do NOT combine multiple ingredients onto one line.
+- Do NOT combine multiple steps onto one line.
+
+If there is no recipe in the image, output exactly: NO_RECIPE`;
 
   try {
     const raw = await groqChat(GROQ_API_KEY, [{
@@ -158,20 +222,20 @@ Start with TITLE: on the first line.`;
         { type: 'text', text: prompt },
         { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
       ]
-    }], { temperature: 0.1, max_tokens: 1800 });
+    }], { temperature: 0.1, max_tokens: 2200 });
 
-    console.log('Raw AI output (first 400):', raw.substring(0, 400));
+    console.log('Raw AI output (first 500):', raw.substring(0, 500));
 
-    if (/NO_RECIPE/i.test(raw) && !/TITLE\s*:/i.test(raw)) {
+    if (/NO_RECIPE/i.test(raw) && !/===\s*TITLE\s*===/i.test(raw)) {
       return res.status(400).json({ error: 'No recipe detected in that image.' });
     }
 
-    const recipe = parseLabeledRecipe(raw);
+    const recipe = parseDelimitedRecipe(raw);
 
     if (!recipe || !recipe.title) {
       return res.status(500).json({
         error: 'Could not parse the AI output',
-        details: 'Raw (first 400): ' + raw.substring(0, 400)
+        details: 'Raw (first 500): ' + raw.substring(0, 500)
       });
     }
 
