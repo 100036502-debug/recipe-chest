@@ -87,7 +87,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .queue-item.failed{border-color:#e8c8c0;background:#fdf5f3}
 .queue-item.processing{border-color:var(--primary);background:#fff9ee}
 .queue-thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#f0ebe3}
-.queue-thumb-ph{display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:#c8bfb0}
 .queue-info{flex:1;min-width:0;overflow:hidden}
 .queue-name{font-size:.8rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .queue-badge{font-size:.7rem;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -225,7 +224,7 @@ let currentFilter = 'all';
 let currentSearch = '';
 
 // Upload queue state
-let uploadQueue = []; // {id, file, previewUrl, base64, mimeType, status, error, recipeId, title}
+let uploadQueue = [];
 let isProcessing = false;
 let cancelRequested = false;
 
@@ -274,7 +273,7 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// ---- Image compression (runs at processing time, not on add) ----
+// ---- Image compression ----
 async function compressImage(file, maxDim = 1200, quality = 0.85) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -311,7 +310,6 @@ function cancelUpload() {
     cancelRequested = true;
   }
   document.getElementById('upload-overlay').classList.remove('on');
-  // Clean up object URLs
   for (const item of uploadQueue) {
     if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
   }
@@ -354,7 +352,7 @@ function addFilesToQueue(files) {
       previewUrl: URL.createObjectURL(file),
       base64: null,
       mimeType: null,
-      status: 'ready', // ready | processing | done | failed
+      status: 'ready',
       error: null,
       recipeId: null,
       title: null,
@@ -440,7 +438,6 @@ function updateQueueUI() {
     `;
   }).join('');
 
-  // Scroll newest into view
   if (isProcessing) list.scrollTop = list.scrollHeight;
 }
 
@@ -484,33 +481,29 @@ async function startBatch() {
       }
 
       const res = await fetch(`${API}/process`, {
-
-      const res = await fetch(`${API}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64: item.base64,
-          mimeType: item.mimeType,
+          imageBase64: base64,
+          mimeType: mime,
           addedBy: name,
         }),
       });
+      const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       item.status = 'done';
       item.recipeId = data.id;
       item.title = data.title || 'Saved';
-      // Free memory only after a successful save
       item.file = null;
       item.base64 = null;
       success++;
     } catch (err) {
       item.status = 'failed';
       item.error = err.message;
-      // Keep file and base64 so Retry can reuse them
       failed++;
     }
     updateQueueUI();
 
-    // Gentle delay between requests to avoid rate limits
     if (!cancelRequested && uploadQueue.filter(i => i.status === 'ready').length > 0) {
       await new Promise(r => setTimeout(r, 600));
     }
@@ -520,7 +513,6 @@ async function startBatch() {
   cancelRequested = false;
   updateQueueUI();
 
-  // Refresh the recipe grid so new recipes show up
   await loadRecipes();
 
   if (success > 0 && failed === 0) {
@@ -720,7 +712,7 @@ document.getElementById('detail-overlay').addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (isProcessing) return; // Don't close during processing
+    if (isProcessing) return;
     closeImport();
     closeDetail();
   }
