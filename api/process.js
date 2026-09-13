@@ -123,13 +123,15 @@ Return ONLY the JSON object.`;
           ]
         }],
         temperature: 0.2,
-        response_format: { type: 'json_object' },
       }),
     });
 
     const data = await response.json();
     if (!data.choices || !data.choices[0]) {
-      return res.status(500).json({ error: 'AI error', details: JSON.stringify(data).substring(0, 500) });
+      return res.status(500).json({
+        error: 'AI error',
+        details: JSON.stringify(data).substring(0, 600)
+      });
     }
 
     const aiText = data.choices[0].message.content;
@@ -151,15 +153,11 @@ Return ONLY the JSON object.`;
     const tags = Array.isArray(recipe.tags) ? recipe.tags.slice(0, 10).map(t => String(t).toLowerCase()) : [];
 
     // 2. Generate an AI food photo from the title
-    //    Default to the original scan as a fallback if generation fails
     let thumbnail = `data:${mimeType};base64,${imageBase64}`;
     if (title && title !== 'Untitled Recipe') {
       const generated = await generateRecipeImage(title, tags);
-      if (generated) {
-        thumbnail = generated; // replace with the AI image
-      } else {
-        console.log('Image generation failed, using original scan as thumbnail');
-      }
+      if (generated) thumbnail = generated;
+      else console.log('Image generation failed, using original scan as thumbnail');
     }
 
     const finalRecipe = {
