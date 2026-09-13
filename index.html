@@ -32,7 +32,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:.25s;display:flex;flex-direction:column;box-shadow:var(--shadow)}
 .card:hover{transform:translateY(-3px);box-shadow:var(--shadow-h);border-color:var(--primary)}
 .card-img{width:100%;aspect-ratio:4/3;background:#f0ebe3;object-fit:cover;display:block}
-.card-img.no-img{display:flex;align-items:center;justify-content:center;font-size:3rem;color:#d8cfc0}
+.card-meal{width:100%;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;font-size:3.5rem;position:relative;overflow:hidden}
+.card-meal::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.25), transparent 60%);pointer-events:none}
+.card-meal span{filter:drop-shadow(0 4px 12px rgba(0,0,0,.25));position:relative;z-index:1}
 .card-body{padding:14px 16px 16px;flex:1;display:flex;flex-direction:column;gap:6px}
 .card-title{font-family:Georgia,serif;font-size:1.05rem;color:var(--brown);line-height:1.3;font-weight:600}
 .card-desc{font-size:.78rem;color:var(--dim);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -46,7 +48,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .modal{background:var(--card);border-radius:18px;max-width:800px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(42,26,15,.3);position:relative}
 .modal-close{position:absolute;top:16px;right:16px;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.9);border:none;cursor:pointer;font-size:1.1rem;color:var(--brown);z-index:5;display:flex;align-items:center;justify-content:center;transition:.15s}
 .modal-close:hover{background:var(--primary);color:#fff}
-.recipe-hero{width:100%;max-height:340px;object-fit:cover;display:block;background:#f0ebe3;border-radius:18px 18px 0 0}
+.recipe-hero{width:100%;height:220px;display:flex;align-items:center;justify-content:center;font-size:6rem;border-radius:18px 18px 0 0;position:relative;overflow:hidden}
+.recipe-hero::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.25), transparent 60%);pointer-events:none}
+.recipe-hero span{filter:drop-shadow(0 6px 20px rgba(0,0,0,.3));position:relative;z-index:1}
 .recipe-content{padding:28px 32px 32px}
 .recipe-title{font-family:Georgia,serif;font-size:1.9rem;color:var(--brown);line-height:1.2;margin-bottom:8px;font-weight:normal}
 .recipe-desc{color:var(--dim);font-size:.95rem;line-height:1.5;margin-bottom:20px}
@@ -122,12 +126,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   .grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
   .recipe-content{padding:20px}
   .recipe-title{font-size:1.5rem}
+  .card-meal{font-size:2.5rem}
 }
 </style>
 </head>
 <body class="locked">
 
-<!-- PASSWORD GATE -->
 <div id="lock-screen">
   <div class="lock-box">
     <div class="lock-icon">🔒</div>
@@ -164,11 +168,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 </main>
 </div>
 
-<!-- Batch upload modal -->
 <div class="overlay upload-modal" id="upload-overlay">
   <div class="modal">
-    <h2 id="upload-title">Add Recipes from Photos</h2>
-    <p class="sub" id="upload-sub">Drop as many images as you like — the AI processes them one at a time.</p>
+    <h2>Add Recipes from Photos</h2>
+    <p class="sub">Drop as many images as you like — the AI processes them one at a time.</p>
     <div class="dropzone" id="dropzone">
       <div class="dz-icon">📷</div>
       <div class="dz-text" id="dz-text"><strong>Click to add images</strong> or drag &amp; drop them here</div>
@@ -190,7 +193,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   </div>
 </div>
 
-<!-- Import from URL modal -->
 <div class="overlay upload-modal" id="import-overlay">
   <div class="modal">
     <h2>Import from Website</h2>
@@ -205,7 +207,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   </div>
 </div>
 
-<!-- Recipe detail modal -->
 <div class="overlay" id="detail-overlay">
   <div class="modal" id="detail-modal">
     <button class="modal-close" onclick="closeDetail()">✕</button>
@@ -219,11 +220,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 const API = '/api';
 const ACCESS_CODE = 'welovefood';
 const ACCESS_KEY = 'rc_unlocked';
+
+// Meal type visual presets
+const MEAL_STYLES = {
+  breakfast: { bg: 'linear-gradient(135deg, #FFE066 0%, #FFA726 100%)', emoji: '🥞', label: 'Breakfast' },
+  lunch:     { bg: 'linear-gradient(135deg, #A8E063 0%, #56AB2F 100%)', emoji: '🥗', label: 'Lunch' },
+  dinner:    { bg: 'linear-gradient(135deg, #667EEA 0%, #764BA2 100%)', emoji: '🍽️', label: 'Dinner' },
+  dessert:   { bg: 'linear-gradient(135deg, #F093FB 0%, #F5576C 100%)', emoji: '🍰', label: 'Dessert' },
+  snack:     { bg: 'linear-gradient(135deg, #4FACFE 0%, #00F2FE 100%)', emoji: '🍪', label: 'Snack' },
+  drink:     { bg: 'linear-gradient(135deg, #43C6AC 0%, #191654 100%)', emoji: '☕', label: 'Drink' },
+  default:   { bg: 'linear-gradient(135deg, #C7541A 0%, #5A3A22 100%)', emoji: '📖', label: 'Recipe' },
+};
+function mealStyle(t) { return MEAL_STYLES[t] || MEAL_STYLES.default; }
+
 let recipes = [];
 let currentFilter = 'all';
 let currentSearch = '';
-
-// Upload queue state
 let uploadQueue = [];
 let isProcessing = false;
 let cancelRequested = false;
@@ -298,7 +310,7 @@ async function compressImage(file, maxDim = 1200, quality = 0.85) {
   });
 }
 
-// ---- Batch upload flow ----
+// ---- Batch upload ----
 function openUpload() {
   document.getElementById('upload-overlay').classList.add('on');
   document.getElementById('uploader-name').value = getUser() === 'Anonymous' ? '' : getUser();
@@ -310,9 +322,7 @@ function cancelUpload() {
     cancelRequested = true;
   }
   document.getElementById('upload-overlay').classList.remove('on');
-  for (const item of uploadQueue) {
-    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-  }
+  for (const item of uploadQueue) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
   uploadQueue = [];
   isProcessing = false;
   cancelRequested = false;
@@ -346,7 +356,7 @@ function addFilesToQueue(files) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) { skipped++; continue; }
     if (file.size > 25 * 1024 * 1024) { skipped++; continue; }
-    const item = {
+    uploadQueue.push({
       id: 'q_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
       file,
       previewUrl: URL.createObjectURL(file),
@@ -357,16 +367,11 @@ function addFilesToQueue(files) {
       recipeId: null,
       title: null,
       originalName: file.name,
-    };
-    uploadQueue.push(item);
-    added.push(item);
+    });
+    added.push(file);
   }
-  if (skipped > 0) {
-    status.textContent = `${skipped} file${skipped > 1 ? 's' : ''} skipped (not an image or too large)`;
-  }
-  if (added.length > 0) {
-    toast(`Added ${added.length} image${added.length > 1 ? 's' : ''} to queue`);
-  }
+  if (skipped > 0) status.textContent = `${skipped} file${skipped > 1 ? 's' : ''} skipped`;
+  if (added.length > 0) toast(`Added ${added.length} image${added.length > 1 ? 's' : ''}`);
   updateQueueUI();
 }
 
@@ -421,9 +426,9 @@ function updateQueueUI() {
     let badge = '';
     switch (item.status) {
       case 'ready': badge = 'Ready'; break;
-      case 'processing': badge = '<span class="spinner"></span>Reading recipe...'; break;
+      case 'processing': badge = '<span class="spinner"></span>Reading...'; break;
       case 'done': badge = '✓ ' + (item.title ? escapeHtml(item.title) : 'Saved'); break;
-      case 'failed': badge = '⚠ ' + (item.error || 'Failed'); break;
+      case 'failed': badge = '⚠ ' + escapeHtml((item.error || 'Failed').slice(0, 100)); break;
     }
     const name = item.title ? escapeHtml(item.title) : escapeHtml(item.originalName || 'Image');
     return `
@@ -456,7 +461,6 @@ async function startBatch() {
 
   const name = document.getElementById('uploader-name').value.trim() || 'Anonymous';
   setUser(name);
-
   isProcessing = true;
   cancelRequested = false;
   updateQueueUI();
@@ -469,7 +473,6 @@ async function startBatch() {
     updateQueueUI();
 
     try {
-      // Reuse cached base64 on retry, otherwise compress from file
       let base64 = item.base64;
       let mime = item.mimeType;
       if (!base64) {
@@ -483,18 +486,10 @@ async function startBatch() {
       const res = await fetch(`${API}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageBase64: base64,
-          mimeType: mime,
-          addedBy: name,
-        }),
+        body: JSON.stringify({ imageBase64: base64, mimeType: mime, addedBy: name }),
       });
       const data = await res.json();
-            if (!res.ok) {
-        const msg = data.error || 'Failed';
-        const extra = data.details ? ' — ' + data.details : '';
-        throw new Error(msg + extra);
-      }
+      if (!res.ok) throw new Error(data.error || 'Failed');
       item.status = 'done';
       item.recipeId = data.id;
       item.title = data.title || 'Saved';
@@ -509,26 +504,21 @@ async function startBatch() {
     updateQueueUI();
 
     if (!cancelRequested && uploadQueue.filter(i => i.status === 'ready').length > 0) {
-      await new Promise(r => setTimeout(r, 8000));
+      await new Promise(r => setTimeout(r, 5000));
     }
   }
 
   isProcessing = false;
   cancelRequested = false;
   updateQueueUI();
-
   await loadRecipes();
 
-  if (success > 0 && failed === 0) {
-    toast(`All ${success} recipe${success > 1 ? 's' : ''} saved!`);
-  } else if (success > 0 && failed > 0) {
-    toast(`${success} saved, ${failed} failed. Use Retry on any failed items.`);
-  } else if (failed > 0) {
-    toast(`All ${failed} failed. Check the errors and try again.`);
-  }
+  if (success > 0 && failed === 0) toast(`All ${success} recipe${success > 1 ? 's' : ''} saved!`);
+  else if (success > 0 && failed > 0) toast(`${success} saved, ${failed} failed. Click Retry on failures.`);
+  else if (failed > 0) toast(`All ${failed} failed. Check the errors.`);
 }
 
-// ---- Import from URL flow ----
+// ---- Import from URL ----
 function openImport() {
   document.getElementById('import-overlay').classList.add('on');
   document.getElementById('importer-name').value = getUser() === 'Anonymous' ? '' : getUser();
@@ -623,21 +613,22 @@ function renderGrid() {
     return;
   }
   empty.style.display = 'none';
-  grid.innerHTML = filtered.map(r => `
-    <div class="card" onclick="openDetail('${r.id}')">
-      ${r.imageThumbnail
-        ? `<img class="card-img" src="${r.imageThumbnail}" alt="" loading="lazy">`
-        : `<div class="card-img no-img">${r.sourceUrl ? '🔗' : '🍽️'}</div>`}
-      <div class="card-body">
-        <div class="card-title">${escapeHtml(r.title)}</div>
-        <div class="card-desc">${escapeHtml(r.description || '')}</div>
-        <div class="card-meta">
-          <span>${r.prepTime || r.cookTime ? '⏱ ' + (r.prepTime || r.cookTime) : ''}</span>
-          <span>${r.addedBy ? 'by ' + escapeHtml(r.addedBy) : ''}</span>
+  grid.innerHTML = filtered.map(r => {
+    const ms = mealStyle(r.mealType);
+    return `
+      <div class="card" onclick="openDetail('${r.id}')">
+        <div class="card-meal" style="background:${ms.bg}"><span>${ms.emoji}</span></div>
+        <div class="card-body">
+          <div class="card-title">${escapeHtml(r.title)}</div>
+          <div class="card-desc">${escapeHtml(r.description || '')}</div>
+          <div class="card-meta">
+            <span>${ms.label}${r.prepTime ? ' • ⏱ ' + escapeHtml(r.prepTime) : ''}</span>
+            <span>${r.addedBy ? 'by ' + escapeHtml(r.addedBy) : ''}</span>
+          </div>
         </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 function setFilter(t) { currentFilter = t; renderGrid(); }
 
@@ -645,14 +636,16 @@ function setFilter(t) { currentFilter = t; renderGrid(); }
 function openDetail(id) {
   const r = recipes.find(x => x.id === id);
   if (!r) return;
+  const ms = mealStyle(r.mealType);
   let sourceHost = '';
   try { sourceHost = new URL(r.sourceUrl).hostname.replace(/^www\./, ''); } catch {}
   const html = `
-    ${r.imageThumbnail ? `<img class="recipe-hero" src="${r.imageThumbnail}" alt="">` : ''}
+    <div class="recipe-hero" style="background:${ms.bg}"><span>${ms.emoji}</span></div>
     <div class="recipe-content">
       <h1 class="recipe-title">${escapeHtml(r.title)}</h1>
       ${r.description ? `<p class="recipe-desc">${escapeHtml(r.description)}</p>` : ''}
       <div class="recipe-meta">
+        <span class="meta-pill">${ms.emoji} ${ms.label}</span>
         ${r.prepTime ? `<span class="meta-pill"><span class="k">Prep:</span> ${escapeHtml(r.prepTime)}</span>` : ''}
         ${r.cookTime ? `<span class="meta-pill"><span class="k">Cook:</span> ${escapeHtml(r.cookTime)}</span>` : ''}
         ${r.servings ? `<span class="meta-pill"><span class="k">Serves:</span> ${escapeHtml(r.servings)}</span>` : ''}
