@@ -5,6 +5,34 @@ const kv = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
 
+// Generate an image for a recipe using Pollinations.AI (free, no API key needed)
+async function generateRecipeImage(title, tags = [], retries = 1) {
+  try {
+    const tagStr = tags.length ? `, ${tags.slice(0, 3).join(', ')}` : '';
+    const prompt = `${title}${tagStr}, food photography, natural light, overhead shot, appetizing`;
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=600&nologo=true`;
+
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    if (!res.ok) {
+      if (retries > 0) {
+        await new Promise(r => setTimeout(r, 3000));
+        return generateRecipeImage(title, tags, retries - 1);
+      }
+      return null;
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const mime = res.headers.get('content-type') || 'image/jpeg';
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  } catch (err) {
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, 3000));
+      return generateRecipeImage(title, tags, retries - 1);
+    }
+    console.error('Image generation failed:', err.message);
+    return null;
+  }
+}
+
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
 
 export default async function handler(req, res) {
@@ -139,6 +167,14 @@ ${pageText}
       createdAt: Date.now(),
       addedBy: String(addedBy || 'Anonymous').slice(0, 40),
     };
+
+    // Generate an image for the recipe using Pollinations.AI (free)
+    if (finalRecipe.title) {
+      const generatedImage = await generateRecipeImage(finalRecipe.title, finalRecipe.tags);
+      if (generatedImage) {
+        finalRecipe.imageThumbnail = generatedImage;
+      }
+    }
 
     await kv.set(`recipe:${id}`, finalRecipe);
     await kv.lpush('recipe_ids', id);
