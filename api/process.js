@@ -9,6 +9,55 @@ export const config = {
   api: { bodyParser: { sizeLimit: '10mb' } },
 };
 
+// Try to repair common JSON issues returned by LLMs
+function repairJson(text) {
+  let t = text.trim();
+  // Remove trailing commas before } or ]
+  t = t.replace(/,(\s*[}\]])/g, '$1');
+  // Replace smart quotes
+  t = t.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+  // Remove control characters
+  t = t.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+  return t;
+}
+
+// Robustly extract a JSON object from a model response
+function extractJson(raw) {
+  // 1. Strip Qwen  thinking... reasoning blocks
+  let text = raw.replace(/<think[\s\S]*?<\/think>/gi, '').trim();
+  // 2. Strip markdown fences
+  text = text.replace(/```json\s*|```\s*/g, '').trim();
+  // 3. Find the outermost balanced { ... }
+  const start = text.indexOf('{');
+  if (start === -1) throw new Error('No JSON object found in response');
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let end = -1;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end === -1) throw new Error('Unbalanced JSON braces');
+
+  const jsonText = text.substring(start, end + 1);
+  try {
+    return JSON.parse(jsonText);
+  } catch (e) {
+    // Attempt repair
+    return JSON.parse(repairJson(jsonText));
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -24,7 +73,7 @@ export default async function handler(req, res) {
 
   const prompt = `You are a recipe extraction AI. The user sends an image of a recipe (cookbook page, handwritten card, screenshot, magazine, etc.).
 
-Read the image carefully and extract the recipe. Return ONLY valid JSON (no markdown, no backticks) in this exact format:
+Read the image carefully and extract the recipe. Return ONLY valid JSON (no markdown, no backticks, no commentary before or after) in this exact format:
 
 {
   "title": "Recipe name",
@@ -41,7 +90,7 @@ Read the image carefully and extract the recipe. Return ONLY valid JSON (no mark
 If the image is NOT a recipe or is completely unreadable, return:
 { "error": "brief reason" }
 
-Return ONLY the JSON.`;
+Return ONLY the JSON object.`;
 
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -59,7 +108,8 @@ Return ONLY the JSON.`;
             { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
           ]
         }],
-        temperature: 0.3,
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
       }),
     });
 
@@ -69,13 +119,16 @@ Return ONLY the JSON.`;
     }
 
     const aiText = data.choices[0].message.content;
-    let jsonText = aiText.replace(/```json|```/g, '').trim();
-    const s = jsonText.indexOf('{'), e = jsonText.lastIndexOf('}');
-    if (s !== -1 && e !== -1) jsonText = jsonText.substring(s, e + 1);
 
     let recipe;
-    try { recipe = JSON.parse(jsonText); }
-    catch (parseErr) { return res.status(500).json({ error: 'AI returned invalid JSON', details: aiText.substring(0, 300) }); }
+    try {
+      recipe = extractJson(aiText);
+    } catch (parseErr) {
+      return res.status(500).json({
+        error: 'AI returned invalid JSON',
+        details: parseErr.message + ' | Raw: ' + aiText.substring(0, 400)
+      });
+    }
 
     if (recipe.error) return res.status(400).json({ error: recipe.error });
 
