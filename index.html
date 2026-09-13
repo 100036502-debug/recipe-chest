@@ -472,12 +472,18 @@ async function startBatch() {
     updateQueueUI();
 
     try {
-      // Compress on-demand to keep memory low
-      const compressed = await compressImage(item.file);
-      item.base64 = compressed.base64;
-      item.mimeType = compressed.mimeType;
-      // Free the original file reference once compressed
-      item.file = null;
+      // Reuse cached base64 on retry, otherwise compress from file
+      let base64 = item.base64;
+      let mime = item.mimeType;
+      if (!base64) {
+        const compressed = await compressImage(item.file);
+        base64 = compressed.base64;
+        mime = compressed.mimeType;
+        item.base64 = base64;
+        item.mimeType = mime;
+      }
+
+      const res = await fetch(`${API}/process`, {
 
       const res = await fetch(`${API}/process`, {
         method: 'POST',
