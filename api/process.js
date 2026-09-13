@@ -10,22 +10,22 @@ export const config = {
   maxDuration: 60,
 };
 
-// Repair common JSON issues returned by LLMs
-function repairJson(text) {
-  let t = text.trim();
-  t = t.replace(/,(\s*[}\]])/g, '$1');
-  t = t.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+const GROQ_MODEL = 'qwen/qwen3.6-27b';
+
+// Strip reasoning blocks, markdown fences, and control chars
+function cleanText(raw) {
+  let t = String(raw || '');
+  t = t.replace(/<think[\s\S]*?<\/think>/gi, '');
+  t = t.replace(/<\/?think>/gi, '');
+  t = t.replace(/```json\s*/gi, '').replace(/```/g, '');
   t = t.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
-  return t;
+  return t.trim();
 }
 
-// Robustly extract a JSON object from a model response
-function extractJson(raw) {
-  let text = raw.replace(/<think[\s\S]*?<\/think>/gi, '').trim();
-  text = text.replace(/```json\s*|```\s*/g, '').trim();
+// Extract a balanced { ... } object from a string
+function extractBraced(text) {
   const start = text.indexOf('{');
-  if (start === -1) throw new Error('No JSON object found in response');
-
+  if (start === -1) return null;
   let depth = 0, inString = false, escape = false, end = -1;
   for (let i = start; i < text.length; i++) {
     const ch = text[i];
@@ -36,11 +36,70 @@ function extractJson(raw) {
     if (ch === '{') depth++;
     else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
   }
-  if (end === -1) throw new Error('Unbalanced JSON braces');
+  if (end === -1) return null;
+  return text.substring(start, end + 1);
+}
 
-  const jsonText = text.substring(start, end + 1);
-  try { return JSON.parse(jsonText); }
-  catch { return JSON.parse(repairJson(jsonText)); }
+// Light JSON repair
+function repairJson(text) {
+  return text
+    .replace(/,(\s*[}\]])/g, '$1')
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
+}
+
+// Try hard to get JSON out of any text
+function tryParseJson(raw) {
+  const cleaned = cleanText(raw);
+  // 1. Direct parse
+  try { return JSON.parse(cleaned); } catch {}
+  // 2. Extract braced section
+  const braced = extractBraced(cleaned);
+  if (braced) {
+    try { return JSON.parse(braced); } catch {}
+    try { return JSON.parse(repairJson(braced)); } catch {}
+  }
+  // 3. Give up
+  return null;
+}
+
+// Ask Qwen (text-only) to reformat messy output into clean JSON
+async function reformatAsJson(rawText, apiKey) {
+  const short = rawText.substring(0, 6000);
+  const prompt = `The following text was supposed to be a recipe in JSON format, but it is malformed or contains extra text. Extract the recipe and return ONLY valid JSON, no markdown, no commentary, with this exact structure:
+
+{
+  "title": "Recipe name",
+  "description": "short description",
+  "ingredients": ["..."],
+  "instructions": ["..."],
+  "prepTime": "",
+  "cookTime": "",
+  "servings": "",
+  "tags": ["..."],
+  "notes": ""
+}
+
+If no recipe can be identified, return: {"error": "no recipe found"}
+
+TEXT:
+${short}`;
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+    }),
+  });
+  const data = await res.json();
+  if (!data.choices || !data.choices[0]) return null;
+  return tryParseJson(data.choices[0].message.content);
 }
 
 // Generate a food photo from a recipe title using Pollinations.AI (free)
@@ -84,10 +143,16 @@ export default async function handler(req, res) {
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   if (!GROQ_API_KEY) return res.status(500).json({ error: 'Groq API key not configured' });
 
-  const prompt = `You are a recipe extraction AI. The user sends an image of a recipe (cookbook page, handwritten card, screenshot, magazine, etc.).
+  const prompt = `You are a recipe extraction AI. Read the attached image and return the recipe as a JSON object.
 
-Read the image carefully and extract the recipe. Return ONLY valid JSON (no markdown, no backticks, no commentary before or after) in this exact format:
+RULES:
+- Output ONLY the JSON object.
+- Do NOT include any text before or after the JSON.
+- Do NOT include markdown code fences.
+- Do NOT include reasoning or explanation.
+- Do NOT include any  thinking tags.
 
+The JSON must have exactly this structure:
 {
   "title": "Recipe name",
   "description": "1-2 sentence description",
@@ -100,10 +165,11 @@ Read the image carefully and extract the recipe. Return ONLY valid JSON (no mark
   "notes": "any extra notes or tips"
 }
 
-If the image is NOT a recipe or is completely unreadable, return:
-{ "error": "brief reason" }
+If the image is NOT a recipe or is unreadable, return exactly: {"error": "brief reason"}
 
-Return ONLY the JSON object.`;
+Now output the JSON:`;
+
+  let rawAiText = '';
 
   try {
     // 1. Extract the recipe from the image
@@ -114,7 +180,7 @@ Return ONLY the JSON object.`;
         'Authorization': `Bearer ${GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'qwen/qwen3.6-27b',
+        model: GROQ_MODEL,
         messages: [{
           role: 'user',
           content: [
@@ -122,7 +188,8 @@ Return ONLY the JSON object.`;
             { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
           ]
         }],
-        temperature: 0.2,
+        temperature: 0.1,
+        max_tokens: 2000,
       }),
     });
 
@@ -134,15 +201,22 @@ Return ONLY the JSON object.`;
       });
     }
 
-    const aiText = data.choices[0].message.content;
+    rawAiText = data.choices[0].message.content || '';
 
-    let recipe;
-    try {
-      recipe = extractJson(aiText);
-    } catch (parseErr) {
+    // 2. Try to parse the response
+    let recipe = tryParseJson(rawAiText);
+
+    // 3. Fallback: ask the AI to reformat its own output
+    if (!recipe) {
+      console.log('Initial parse failed, attempting reformat. Raw was:', rawAiText.substring(0, 300));
+      recipe = await reformatAsJson(rawAiText, GROQ_API_KEY);
+    }
+
+    // 4. Still failed? Give up with useful diagnostic info
+    if (!recipe) {
       return res.status(500).json({
         error: 'AI returned invalid JSON',
-        details: parseErr.message + ' | Raw: ' + aiText.substring(0, 400)
+        details: 'Raw response (first 500 chars): ' + rawAiText.substring(0, 500)
       });
     }
 
@@ -152,7 +226,7 @@ Return ONLY the JSON object.`;
     const title = String(recipe.title || 'Untitled Recipe').slice(0, 200);
     const tags = Array.isArray(recipe.tags) ? recipe.tags.slice(0, 10).map(t => String(t).toLowerCase()) : [];
 
-    // 2. Generate an AI food photo from the title
+    // 5. Generate an AI food photo from the title
     let thumbnail = `data:${mimeType};base64,${imageBase64}`;
     if (title && title !== 'Untitled Recipe') {
       const generated = await generateRecipeImage(title, tags);
@@ -164,8 +238,8 @@ Return ONLY the JSON object.`;
       id,
       title,
       description: String(recipe.description || '').slice(0, 500),
-      ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients.slice(0, 60) : [],
-      instructions: Array.isArray(recipe.instructions) ? recipe.instructions.slice(0, 60) : [],
+      ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients.slice(0, 60).map(String) : [],
+      instructions: Array.isArray(recipe.instructions) ? recipe.instructions.slice(0, 60).map(String) : [],
       prepTime: String(recipe.prepTime || ''),
       cookTime: String(recipe.cookTime || ''),
       servings: String(recipe.servings || ''),
@@ -182,6 +256,9 @@ Return ONLY the JSON object.`;
     return res.status(200).json(finalRecipe);
   } catch (error) {
     console.error('Error:', error);
-    return res.status(500).json({ error: 'Failed', details: error.message });
+    return res.status(500).json({
+      error: 'Failed',
+      details: error.message + (rawAiText ? ' | Raw: ' + rawAiText.substring(0, 300) : '')
+    });
   }
 }
