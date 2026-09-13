@@ -46,7 +46,6 @@ function tryParseJson(raw) {
   return null;
 }
 
-// Retry-aware Groq call: if we hit a rate limit, wait and try again.
 async function groqChat(apiKey, messages, options = {}, attempt = 0) {
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -58,7 +57,7 @@ async function groqChat(apiKey, messages, options = {}, attempt = 0) {
       model: GROQ_MODEL,
       messages,
       temperature: options.temperature ?? 0.1,
-      max_tokens: options.max_tokens ?? 1500,
+      max_tokens: options.max_tokens ?? 1200,
     }),
   });
   const data = await res.json();
@@ -66,46 +65,15 @@ async function groqChat(apiKey, messages, options = {}, attempt = 0) {
   if (!data.choices || !data.choices[0]) {
     const errMsg = (data.error && data.error.message) || JSON.stringify(data);
     const isRateLimit = /rate limit/i.test(errMsg) || (data.error && data.error.code === 'rate_limit_exceeded');
-
     if (isRateLimit && attempt < 3) {
-      // Extract "try again in X.XXs" if present
       const match = errMsg.match(/try again in ([\d.]+)\s*s/i);
-      const waitMs = match ? Math.ceil(parseFloat(match[1]) * 1000) + 700 : 6000;
-      console.log(`Rate limited. Waiting ${waitMs}ms then retrying (attempt ${attempt + 1}).`);
+      const waitMs = match ? Math.ceil(parseFloat(match[1]) * 1000) + 800 : 6000;
       await new Promise(r => setTimeout(r, waitMs));
       return groqChat(apiKey, messages, options, attempt + 1);
     }
-    throw new Error('Groq error: ' + errMsg.substring(0, 400));
+    throw new Error('Groq error: ' + errMsg.substring(0, 300));
   }
   return data.choices[0].message.content || '';
-}
-
-// Generate a food photo from a recipe title using Pollinations.AI (free)
-async function generateRecipeImage(title, tags = [], retries = 1) {
-  try {
-    const tagStr = tags.length ? `, ${tags.slice(0, 3).join(', ')}` : '';
-    const prompt = `${title}${tagStr}, food photography, natural light, overhead shot, appetizing, professional`;
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=600&nologo=true`;
-
-    const res = await fetch(url, { signal: AbortSignal.timeout(40000) });
-    if (!res.ok) {
-      if (retries > 0) {
-        await new Promise(r => setTimeout(r, 3000));
-        return generateRecipeImage(title, tags, retries - 1);
-      }
-      return null;
-    }
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const mime = res.headers.get('content-type') || 'image/jpeg';
-    return `data:${mime};base64,${buffer.toString('base64')}`;
-  } catch (err) {
-    if (retries > 0) {
-      await new Promise(r => setTimeout(r, 3000));
-      return generateRecipeImage(title, tags, retries - 1);
-    }
-    console.error('Image generation failed:', err.message);
-    return null;
-  }
 }
 
 export default async function handler(req, res) {
@@ -125,84 +93,71 @@ export default async function handler(req, res) {
   let step2Raw = '';
 
   try {
-    // ---- STEP 1: Transcribe the image into plain text ----
+    // STEP 1: Transcribe image to plain text
     step1Raw = await groqChat(GROQ_API_KEY, [{
       role: 'user',
       content: [
         {
           type: 'text',
-          text: 'Transcribe the recipe from this image into plain text. Include title, ingredients, and instructions. Be brief — no reasoning, no commentary. If no recipe is present, reply exactly: NO_RECIPE'
+          text: 'Transcribe the recipe in this image. Output ONLY the recipe text (title, ingredients, instructions). No reasoning, no commentary. If no recipe, output: NO_RECIPE'
         },
         { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
       ]
-    }], { temperature: 0.1, max_tokens: 1200 });
-
-    console.log('Step 1 transcription (first 200):', step1Raw.substring(0, 200));
+    }], { temperature: 0.1, max_tokens: 1000 });
 
     if (!step1Raw.trim() || /NO_RECIPE/i.test(step1Raw)) {
       return res.status(400).json({ error: 'No recipe detected in that image.' });
     }
 
-    // ---- STEP 2: Convert the plain text into JSON ----
+    // STEP 2: Convert to JSON, including meal type
     step2Raw = await groqChat(GROQ_API_KEY, [{
       role: 'user',
-      content: `Output ONLY a JSON object (no markdown, no commentary) with this shape, using the recipe below:
+      content: `Output ONLY a JSON object (no markdown, no commentary) with the recipe below. Pick the best mealType: breakfast, lunch, dinner, dessert, snack, or drink.
 
-{"title":"","description":"","ingredients":[],"instructions":[],"prepTime":"","cookTime":"","servings":"","tags":[],"notes":""}
+{"title":"","description":"","ingredients":[],"instructions":[],"prepTime":"","cookTime":"","servings":"","tags":[],"notes":"","mealType":"dinner"}
 
 RECIPE:
 ${step1Raw}`
     }], { temperature: 0, max_tokens: 1200 });
-
-    console.log('Step 2 JSON attempt (first 200):', step2Raw.substring(0, 200));
 
     let recipe = tryParseJson(step2Raw);
 
     if (!recipe) {
       const retryRaw = await groqChat(GROQ_API_KEY, [{
         role: 'user',
-        content: `Convert this into a JSON object with keys title, description, ingredients[], instructions[], prepTime, cookTime, servings, tags[], notes. Output ONLY the JSON.\n\n${step1Raw}`
+        content: `Convert this into JSON with keys title, description, ingredients[], instructions[], prepTime, cookTime, servings, tags[], notes, mealType (one of breakfast/lunch/dinner/dessert/snack/drink). Output ONLY the JSON.\n\n${step1Raw}`
       }], { temperature: 0, max_tokens: 1200 });
       recipe = tryParseJson(retryRaw);
       if (!recipe) {
-        return res.status(500).json({
-          error: 'AI could not produce valid JSON',
-          details: 'Step 1: ' + step1Raw.substring(0, 200) + ' || Step 2: ' + step2Raw.substring(0, 200)
-        });
+        return res.status(500).json({ error: 'AI could not produce valid JSON', details: step2Raw.substring(0, 200) });
       }
     }
 
     if (recipe.error) return res.status(400).json({ error: recipe.error });
 
     const id = 'r_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-    const title = String(recipe.title || 'Untitled Recipe').slice(0, 200);
-    const tags = Array.isArray(recipe.tags) ? recipe.tags.slice(0, 10).map(t => String(t).toLowerCase()) : [];
-
-    let thumbnail = `data:${mimeType};base64,${imageBase64}`;
-    if (title && title !== 'Untitled Recipe') {
-      const generated = await generateRecipeImage(title, tags);
-      if (generated) thumbnail = generated;
-    }
+    const validMeals = ['breakfast', 'lunch', 'dinner', 'dessert', 'snack', 'drink'];
+    const mealType = validMeals.includes(String(recipe.mealType || '').toLowerCase())
+      ? String(recipe.mealType).toLowerCase() : 'default';
 
     const finalRecipe = {
       id,
-      title,
+      title: String(recipe.title || 'Untitled Recipe').slice(0, 200),
       description: String(recipe.description || '').slice(0, 500),
       ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients.slice(0, 60).map(String) : [],
       instructions: Array.isArray(recipe.instructions) ? recipe.instructions.slice(0, 60).map(String) : [],
       prepTime: String(recipe.prepTime || ''),
       cookTime: String(recipe.cookTime || ''),
       servings: String(recipe.servings || ''),
-      tags,
+      tags: Array.isArray(recipe.tags) ? recipe.tags.slice(0, 10).map(t => String(t).toLowerCase()) : [],
       notes: String(recipe.notes || '').slice(0, 1000),
-      imageThumbnail: thumbnail,
+      mealType,
       createdAt: Date.now(),
       addedBy: String(addedBy || 'Anonymous').slice(0, 40),
     };
 
     await kv.set(`recipe:${id}`, finalRecipe);
     await kv.lpush('recipe_ids', id);
-
     return res.status(200).json(finalRecipe);
   } catch (error) {
     console.error('Error:', error);
