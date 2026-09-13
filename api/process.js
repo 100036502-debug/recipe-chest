@@ -23,7 +23,7 @@ async function groqChat(apiKey, messages, options = {}, attempt = 0) {
       model: GROQ_MODEL,
       messages,
       temperature: options.temperature ?? 0.1,
-      max_tokens: options.max_tokens ?? 1800,
+      max_tokens: options.max_tokens ?? 2200,
     }),
   });
   const data = await res.json();
@@ -42,124 +42,251 @@ async function groqChat(apiKey, messages, options = {}, attempt = 0) {
   return data.choices[0].message.content || '';
 }
 
-// Parse the delimiter-based format: ===LABEL===\n content
-function parseDelimitedRecipe(text) {
-  if (!text) return null;
-
-  let t = String(text);
+// ---------- Cleaning ----------
+function preclean(raw) {
+  if (!raw) return '';
+  let t = String(raw);
   t = t.replace(/<think[\s\S]*?<\/think>/gi, '');
   t = t.replace(/<\/?think>/gi, '');
+  t = t.replace(/```[a-z]*\n?/gi, '');
+  t = t.replace(/```/g, '');
   t = t.replace(/\r\n/g, '\n');
+  return t;
+}
 
-  // Find first ===
-  const startIdx = t.indexOf('===');
-  if (startIdx === -1) return null;
-  t = t.substring(startIdx);
+// ---------- List item cleaner ----------
+function cleanItem(s) {
+  return String(s)
+    .replace(/^[-*•·]\s+/, '')
+    .replace(/^[-*•·]/, '')
+    .replace(/^\d+[.)]\s+/, '')
+    .replace(/^\*\*(.+)\*\*$/, '$1')
+    .replace(/^[*_]+|[*_]+$/g, '')
+    .trim();
+}
 
-  // Extract all sections
-  const sections = {};
-  const regex = /===\s*([A-Za-z_ ]+?)\s*===/g;
-  const matches = [];
-  let m;
-  while ((m = regex.exec(t)) !== null) {
-    matches.push({ label: m[1].toUpperCase().replace(/\s+/g, '_').trim(), idx: m.index, endIdx: regex.lastIndex });
+// ---------- Split a block into a list ----------
+function blockToList(content) {
+  if (!content) return [];
+  const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
+  const items = [];
+
+  for (const line of lines) {
+    // Skip sub-headers or empties
+    if (!line) continue;
+    // Inline separators: " - item - item" or " • item • item"
+    if (/\s[-•·]\s+\S/.test(line)) {
+      const parts = line.split(/\s+[-•·]\s+/).map(s => s.trim()).filter(Boolean);
+      for (const p of parts) items.push(cleanItem(p));
+      continue;
+    }
+    // Inline numbered: "1. x 2. y 3. z"
+    if (/^\d+[.)]\s+.+\s+\d+[.)]\s+/.test(line)) {
+      const parts = line.split(/\s+(?=\d+[.)]\s+)/).map(s => s.trim()).filter(Boolean);
+      for (const p of parts) items.push(cleanItem(p));
+      continue;
+    }
+    items.push(cleanItem(line));
   }
 
-  if (matches.length === 0) return null;
+  return items.filter(Boolean);
+}
 
-  for (let i = 0; i < matches.length; i++) {
-    const cur = matches[i];
-    const next = matches[i + 1];
-    const end = next ? next.idx : t.length;
-    let content = t.substring(cur.endIdx, end).trim();
+// ---------- Normalizer (from any parsed object) ----------
+function normalizeRecipe(r) {
+  if (!r || !r.title) return null;
+  const validMeals = ['breakfast', 'lunch', 'dinner', 'dessert', 'snack', 'drink'];
+  let mealType = 'default';
+  const mtRaw = String(r.mealType || r.meal_type || '').toLowerCase();
+  for (const vm of validMeals) if (mtRaw.includes(vm)) { mealType = vm; break; }
+
+  let tags = [];
+  if (Array.isArray(r.tags)) tags = r.tags.map(t => String(t).trim().toLowerCase()).filter(Boolean);
+  else if (typeof r.tags === 'string') tags = r.tags.split(/[,;]/).map(t => t.trim().toLowerCase()).filter(Boolean);
+
+  const toArr = (v) => Array.isArray(v) ? v.map(String).map(cleanItem).filter(Boolean) :
+    (typeof v === 'string' ? blockToList(v) : []);
+
+  return {
+    title: String(r.title).slice(0, 200),
+    description: String(r.description || '').slice(0, 500),
+    ingredients: toArr(r.ingredients).slice(0, 60),
+    instructions: toArr(r.instructions).slice(0, 60),
+    prepTime: String(r.prepTime || r.prep_time || '').slice(0, 40),
+    cookTime: String(r.cookTime || r.cook_time || '').slice(0, 40),
+    servings: String(r.servings || '').slice(0, 40),
+    tags: tags.slice(0, 10),
+    notes: String(r.notes || '').slice(0, 1000),
+    mealType,
+  };
+}
+
+// ---------- Parser 1: delimiter format (===LABEL===) ----------
+function parseDelimited(text) {
+  const t = text;
+  const firstIdx = t.indexOf('===');
+  if (firstIdx === -1) return null;
+  const sub = t.substring(firstIdx);
+
+  const regex = /===\s*([A-Za-z_ ]+?)\s*===/g;
+  const markers = [];
+  let m;
+  while ((m = regex.exec(sub)) !== null) {
+    markers.push({
+      label: m[1].toUpperCase().replace(/\s+/g, '_').trim(),
+      idx: m.index,
+      contentStart: regex.lastIndex,
+    });
+  }
+  if (!markers.length) return null;
+
+  const sections = {};
+  for (let i = 0; i < markers.length; i++) {
+    const cur = markers[i];
+    const end = markers[i + 1] ? markers[i + 1].idx : sub.length;
+    const content = sub.substring(cur.contentStart, end).trim();
     if (!(cur.label in sections)) sections[cur.label] = content;
   }
 
-  const firstLine = (key) => {
-    const v = sections[key] || '';
-    return v.split('\n')[0].trim();
-  };
-
-  // Parse a list section — handles bullets, numbers, one-per-line, and one-line-separated formats
-  const parseList = (key) => {
-    const content = sections[key] || '';
-    if (!content) return [];
-
-    // Split into lines first
-    const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
-    const items = [];
-
-    for (const line of lines) {
-      // If line has multiple items separated by " - " or " • " or " * ", split them
-      const hasInlineSeparator = /\s[-•*]\s+/.test(line);
-      if (hasInlineSeparator) {
-        const parts = line.split(/\s+[-•*]\s+/).map(s => s.trim()).filter(Boolean);
-        for (const p of parts) items.push(p);
-        continue;
-      }
-      // Check for inline numbered items "1. x 2. y"
-      if (/^\d+[.)]\s+.+\s+\d+[.)]\s+/.test(line)) {
-        const parts = line.split(/\s+(?=\d+[.)]\s+)/).map(s => s.trim()).filter(Boolean);
-        for (const p of parts) items.push(p);
-        continue;
-      }
-      items.push(line);
-    }
-
-    // Strip leading bullets/numbers and clean
-    const cleaned = items
-      .map(item => item.replace(/^[-*•]\s+/, '').replace(/^[-*•]/, '').replace(/^\d+[.)]\s+/, '').trim())
-      .filter(Boolean);
-
-    // If we only got 1 item, try comma/semicolon splitting
-    if (cleaned.length === 1 && (cleaned[0].includes(';') || cleaned[0].includes(', '))) {
-      const splitter = cleaned[0].includes(';') ? ';' : ',';
-      const parts = cleaned[0].split(splitter).map(s => s.trim()).filter(Boolean);
-      // Only accept comma splitting if items look independent (each has length > 3)
-      if (parts.length > 1 && parts.every(p => p.length > 2)) {
-        return parts;
-      }
-    }
-
-    return cleaned;
-  };
-
+  const firstLine = (k) => (sections[k] || '').split('\n')[0].trim();
   const title = firstLine('TITLE');
   if (!title) return null;
 
-  const description = firstLine('DESCRIPTION');
-  const prepTime = firstLine('PREP_TIME') || firstLine('PREP TIME') || '';
-  const cookTime = firstLine('COOK_TIME') || firstLine('COOK TIME') || '';
-  const servings = firstLine('SERVINGS');
-  const mealTypeRaw = (firstLine('MEAL_TYPE') || firstLine('MEAL TYPE') || '').toLowerCase();
-  const tagsRaw = firstLine('TAGS');
-  const notes = sections['NOTES'] || '';
+  return normalizeRecipe({
+    title,
+    description: firstLine('DESCRIPTION'),
+    prepTime: firstLine('PREP_TIME') || firstLine('PREP TIME'),
+    cookTime: firstLine('COOK_TIME') || firstLine('COOK TIME'),
+    servings: firstLine('SERVINGS'),
+    mealType: firstLine('MEAL_TYPE') || firstLine('MEAL TYPE'),
+    tags: firstLine('TAGS'),
+    ingredients: sections['INGREDIENTS'] || '',
+    instructions: sections['INSTRUCTIONS'] || '',
+    notes: sections['NOTES'] || '',
+  });
+}
 
-  const ingredients = parseList('INGREDIENTS');
-  const instructions = parseList('INSTRUCTIONS');
+// ---------- Parser 2: colon-label format (TITLE:, INGREDIENTS:) ----------
+function parseColon(text) {
+  const t = text.replace(/[*_#]+/g, '').replace(/\r\n/g, '\n');
+  const idx = t.search(/\bTITLE\s*:/i);
+  if (idx === -1) return null;
+  const sub = t.substring(idx);
 
-  const validMeals = ['breakfast', 'lunch', 'dinner', 'dessert', 'snack', 'drink'];
-  let mealType = 'default';
-  for (const vm of validMeals) {
-    if (mealTypeRaw.includes(vm)) { mealType = vm; break; }
+  const grabSection = (startLabels, endLabels) => {
+    const startRe = new RegExp('(?:^|\\n)\\s*(?:' + startLabels + ')\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*(?:' + endLabels + ')\\s*:|$)', 'i');
+    const m = sub.match(startRe);
+    return m ? m[1].trim() : '';
+  };
+
+  const grabLine = (label) => {
+    const re = new RegExp('(?:^|\\n)\\s*' + label + '\\s*:\\s*(.*?)(?:\\n|$)', 'i');
+    const m = sub.match(re);
+    return m ? m[1].trim() : '';
+  };
+
+  const title = grabLine('TITLE');
+  if (!title) return null;
+
+  const ingredientsRaw = grabSection('INGREDIENTS?|INGREDIENT LIST', 'INSTRUCTIONS?|DIRECTIONS?|METHOD|STEPS?|NOTES?');
+  const instructionsRaw = grabSection('INSTRUCTIONS?|DIRECTIONS?|METHOD|STEPS?', 'NOTES?|TAGS?|SERVINGS?');
+
+  return normalizeRecipe({
+    title,
+    description: grabLine('DESCRIPTION'),
+    prepTime: grabLine('PREP[ _]?TIME'),
+    cookTime: grabLine('COOK[ _]?TIME'),
+    servings: grabLine('SERVINGS?'),
+    mealType: grabLine('MEAL[ _]?TYPE'),
+    tags: grabLine('TAGS?'),
+    ingredients: ingredientsRaw,
+    instructions: instructionsRaw,
+    notes: grabSection('NOTES?', '$^'),
+  });
+}
+
+// ---------- Parser 3: JSON ----------
+function parseJson(raw) {
+  if (!raw) return null;
+  let t = raw
+    .replace(/```json\s*/gi, '').replace(/```/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim();
+  const start = t.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0, inString = false, escape = false, end = -1;
+  for (let i = start; i < t.length; i++) {
+    const ch = t[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end === -1) return null;
+  const jsonText = t.substring(start, end + 1);
+  let obj;
+  try { obj = JSON.parse(jsonText); }
+  catch { try { obj = JSON.parse(jsonText.replace(/,(\s*[}\]])/g, '$1')); } catch { return null; } }
+  return normalizeRecipe(obj);
+}
+
+// ---------- Parser 4: heuristic — find TITLE line, INGREDIENTS section, INSTRUCTIONS section ----------
+function parseHeuristic(text) {
+  const t = text.replace(/[*_#]+/g, '').replace(/\r\n/g, '\n');
+
+  // Find the first non-empty line as title (fallback)
+  const lines = t.split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return null;
+
+  // Look for a line that looks like "TITLE: xxx" anywhere
+  let title = '';
+  for (const line of lines) {
+    const m = line.match(/title\s*[:\-]\s*(.+)/i);
+    if (m) { title = m[1].trim(); break; }
+  }
+  if (!title && lines[0].length < 100) title = lines[0];
+
+  if (!title) return null;
+
+  // Look for section keywords
+  let ingredients = [];
+  let instructions = [];
+  let mode = null;
+  for (const line of lines) {
+    if (/^ingredients?\s*[:\-]?$/i.test(line) || /^ingredients?\s*[:\-]/i.test(line)) { mode = 'i'; continue; }
+    if (/^(instructions?|directions?|method|steps?)\s*[:\-]?$/i.test(line) || /^(instructions?|directions?|method|steps?)\s*[:\-]/i.test(line)) { mode = 's'; continue; }
+    if (/^(notes?|tags?|prep|servings?)\s*[:\-]?/i.test(line)) { mode = null; continue; }
+    if (mode === 'i' && line) ingredients.push(cleanItem(line));
+    else if (mode === 's' && line) instructions.push(cleanItem(line));
   }
 
-  const tags = tagsRaw
-    ? tagsRaw.split(/[,;]/).map(s => s.trim().toLowerCase()).filter(Boolean).slice(0, 10)
-    : [];
+  if (!ingredients.length && !instructions.length) return null;
 
-  return {
-    title: title.slice(0, 200),
-    description: description.slice(0, 500),
-    ingredients: ingredients.slice(0, 60),
-    instructions: instructions.slice(0, 60),
-    prepTime: prepTime.slice(0, 40),
-    cookTime: cookTime.slice(0, 40),
-    servings: servings.slice(0, 40),
-    tags,
-    notes: notes.slice(0, 1000),
-    mealType,
-  };
+  return normalizeRecipe({ title, ingredients, instructions });
+}
+
+// ---------- Master parser ----------
+function parseAiOutput(text) {
+  const cleaned = preclean(text);
+
+  // 1. Delimiter
+  let r = parseDelimited(cleaned);
+  if (r && r.title) return r;
+
+  // 2. Colon
+  r = parseColon(cleaned);
+  if (r && r.title) return r;
+
+  // 3. JSON
+  r = parseJson(cleaned);
+  if (r && r.title) return r;
+
+  // 4. Heuristic
+  r = parseHeuristic(cleaned);
+  if (r && r.title) return r;
+
+  return null;
 }
 
 export default async function handler(req, res) {
@@ -224,18 +351,20 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
       ]
     }], { temperature: 0.1, max_tokens: 2200 });
 
-    console.log('Raw AI output (first 500):', raw.substring(0, 500));
+    console.log('=== RAW AI OUTPUT (first 1200 chars) ===');
+    console.log(raw.substring(0, 1200));
+    console.log('=== END ===');
 
-    if (/NO_RECIPE/i.test(raw) && !/===\s*TITLE\s*===/i.test(raw)) {
+    if (/^\s*NO_RECIPE\s*$/im.test(raw)) {
       return res.status(400).json({ error: 'No recipe detected in that image.' });
     }
 
-    const recipe = parseDelimitedRecipe(raw);
+    const recipe = parseAiOutput(raw);
 
-    if (!recipe || !recipe.title) {
+    if (!recipe) {
       return res.status(500).json({
-        error: 'Could not parse the AI output',
-        details: 'Raw (first 500): ' + raw.substring(0, 500)
+        error: 'Could not parse AI output',
+        details: 'RAW: ' + raw.substring(0, 1800)
       });
     }
 
