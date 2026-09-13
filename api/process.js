@@ -46,7 +46,8 @@ function tryParseJson(raw) {
   return null;
 }
 
-async function groqChat(apiKey, messages, options = {}) {
+// Retry-aware Groq call: if we hit a rate limit, wait and try again.
+async function groqChat(apiKey, messages, options = {}, attempt = 0) {
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -57,12 +58,24 @@ async function groqChat(apiKey, messages, options = {}) {
       model: GROQ_MODEL,
       messages,
       temperature: options.temperature ?? 0.1,
-      max_tokens: options.max_tokens ?? 2000,
+      max_tokens: options.max_tokens ?? 1500,
     }),
   });
   const data = await res.json();
+
   if (!data.choices || !data.choices[0]) {
-    throw new Error('Groq error: ' + JSON.stringify(data).substring(0, 400));
+    const errMsg = (data.error && data.error.message) || JSON.stringify(data);
+    const isRateLimit = /rate limit/i.test(errMsg) || (data.error && data.error.code === 'rate_limit_exceeded');
+
+    if (isRateLimit && attempt < 3) {
+      // Extract "try again in X.XXs" if present
+      const match = errMsg.match(/try again in ([\d.]+)\s*s/i);
+      const waitMs = match ? Math.ceil(parseFloat(match[1]) * 1000) + 700 : 6000;
+      console.log(`Rate limited. Waiting ${waitMs}ms then retrying (attempt ${attempt + 1}).`);
+      await new Promise(r => setTimeout(r, waitMs));
+      return groqChat(apiKey, messages, options, attempt + 1);
+    }
+    throw new Error('Groq error: ' + errMsg.substring(0, 400));
   }
   return data.choices[0].message.content || '';
 }
@@ -112,64 +125,49 @@ export default async function handler(req, res) {
   let step2Raw = '';
 
   try {
-    // ---- STEP 1: Plain transcription of the image (no JSON required) ----
+    // ---- STEP 1: Transcribe the image into plain text ----
     step1Raw = await groqChat(GROQ_API_KEY, [{
       role: 'user',
       content: [
         {
           type: 'text',
-          text: 'Transcribe everything you can read from this image into plain text. If it is a recipe, capture the title, ingredients list, and step-by-step instructions exactly as written. If there is no recipe in the image, reply with exactly: NO_RECIPE'
+          text: 'Transcribe the recipe from this image into plain text. Include title, ingredients, and instructions. Be brief — no reasoning, no commentary. If no recipe is present, reply exactly: NO_RECIPE'
         },
         { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
       ]
-    }], { temperature: 0.1, max_tokens: 3000 });
+    }], { temperature: 0.1, max_tokens: 1200 });
 
-    console.log('Step 1 transcription (first 300):', step1Raw.substring(0, 300));
+    console.log('Step 1 transcription (first 200):', step1Raw.substring(0, 200));
 
-    if (!step1Raw.trim() || step1Raw.includes('NO_RECIPE')) {
+    if (!step1Raw.trim() || /NO_RECIPE/i.test(step1Raw)) {
       return res.status(400).json({ error: 'No recipe detected in that image.' });
     }
 
     // ---- STEP 2: Convert the plain text into JSON ----
     step2Raw = await groqChat(GROQ_API_KEY, [{
       role: 'user',
-      content: `Convert the following recipe text into a JSON object with this exact shape:
+      content: `Output ONLY a JSON object (no markdown, no commentary) with this shape, using the recipe below:
 
-{
-  "title": "Recipe name",
-  "description": "1-2 sentence description",
-  "ingredients": ["1 cup flour", "2 eggs"],
-  "instructions": ["Step one.", "Step two."],
-  "prepTime": "15 minutes",
-  "cookTime": "30 minutes",
-  "servings": "4",
-  "tags": ["dessert"],
-  "notes": ""
-}
+{"title":"","description":"","ingredients":[],"instructions":[],"prepTime":"","cookTime":"","servings":"","tags":[],"notes":""}
 
-Return ONLY the JSON object. No markdown. No commentary. No  thinking tags.
-
-RECIPE TEXT:
+RECIPE:
 ${step1Raw}`
-    }], { temperature: 0.1, max_tokens: 3000 });
+    }], { temperature: 0, max_tokens: 1200 });
 
-    console.log('Step 2 JSON attempt (first 300):', step2Raw.substring(0, 300));
+    console.log('Step 2 JSON attempt (first 200):', step2Raw.substring(0, 200));
 
-    // ---- STEP 3: Parse ----
     let recipe = tryParseJson(step2Raw);
 
-    // ---- STEP 4: One more attempt if parsing failed ----
     if (!recipe) {
       const retryRaw = await groqChat(GROQ_API_KEY, [{
         role: 'user',
-        content: `Your previous response was not valid JSON. Return ONLY a valid JSON object with keys: title (string), description (string), ingredients (array of strings), instructions (array of strings), prepTime (string), cookTime (string), servings (string), tags (array of strings), notes (string). No markdown. No text outside the JSON.\n\nHere is the recipe text to convert:\n\n${step1Raw}`
-      }], { temperature: 0, max_tokens: 3000 });
-      console.log('Step 4 retry (first 300):', retryRaw.substring(0, 300));
+        content: `Convert this into a JSON object with keys title, description, ingredients[], instructions[], prepTime, cookTime, servings, tags[], notes. Output ONLY the JSON.\n\n${step1Raw}`
+      }], { temperature: 0, max_tokens: 1200 });
       recipe = tryParseJson(retryRaw);
       if (!recipe) {
         return res.status(500).json({
           error: 'AI could not produce valid JSON',
-          details: 'Step 1: ' + step1Raw.substring(0, 300) + ' || Step 2: ' + step2Raw.substring(0, 300)
+          details: 'Step 1: ' + step1Raw.substring(0, 200) + ' || Step 2: ' + step2Raw.substring(0, 200)
         });
       }
     }
@@ -180,12 +178,10 @@ ${step1Raw}`
     const title = String(recipe.title || 'Untitled Recipe').slice(0, 200);
     const tags = Array.isArray(recipe.tags) ? recipe.tags.slice(0, 10).map(t => String(t).toLowerCase()) : [];
 
-    // ---- Generate the AI food photo from the title ----
     let thumbnail = `data:${mimeType};base64,${imageBase64}`;
     if (title && title !== 'Untitled Recipe') {
       const generated = await generateRecipeImage(title, tags);
       if (generated) thumbnail = generated;
-      else console.log('Image generation failed, using original scan');
     }
 
     const finalRecipe = {
@@ -212,7 +208,7 @@ ${step1Raw}`
     console.error('Error:', error);
     return res.status(500).json({
       error: 'Failed: ' + error.message,
-      details: step1Raw ? 'Step 1 raw: ' + step1Raw.substring(0, 200) : ''
+      details: step1Raw ? 'Step 1: ' + step1Raw.substring(0, 200) : ''
     });
   }
 }
