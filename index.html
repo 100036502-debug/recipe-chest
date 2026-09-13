@@ -494,17 +494,18 @@ async function startBatch() {
           addedBy: name,
         }),
       });
-      const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       item.status = 'done';
       item.recipeId = data.id;
       item.title = data.title || 'Saved';
+      // Free memory only after a successful save
+      item.file = null;
       item.base64 = null;
       success++;
     } catch (err) {
       item.status = 'failed';
       item.error = err.message;
-      item.base64 = null;
+      // Keep file and base64 so Retry can reuse them
       failed++;
     }
     updateQueueUI();
