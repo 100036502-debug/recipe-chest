@@ -90,7 +90,8 @@ export default async function handler(req, res) {
     });
 
     if (!groqRes.ok) {
-      throw new Error(`Groq API returned status ${groqRes.status}`);
+      const errorDetails = await groqRes.text();
+      throw new Error(`Groq API returned status ${groqRes.status}: ${errorDetails.substring(0, 500)}`);
     }
 
     const groqData = await groqRes.json();
