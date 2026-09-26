@@ -79,7 +79,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'qwen/qwen3.6-27b',
+        model: 'qwen/qwen3.8-2.7b',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: contentPayload },
