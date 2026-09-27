@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import sharp from 'sharp';
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -47,11 +48,16 @@ export default async function handler(req, res) {
 
     const images = [];
     if (Array.isArray(payload.attachments)) {
-      for (const attachment of payload.attachments) {
+      for (const attachment of payload.attachments.slice(0, 3)) {
         const mimeType = attachment.type || attachment.contentType || '';
         const base64Data = attachment.content || attachment.data;
         if (mimeType.startsWith('image/') && base64Data) {
-          images.push(`data:${mimeType};base64,${base64Data}`);
+          const resizedImage = await sharp(Buffer.from(base64Data, 'base64'))
+            .rotate()
+            .resize({ width: 1000, height: 1000, fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 85 })
+            .toBuffer();
+          images.push(`data:image/jpeg;base64,${resizedImage.toString('base64')}`);
         }
       }
     }
