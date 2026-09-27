@@ -91,7 +91,14 @@ export default async function handler(req, res) {
 
     if (!groqRes.ok) {
       const errorDetails = await groqRes.text();
-      throw new Error(`Groq API returned status ${groqRes.status}: ${errorDetails.substring(0, 500)}`);
+      let detail = errorDetails;
+      try {
+        const groqError = JSON.parse(errorDetails).error;
+        if (groqError) {
+          detail = [groqError.code, groqError.message].filter(Boolean).join(': ');
+        }
+      } catch {}
+      throw new Error(`Groq API returned status ${groqRes.status}: ${detail.substring(0, 500)}`);
     }
 
     const groqData = await groqRes.json();
