@@ -7,7 +7,7 @@ const kv = new Redis({
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
 
-const GROQ_MODEL = 'qwen/qwen3.8-2.7b';
+const GROQ_MODEL = 'qwen/qwen3.8-27b';
 
 function extractBraced(text) {
   const start = text.indexOf('{');

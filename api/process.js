@@ -10,7 +10,7 @@ export const config = {
   maxDuration: 60,
 };
 
-const GROQ_MODEL = 'qwen/qwen3.8-2.7b';
+const GROQ_MODEL = 'qwen/qwen3.8-27b';
 
 async function groqChat(apiKey, messages, options = {}, attempt = 0) {
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
