@@ -1,6 +1,8 @@
 import { Redis } from '@upstash/redis';
 import sharp from 'sharp';
 
+const MAX_EMAIL_TEXT_CHARACTERS = 6000;
+
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
@@ -54,8 +56,8 @@ export default async function handler(req, res) {
         if (mimeType.startsWith('image/') && base64Data) {
           const resizedImage = await sharp(Buffer.from(base64Data, 'base64'))
             .rotate()
-            .resize({ width: 1000, height: 1000, fit: 'inside', withoutEnlargement: true })
-            .jpeg({ quality: 85 })
+            .resize({ width: 768, height: 768, fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 75 })
             .toBuffer();
           images.push(`data:image/jpeg;base64,${resizedImage.toString('base64')}`);
         }
@@ -70,14 +72,14 @@ export default async function handler(req, res) {
     if (bodyText) {
       contentPayload.push({
         type: 'text',
-        text: `Extract recipe details from this email message:\n\n${bodyText.substring(0, 15000)}`,
+        text: `Extract recipe details from this email message:\n\n${bodyText.substring(0, MAX_EMAIL_TEXT_CHARACTERS)}`,
       });
     }
     images.slice(0, 3).forEach((image) => {
       contentPayload.push({ type: 'image_url', image_url: { url: image } });
     });
 
-    const systemPrompt = `You are a recipe parser. Extract recipe details from the provided text and images into a single clean JSON object. Return only JSON with these keys: title, description, prepTime, cookTime, servings, mealType, tags, ingredients, instructions.`;
+    const systemPrompt = `You are a recipe parser. Extract one recipe from the provided text and images. Return only compact JSON with these keys: title, description, prepTime, cookTime, servings, mealType, tags, ingredients, instructions. Keep the description to one sentence and each instruction concise. Do not include commentary.`;
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -91,6 +93,7 @@ export default async function handler(req, res) {
           { role: 'user', content: contentPayload },
         ],
         temperature: 0.2,
+        max_tokens: 900,
         response_format: { type: 'json_object' },
       }),
     });
