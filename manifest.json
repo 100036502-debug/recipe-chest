@@ -1,12 +1,11 @@
 {
-  "name": "The Recipe Box",
-  "short_name": "Recipe Box",
-  "description": "A place for what the kitchen AI reads — generate and store recipes with Groq.",
+  "name": "Recipe Chest",
+  "short_name": "Recipe Chest",
+  "description": "Upload photos or URLs of recipes, and the AI files them in your chest.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#1f2b22",
-  "theme_color": "#1f2b22",
   "orientation": "portrait-primary",
-  "categories": ["food", "lifestyle", "utilities"]
+  "background_color": "#faf6f0",
+  "theme_color": "#c7541a"
 }
