@@ -6,18 +6,23 @@ const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/offline.html',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon-maskable-512.png'
+  '/offline.html'
 ];
 
 // Install: pre-cache the app shell
+// Each asset is added independently so a single 404 can't break the install.
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_ASSETS))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await Promise.all(
+        PRECACHE_ASSETS.map((url) =>
+          cache.add(url).catch((err) => {
+            console.warn('Precache miss:', url, err.message);
+          })
+        )
+      );
+      return self.skipWaiting();
+    })
   );
 });
 
@@ -37,7 +42,7 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Only handle same-origin + Google Fonts GETs
+  // Only handle GETs
   if (request.method !== 'GET') return;
 
   // 1. Never cache API requests
