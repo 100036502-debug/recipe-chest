@@ -1,5 +1,5 @@
 // The Recipe Box — service worker
-const CACHE_NAME = 'recipe-box-v1';
+const CACHE_NAME = 'recipe-box-v2';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_ASSETS = [
@@ -9,7 +9,7 @@ const PRECACHE_ASSETS = [
   '/offline.html'
 ];
 
-// Install: pre-cache the app shell
+// Install: pre-cache the app shell.
 // Each asset is added independently so a single 404 can't break the install.
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -42,7 +42,6 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Only handle GETs
   if (request.method !== 'GET') return;
 
   // 1. Never cache API requests
