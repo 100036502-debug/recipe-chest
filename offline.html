@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Offline — The Recipe Box</title>
+<meta name="theme-color" content="#1f2b22">
+<style>
+  body {
+    margin: 0;
+    background: #1f2b22;
+    color: #f2ebda;
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    text-align: center;
+    padding: 2rem;
+  }
+  .box { max-width: 420px; }
+  h1 {
+    font-family: Georgia, serif;
+    font-style: italic;
+    font-weight: 600;
+    font-size: 1.6rem;
+    margin: 0 0 0.5rem;
+    color: #f2ebda;
+  }
+  p {
+    color: #c9c3ae;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin: 0 0 1.25rem;
+  }
+  button {
+    font: inherit;
+    font-size: 0.9rem;
+    background: #a63d2f;
+    color: #f2ebda;
+    border: none;
+    padding: 0.7rem 1.1rem;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  button:hover { background: #7d2c22; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>The box is offline</h1>
+    <p>Your saved recipes are still here. Reconnect to generate new ones.</p>
+    <button onclick="location.reload()">Try again</button>
+  </div>
+</body>
+</html>
