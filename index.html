@@ -473,12 +473,6 @@
   .detail-actions button.ghost-danger{color:var(--danger); border-color:rgba(192,72,58,0.4);}
   .detail-actions button.ghost-danger:hover{background:rgba(192,72,58,0.08);}
 
-  .status-msg{
-    font-size:.8rem;
-    color:var(--cream-dim);
-    margin-top:.5rem;
-    min-height:1em;
-  }
   footer.foot{
     margin-top:2.5rem;
     text-align:center;
@@ -488,7 +482,6 @@
     letter-spacing:.05em;
   }
 
-  /* AI panel tweaks */
   #aiPanel textarea{min-height:110px;}
   #installBtn{
     background:rgba(201,147,46,0.15);
@@ -515,6 +508,7 @@
     </div>
     <button class="primary" id="toggleAddBtn"><i>+</i> File a new recipe</button>
     <button id="toggleAiBtn">&#10022; Generate with AI</button>
+    <button id="refreshBtn">Refresh</button>
     <button id="exportAllBtn">Export all</button>
     <button class="ghost-danger" id="clearAllBtn">Empty the box</button>
     <button id="installBtn" style="display:none;">Install app</button>
@@ -565,7 +559,7 @@
     <div class="grid" id="cardGrid"></div>
   </div>
 
-  <footer class="foot">stored locally in your browser &middot; AI recipes come from Groq</footer>
+  <footer class="foot">synced via Redis &middot; AI recipes from Groq</footer>
 </div>
 
 <div class="overlay" id="overlay">
@@ -574,7 +568,7 @@
 
 <script>
 (function(){
-  var STORAGE_KEY = 'recipe-collection';
+  var STORAGE_KEY = 'recipe-collection-cache';
   var recipes = [];
   var activeTab = 'All';
   var searchTerm = '';
@@ -607,133 +601,133 @@
     pasteStatus.classList.remove('show');
   }
 
-  // --- Storage helpers ------------------------------------------------
-  // Prefer window.storage if the host provides it (artifact runtime).
-  // Otherwise fall back to localStorage so this works as a normal web app.
-  var storage = {
-    async get(key){
-      if (window.storage && typeof window.storage.get === 'function') {
-        return window.storage.get(key, false);
-      }
-      try {
-        var v = localStorage.getItem(key);
-        return v === null ? null : { value: v };
-      } catch(e){
-        return null;
-      }
-    },
-    async set(key, value){
-      if (window.storage && typeof window.storage.set === 'function') {
-        return window.storage.set(key, value, false);
-      }
-      try {
-        localStorage.setItem(key, value);
-        return true;
-      } catch(e){
-        return false;
-      }
-    }
-  };
-
-  // Pulls out top-level {...} objects from a blob of text, even when they
-  // are not wrapped in an array or separated by commas (handles pasted
-  // batches of raw JSON objects one after another).
-  function extractJsonObjects(text){
-    var objs = [];
-    var depth = 0, start = -1, inString = false, escapeNext = false;
-    for(var i = 0; i < text.length; i++){
-      var ch = text[i];
-      if(inString){
-        if(escapeNext){ escapeNext = false; }
-        else if(ch === '\\'){ escapeNext = true; }
-        else if(ch === '"'){ inString = false; }
-        continue;
-      }
-      if(ch === '"'){ inString = true; continue; }
-      if(ch === '{'){
-        if(depth === 0) start = i;
-        depth++;
-      } else if(ch === '}'){
-        depth--;
-        if(depth === 0 && start !== -1){
-          objs.push(text.slice(start, i+1));
-          start = -1;
-        }
-      }
-    }
-    return objs;
+  // ============================================================
+  // LOCAL CACHE (mirror of Redis, for offline reads)
+  // ============================================================
+  function writeCache(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes)); } catch(e){}
+  }
+  function readCache(){
+    try {
+      var v = localStorage.getItem(STORAGE_KEY);
+      return v ? JSON.parse(v) : [];
+    } catch(e){ return []; }
   }
 
-  // Parses raw pasted/uploaded text into a flat array of candidate recipe
-  // objects, handling: a single object, a JSON array, or several objects
-  // concatenated back-to-back without array brackets.
-  function parseCandidates(raw){
-    raw = raw.trim();
-    if(!raw) return [];
-    try{
-      var parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [parsed];
-    }catch(e){
-      var chunks = extractJsonObjects(raw);
-      if(chunks.length === 0) throw e;
-      var out = [];
-      chunks.forEach(function(c){
-        try{ out.push(JSON.parse(c)); }catch(e2){ /* skip unparsable chunk */ }
-      });
-      if(out.length === 0) throw e;
-      return out;
+  // ============================================================
+  // SERVER HELPERS
+  // ============================================================
+  async function apiListRecipes(){
+    var res = await fetch('/api/recipes');
+    if (!res.ok) {
+      var err = await res.json().catch(function(){ return {}; });
+      throw new Error(err.error || ('HTTP ' + res.status));
     }
+    return res.json();
   }
-
-  // Normalizes+validates a batch independently so one bad recipe doesn't
-  // block the rest, then persists whatever succeeded and reports both.
-  async function importRecipes(candidates){
-    var okList = [], failList = [];
-    candidates.forEach(function(r, idx){
-      try{
-        okList.push(normalizeRecipe(r));
-      }catch(e){
-        var label = (r && r.title) ? r.title : ('item ' + (idx+1));
-        failList.push(label + ': ' + e.message);
-      }
+  async function apiSaveRecipe(recipe){
+    var res = await fetch('/api/recipes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(recipe)
     });
-    if(okList.length){
-      recipes = recipes.concat(okList);
-      await persist();
-      render();
+    if (!res.ok) {
+      var err = await res.json().catch(function(){ return {}; });
+      throw new Error(err.error || ('HTTP ' + res.status));
     }
-    return {okCount: okList.length, failList: failList};
+    return res.json();
+  }
+  async function apiDeleteRecipe(id){
+    var res = await fetch('/api/recipes?id=' + encodeURIComponent(id), {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      var err = await res.json().catch(function(){ return {}; });
+      throw new Error(err.error || ('HTTP ' + res.status));
+    }
+    return res.json();
   }
 
-  async function loadRecipes(){
-    grid.innerHTML = '<div class="empty-state"><h3>Opening the box…</h3></div>';
-    try{
-      var result = await storage.get(STORAGE_KEY);
-      recipes = (result && result.value) ? JSON.parse(result.value) : [];
-    }catch(e){
-      recipes = [];
-    }
-    render();
-  }
+  // ============================================================
+  // SHAPE ADAPTER — normalizes recipes coming from the server
+  // Handles both frontend shape ({amount, unit, name}) and legacy
+  // import shape (string arrays + `instructions` field).
+  // ============================================================
+  function adaptServerRecipe(r){
+    if (!r || typeof r !== 'object') return null;
 
-  async function persist(){
-    try{
-      var res = await storage.set(STORAGE_KEY, JSON.stringify(recipes));
-      if(!res){
-        alert('Could not save to storage. Your change may not persist.');
+    var rawIngs = Array.isArray(r.ingredients) ? r.ingredients : [];
+    var ingredients = rawIngs.map(function(ing){
+      if (typeof ing === 'string'){
+        var m = ing.match(/^\s*([\d\/\.\s]+)?\s*(cup|cups|tbsp|tsp|g|kg|oz|lb|ml|l|clove|cloves|can|cans|slice|slices|piece|pieces|pinch|dash)?\s*(.+)$/i);
+        if (m && m[3]) {
+          return { amount: (m[1] || '').trim(), unit: (m[2] || '').trim(), name: m[3].trim() };
+        }
+        return { amount: '', unit: '', name: ing };
       }
-    }catch(e){
-      alert('Storage error while saving: ' + (e && e.message ? e.message : e));
+      return {
+        amount: (ing && ing.amount !== undefined) ? ing.amount : '',
+        unit: (ing && ing.unit) || '',
+        name: (ing && ing.name) || ''
+      };
+    });
+
+    var rawSteps = Array.isArray(r.steps) ? r.steps
+                 : Array.isArray(r.instructions) ? r.instructions
+                 : [];
+    var steps = rawSteps.map(function(s, idx){
+      if (typeof s === 'string') {
+        return { title: 'Step ' + (idx + 1), content: s, timerSeconds: null };
+      }
+      return {
+        title: s.title || ('Step ' + (idx + 1)),
+        content: s.content || '',
+        timerSeconds: s.timerSeconds != null ? s.timerSeconds : (s.timer_seconds != null ? s.timer_seconds : null)
+      };
+    });
+
+    var tags = {};
+    if (Array.isArray(r.tags)) {
+      r.tags.forEach(function(t){ if (t) tags[String(t).toLowerCase()] = true; });
     }
+    if (r.mealType && typeof r.mealType === 'string' && r.mealType !== 'default') {
+      tags[r.mealType.toLowerCase()] = true;
+    }
+
+    return {
+      id: r.id || ('r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)),
+      title: r.title || 'Untitled',
+      description: r.description || '',
+      source: r.source || r.sourceUrl || r.addedBy || r.user || '',
+      servings: r.servings || null,
+      prepTime: r.prepTime || '',
+      cookTime: r.cookTime || '',
+      tags: Object.keys(tags),
+      ingredients: ingredients,
+      steps: steps,
+      notes: r.notes || '',
+      savedAt: r.savedAt || (r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString())
+    };
   }
 
+  // ============================================================
+  // USER INPUT VALIDATION (for pasted JSON / file uploads)
+  // Produces the shape the server expects.
+  // ============================================================
   function normalizeRecipe(r){
-    if(!r || typeof r !== 'object') throw new Error('Each recipe must be a JSON object.');
-    if(!r.title || typeof r.title !== 'string') throw new Error('Recipe is missing a "title" string.');
-    if(!Array.isArray(r.ingredients) || r.ingredients.length === 0) throw new Error('Recipe "' + r.title + '" needs a non-empty "ingredients" array.');
-    if(!Array.isArray(r.steps) || r.steps.length === 0) throw new Error('Recipe "' + r.title + '" needs a non-empty "steps" array.');
+    if (!r || typeof r !== 'object') throw new Error('Each recipe must be a JSON object.');
+    if (!r.title || typeof r.title !== 'string') throw new Error('Recipe is missing a "title" string.');
+
+    var ingredients = r.ingredients;
+    if (!Array.isArray(ingredients) || ingredients.length === 0) {
+      throw new Error('Recipe "' + r.title + '" needs a non-empty "ingredients" array.');
+    }
+    var steps = r.steps || r.instructions;
+    if (!Array.isArray(steps) || steps.length === 0) {
+      throw new Error('Recipe "' + r.title + '" needs a non-empty "steps" array.');
+    }
+
     return {
-      id: 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
       title: r.title.trim(),
       description: r.description || '',
       source: r.source || '',
@@ -741,30 +735,120 @@
       prepTime: r.prepTime || '',
       cookTime: r.cookTime || '',
       tags: Array.isArray(r.tags) ? r.tags.filter(Boolean) : [],
-      ingredients: r.ingredients.map(function(ing){
-        if(typeof ing === 'string') return {amount:'', unit:'', name: ing};
+      ingredients: ingredients.map(function(ing){
+        if (typeof ing === 'string') return { amount: '', unit: '', name: ing };
         return {
           amount: ing.amount !== undefined ? ing.amount : '',
           unit: ing.unit || '',
           name: ing.name || ''
         };
       }),
-      steps: r.steps.map(function(s, idx){
-        if(typeof s === 'string') return {title:'Step ' + (idx+1), content: s, timerSeconds: null};
+      steps: steps.map(function(s, idx){
+        if (typeof s === 'string') return { title: 'Step ' + (idx + 1), content: s, timerSeconds: null };
         return {
-          title: s.title || ('Step ' + (idx+1)),
+          title: s.title || ('Step ' + (idx + 1)),
           content: s.content || '',
-          timerSeconds: s.timerSeconds || s.timer_seconds || null
+          timerSeconds: s.timerSeconds != null ? s.timerSeconds : (s.timer_seconds != null ? s.timer_seconds : null)
         };
       }),
-      notes: r.notes || '',
-      savedAt: new Date().toISOString()
+      notes: r.notes || ''
     };
   }
 
+  // ============================================================
+  // JSON EXTRACTION (for pasted/uploaded blobs)
+  // ============================================================
+  function extractJsonObjects(text){
+    var objs = [];
+    var depth = 0, start = -1, inString = false, escapeNext = false;
+    for (var i = 0; i < text.length; i++){
+      var ch = text[i];
+      if (inString){
+        if (escapeNext){ escapeNext = false; }
+        else if (ch === '\\'){ escapeNext = true; }
+        else if (ch === '"'){ inString = false; }
+        continue;
+      }
+      if (ch === '"'){ inString = true; continue; }
+      if (ch === '{'){
+        if (depth === 0) start = i;
+        depth++;
+      } else if (ch === '}'){
+        depth--;
+        if (depth === 0 && start !== -1){
+          objs.push(text.slice(start, i + 1));
+          start = -1;
+        }
+      }
+    }
+    return objs;
+  }
+
+  function parseCandidates(raw){
+    raw = raw.trim();
+    if (!raw) return [];
+    try {
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (e) {
+      var chunks = extractJsonObjects(raw);
+      if (chunks.length === 0) throw e;
+      var out = [];
+      chunks.forEach(function(c){
+        try { out.push(JSON.parse(c)); } catch (e2) {}
+      });
+      if (out.length === 0) throw e;
+      return out;
+    }
+  }
+
+  // ============================================================
+  // IMPORT — validate + POST each recipe independently
+  // ============================================================
+  async function importRecipes(candidates){
+    var okList = [], failList = [];
+    for (var i = 0; i < candidates.length; i++){
+      var r = candidates[i];
+      var label = (r && r.title) ? r.title : ('item ' + (i + 1));
+      try {
+        var normalized = normalizeRecipe(r);
+        var saved = await apiSaveRecipe(normalized);
+        var adapted = adaptServerRecipe(saved);
+        if (adapted) okList.push(adapted);
+      } catch (e) {
+        failList.push(label + ': ' + (e && e.message ? e.message : String(e)));
+      }
+    }
+    if (okList.length){
+      recipes = okList.concat(recipes);
+      writeCache();
+      render();
+    }
+    return { okCount: okList.length, failList: failList };
+  }
+
+  // ============================================================
+  // LOAD — fetch from server, fall back to cache offline
+  // ============================================================
+  async function loadRecipes(){
+    grid.innerHTML = '<div class="empty-state"><h3>Opening the box…</h3></div>';
+    try {
+      var data = await apiListRecipes();
+      recipes = (Array.isArray(data) ? data : []).map(adaptServerRecipe).filter(Boolean);
+      writeCache();
+    } catch (e) {
+      console.warn('Server load failed, showing cached copy:', e.message);
+      recipes = readCache();
+    }
+    render();
+  }
+
+  // ============================================================
+  // RENDER
+  // ============================================================
   function allTags(){
     var set = {};
-    recipes.forEach(function(r){ (r.tags||[]).forEach(function(t){ set[t] = true; }); });
+    recipes.forEach(function(r){ (r.tags || []).forEach(function(t){ set[t] = true; }); });
     return Object.keys(set).sort();
   }
 
@@ -782,19 +866,20 @@
     });
 
     var filtered = recipes.filter(function(r){
-      var matchesTab = activeTab === 'All' || (r.tags||[]).indexOf(activeTab) !== -1;
-      if(!matchesTab) return false;
-      if(!searchTerm) return true;
-      var hay = (r.title + ' ' + (r.tags||[]).join(' ') + ' ' + r.ingredients.map(function(i){return i.name;}).join(' ')).toLowerCase();
+      var matchesTab = activeTab === 'All' || (r.tags || []).indexOf(activeTab) !== -1;
+      if (!matchesTab) return false;
+      if (!searchTerm) return true;
+      var hay = (r.title + ' ' + (r.tags || []).join(' ') + ' ' +
+        r.ingredients.map(function(i){ return i.name; }).join(' ')).toLowerCase();
       return hay.indexOf(searchTerm.toLowerCase()) !== -1;
     });
 
     grid.innerHTML = '';
-    if(filtered.length === 0){
+    if (filtered.length === 0){
       var empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.innerHTML = recipes.length === 0
-        ? '<h3>The box is empty</h3><p>Paste a recipe your AI produced, or generate one above.</p>'
+        ? '<h3>The box is empty</h3><p>Paste a recipe, generate one, or import from a URL or email.</p>'
         : '<h3>Nothing matches</h3><p>Try a different tab or search term.</p>';
       grid.appendChild(empty);
       return;
@@ -804,45 +889,45 @@
       var card = document.createElement('div');
       card.className = 'card';
       var metaBits = [];
-      if(r.servings) metaBits.push(r.servings + ' servings');
-      if(r.prepTime) metaBits.push('prep ' + r.prepTime);
-      if(r.cookTime) metaBits.push('cook ' + r.cookTime);
+      if (r.servings) metaBits.push(r.servings + ' servings');
+      if (r.prepTime) metaBits.push('prep ' + r.prepTime);
+      if (r.cookTime) metaBits.push('cook ' + r.cookTime);
       card.innerHTML =
         '<h3>' + escapeHtml(r.title) + '</h3>' +
         (metaBits.length ? '<div class="meta">' + escapeHtml(metaBits.join(' · ')) + '</div>' : '') +
         (r.description ? '<div class="desc">' + escapeHtml(truncate(r.description, 90)) + '</div>' : '<div class="desc"></div>') +
-        '<div class="tags">' + (r.tags||[]).map(function(t){ return '<span class="tag-pill">' + escapeHtml(t) + '</span>'; }).join('') + '</div>';
+        '<div class="tags">' + (r.tags || []).map(function(t){ return '<span class="tag-pill">' + escapeHtml(t) + '</span>'; }).join('') + '</div>';
       card.addEventListener('click', function(){ openDetail(r.id); });
       grid.appendChild(card);
     });
   }
 
+  // ============================================================
+  // HELPERS
+  // ============================================================
   function cleanRecipe(r){
     var copy = Object.assign({}, r);
     delete copy.id;
     return copy;
   }
-
   function slugify(s){
     return String(s).toLowerCase().trim()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '') || 'recipe';
   }
-
   function downloadJSON(filename, data){
     var jsonStr = JSON.stringify(data, null, 2);
-    var blob = new Blob([jsonStr], {type: 'application/json'});
+    var blob = new Blob([jsonStr], { type: 'application/json' });
 
-    if(navigator.canShare && navigator.share){
-      try{
-        var file = new File([blob], filename, {type: 'application/json'});
-        if(navigator.canShare({files: [file]})){
-          navigator.share({files: [file], title: filename}).catch(function(){ /* cancelled */ });
+    if (navigator.canShare && navigator.share){
+      try {
+        var file = new File([blob], filename, { type: 'application/json' });
+        if (navigator.canShare({ files: [file] })){
+          navigator.share({ files: [file], title: filename }).catch(function(){});
           return;
         }
-      }catch(e){ /* fall through */ }
+      } catch (e) {}
     }
-
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
@@ -852,7 +937,6 @@
     document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   }
-
   function truncate(s, n){ return s.length > n ? s.slice(0, n).trim() + '…' : s; }
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, function(c){
@@ -860,13 +944,16 @@
     });
   }
 
+  // ============================================================
+  // DETAIL VIEW
+  // ============================================================
   function openDetail(id){
     var r = recipes.find(function(x){ return x.id === id; });
-    if(!r) return;
+    if (!r) return;
     var metaBits = [];
-    if(r.servings) metaBits.push(r.servings + ' servings');
-    if(r.prepTime) metaBits.push('prep ' + r.prepTime);
-    if(r.cookTime) metaBits.push('cook ' + r.cookTime);
+    if (r.servings) metaBits.push(r.servings + ' servings');
+    if (r.prepTime) metaBits.push('prep ' + r.prepTime);
+    if (r.cookTime) metaBits.push('cook ' + r.cookTime);
 
     detailContent.innerHTML =
       '<button class="detail-close" id="closeBtn">&times;</button>' +
@@ -898,18 +985,28 @@
     document.getElementById('downloadBtn').addEventListener('click', function(){
       downloadJSON(slugify(r.title) + '.json', cleanRecipe(r));
     });
-    document.getElementById('deleteBtn').addEventListener('click', function(){
-      if(confirm('Remove "' + r.title + '" from the box? This cannot be undone.')){
+    document.getElementById('deleteBtn').addEventListener('click', async function(){
+      if (!confirm('Remove "' + r.title + '" from the box? This cannot be undone.')) return;
+      try {
+        await apiDeleteRecipe(r.id);
         recipes = recipes.filter(function(x){ return x.id !== id; });
-        persist();
+        writeCache();
         closeDetail();
         render();
+      } catch (e) {
+        alert('Could not delete: ' + (e && e.message ? e.message : String(e)));
       }
     });
   }
-  function closeDetail(){ overlay.classList.remove('show'); detailContent.innerHTML = ''; }
-  overlay.addEventListener('click', function(e){ if(e.target === overlay) closeDetail(); });
+  function closeDetail(){
+    overlay.classList.remove('show');
+    detailContent.innerHTML = '';
+  }
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) closeDetail(); });
 
+  // ============================================================
+  // EVENT WIRING
+  // ============================================================
   document.getElementById('searchInput').addEventListener('input', function(e){
     searchTerm = e.target.value;
     render();
@@ -928,21 +1025,21 @@
   document.getElementById('saveJsonBtn').addEventListener('click', async function(){
     clearError(); clearStatus();
     var raw = jsonInput.value.trim();
-    if(!raw){ showError('Paste or upload some recipe JSON first.'); return; }
+    if (!raw){ showError('Paste or upload some recipe JSON first.'); return; }
     var candidates;
-    try{
+    try {
       candidates = parseCandidates(raw);
-    }catch(e){
+    } catch (e) {
       showError('Could not find valid JSON in that text: ' + e.message);
       return;
     }
-    if(candidates.length === 0){ showError('No recipes found in that text.'); return; }
+    if (candidates.length === 0){ showError('No recipes found in that text.'); return; }
     var result = await importRecipes(candidates);
-    if(result.okCount){
+    if (result.okCount){
       showStatus('Filed ' + result.okCount + (result.okCount === 1 ? ' recipe.' : ' recipes.') +
         (result.failList.length ? (' Skipped ' + result.failList.length + ':\n' + result.failList.join('\n')) : ''));
       jsonInput.value = '';
-      if(result.failList.length === 0) pastePanel.style.display = 'none';
+      if (result.failList.length === 0) pastePanel.style.display = 'none';
     } else {
       showError('Nothing filed. Problems found:\n' + result.failList.join('\n'));
     }
@@ -951,26 +1048,27 @@
   fileInput.addEventListener('change', async function(e){
     clearError(); clearStatus();
     var files = Array.from(e.target.files || []);
-    if(files.length === 0) return;
+    if (files.length === 0) return;
     var allCandidates = [];
     var readErrors = [];
-    for(var i = 0; i < files.length; i++){
+    for (var i = 0; i < files.length; i++){
       var f = files[i];
-      try{
+      try {
         var text = await f.text();
         var chunk = parseCandidates(text);
         allCandidates = allCandidates.concat(chunk);
-      }catch(err){
+      } catch (err) {
         readErrors.push(f.name + ': ' + err.message);
       }
     }
-    var result = {okCount:0, failList:[]};
-    if(allCandidates.length){
+    var result = { okCount: 0, failList: [] };
+    if (allCandidates.length){
       result = await importRecipes(allCandidates);
     }
     var allFails = readErrors.concat(result.failList);
-    if(result.okCount){
-      showStatus('Filed ' + result.okCount + (result.okCount === 1 ? ' recipe' : ' recipes') + ' from ' + files.length + ' file' + (files.length === 1 ? '' : 's') + '.' +
+    if (result.okCount){
+      showStatus('Filed ' + result.okCount + (result.okCount === 1 ? ' recipe' : ' recipes') +
+        ' from ' + files.length + ' file' + (files.length === 1 ? '' : 's') + '.' +
         (allFails.length ? (' Skipped ' + allFails.length + ':\n' + allFails.join('\n')) : ''));
     } else {
       showError('Nothing filed from those files.' + (allFails.length ? ('\n' + allFails.join('\n')) : ''));
@@ -978,24 +1076,36 @@
     fileInput.value = '';
   });
 
+  document.getElementById('refreshBtn').addEventListener('click', function(){
+    loadRecipes();
+  });
+
   document.getElementById('exportAllBtn').addEventListener('click', function(){
-    if(recipes.length === 0){ alert('The box is empty — nothing to export yet.'); return; }
+    if (recipes.length === 0){ alert('The box is empty — nothing to export yet.'); return; }
     var cleaned = recipes.map(cleanRecipe);
-    var today = new Date().toISOString().slice(0,10);
+    var today = new Date().toISOString().slice(0, 10);
     downloadJSON('recipe-box-export-' + today + '.json', cleaned);
   });
 
   document.getElementById('clearAllBtn').addEventListener('click', async function(){
-    if(recipes.length === 0) return;
-    if(confirm('Empty the entire box? All ' + recipes.length + ' saved recipes will be deleted.')){
-      recipes = [];
-      await persist();
-      render();
+    if (recipes.length === 0) return;
+    var total = recipes.length;
+    if (!confirm('Empty the entire box? All ' + total + ' saved recipes will be deleted.')) return;
+
+    var failed = 0;
+    for (var i = 0; i < recipes.length; i++){
+      try {
+        await apiDeleteRecipe(recipes[i].id);
+      } catch (e) {
+        failed++;
+      }
     }
+    await loadRecipes();
+    if (failed > 0) alert(failed + ' of ' + total + ' could not be deleted.');
   });
 
   // ============================================================
-  // AI RECIPE GENERATION (calls the Vercel proxy /api/generate-recipe)
+  // AI RECIPE GENERATION
   // ============================================================
   var aiPanel = document.getElementById('aiPanel');
   var aiPrompt = document.getElementById('aiPrompt');
@@ -1025,9 +1135,8 @@
 
   document.getElementById('generateBtn').addEventListener('click', async function(){
     clearAiMessages();
-
     var prompt = aiPrompt.value.trim();
-    if(!prompt){
+    if (!prompt){
       showAiError('Describe the recipe you want first.');
       return;
     }
@@ -1038,7 +1147,7 @@
     aiStatus.textContent = 'Asking Groq…';
     aiStatus.classList.add('show');
 
-    try{
+    try {
       var response = await fetch('/api/generate-recipe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1046,34 +1155,34 @@
       });
 
       var data;
-      try{
+      try {
         data = await response.json();
-      }catch(parseErr){
+      } catch (parseErr) {
         throw new Error('Server returned an invalid response (status ' + response.status + ').');
       }
 
-      if(!response.ok){
+      if (!response.ok){
         throw new Error(data && data.error ? data.error : ('Request failed with status ' + response.status));
       }
-
-      if(!data || !data.recipe){
+      if (!data || !data.recipe){
         throw new Error('Server did not return a recipe.');
       }
 
+      // Save the generated recipe to Redis via the frontend pipeline
       var result = await importRecipes([data.recipe]);
 
-      if(result.okCount){
+      if (result.okCount){
         aiStatus.textContent = 'Recipe filed!';
         aiPrompt.value = '';
         setTimeout(function(){
-          if(aiStatus.textContent === 'Recipe filed!') clearAiMessages();
+          if (aiStatus.textContent === 'Recipe filed!') clearAiMessages();
         }, 2500);
       } else {
         showAiError('The AI returned something that didn\'t pass validation:\n' + result.failList.join('\n'));
       }
-    }catch(err){
+    } catch (err) {
       showAiError(err && err.message ? err.message : String(err));
-    }finally{
+    } finally {
       btn.disabled = false;
       btn.textContent = 'Generate recipe';
       aiStatus.classList.remove('show');
@@ -1083,7 +1192,7 @@
   // ============================================================
   // PWA: SERVICE WORKER REGISTRATION
   // ============================================================
-  if('serviceWorker' in navigator){
+  if ('serviceWorker' in navigator){
     window.addEventListener('load', function(){
       navigator.serviceWorker.register('/sw.js')
         .then(function(reg){ console.log('Service Worker registered:', reg.scope); })
@@ -1104,11 +1213,9 @@
   });
 
   installBtn.addEventListener('click', async function(){
-    if(!deferredPrompt) return;
+    if (!deferredPrompt) return;
     deferredPrompt.prompt();
-    try{
-      await deferredPrompt.userChoice;
-    }catch(e){ /* ignore */ }
+    try { await deferredPrompt.userChoice; } catch (e) {}
     deferredPrompt = null;
     installBtn.style.display = 'none';
   });
