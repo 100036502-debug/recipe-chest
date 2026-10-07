@@ -5,6 +5,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Recipe Chest</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#c7541a">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Recipe Chest">
 <style>
 :root{--bg:#faf6f0;--card:#fff;--border:#e8dfd2;--primary:#c7541a;--primary-d:#a34413;--brown:#5a3a22;--text:#2a1a0f;--dim:#8a7a68;--shadow:0 2px 8px rgba(90,58,34,.08);--shadow-h:0 8px 24px rgba(90,58,34,.16);}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -715,6 +721,15 @@ document.addEventListener('keydown', e => {
     closeDetail();
   }
 });
+  
+// ---- PWA service worker ----
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.error('SW registration failed:', err));
+  });
+}
 </script>
 </body>
 </html>
