@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import sharp from 'sharp';
-import pdfParse from 'pdf-parse';
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 
 const MAX_EMAIL_TEXT_CHARACTERS = 6000;
 const MAX_PDF_TEXT_CHARACTERS = 18000;
