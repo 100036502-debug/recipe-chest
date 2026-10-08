@@ -96,4 +96,7 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+// This is the minimum required for Android installability
+self.addEventListener('fetch', (event) => {
+  // Your existing fetch logic goes here
 });
