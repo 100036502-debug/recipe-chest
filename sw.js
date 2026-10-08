@@ -1,5 +1,5 @@
-// The Recipe Box — service worker
-const CACHE_NAME = 'recipe-box-v2';
+// Recipe Chest — service worker
+const CACHE_NAME = 'recipe-chest-v1';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_ASSETS = [
@@ -9,8 +9,8 @@ const PRECACHE_ASSETS = [
   '/offline.html'
 ];
 
-// Install: pre-cache the app shell.
-// Each asset is added independently so a single 404 can't break the install.
+// Install: pre-cache the app shell. Each asset is added independently
+// so one missing file can't break the whole install.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
@@ -96,7 +96,4 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-// This is the minimum required for Android installability
-self.addEventListener('fetch', (event) => {
-  // Your existing fetch logic goes here
 });
