@@ -5,7 +5,13 @@ const kv = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
 
-const KEY = 'meal_plan';
+function keyFor(deviceId) {
+  return `meal_plan:${deviceId}`;
+}
+
+function cleanDeviceId(raw) {
+  return String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,18 +19,25 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // GET: return the whole plan object
+  const rawId = req.query?.deviceId || (req.body && req.body.deviceId);
+  const deviceId = cleanDeviceId(rawId);
+  if (!deviceId) {
+    return res.status(400).json({ error: 'Missing or invalid deviceId' });
+  }
+
+  const key = keyFor(deviceId);
+
+  // GET: return the whole plan for this device
   if (req.method === 'GET') {
     try {
-      const plan = await kv.get(KEY);
+      const plan = await kv.get(key);
       return res.status(200).json(plan || {});
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
   }
 
-  // POST: set the recipes for one day
-  // Body: { date: 'YYYY-MM-DD', recipeIds: string[] }
+  // POST: set the recipes for one day for this device
   if (req.method === 'POST') {
     const body = req.body || {};
     const date = String(body.date || '').trim();
@@ -41,23 +54,23 @@ export default async function handler(req, res) {
       .slice(0, 10);
 
     try {
-      const plan = (await kv.get(KEY)) || {};
+      const plan = (await kv.get(key)) || {};
       if (ids.length === 0) {
         delete plan[date];
       } else {
         plan[date] = ids;
       }
-      await kv.set(KEY, plan);
+      await kv.set(key, plan);
       return res.status(200).json(plan);
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
   }
 
-  // DELETE: clear the whole plan
+  // DELETE: clear the whole plan for this device
   if (req.method === 'DELETE') {
     try {
-      await kv.del(KEY);
+      await kv.del(key);
       return res.status(200).json({ success: true });
     } catch (e) {
       return res.status(500).json({ error: e.message });
