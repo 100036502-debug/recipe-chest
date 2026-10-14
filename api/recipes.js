@@ -5,6 +5,14 @@ const kv = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
 
+// Fields the client is allowed to edit via PATCH
+const EDITABLE_FIELDS = [
+  'title', 'description', 'prepTime', 'cookTime', 'servings',
+  'mealType', 'tags', 'ingredients', 'instructions', 'notes',
+];
+
+const VALID_MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'dessert', 'snack', 'drink', 'default'];
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
@@ -26,22 +34,52 @@ export default async function handler(req, res) {
     }
   }
 
-  // ---- POST: save one recipe ----
+  // ---- POST: save one recipe (with duplicate detection) ----
   if (req.method === 'POST') {
     const body = req.body || {};
     if (!body.title || typeof body.title !== 'string') {
       return res.status(400).json({ error: 'Recipe must have a title' });
     }
-    const id = body.id || ('r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
-    const recipe = {
-      ...body,
-      id,
-      createdAt: body.createdAt || Date.now(),
-    };
+
+    const skipDuplicateCheck = body.skipDuplicateCheck === true;
+
     try {
+      // Duplicate detection: match on normalized title, or source URL
+      if (!skipDuplicateCheck) {
+        const ids = await kv.lrange('recipe_ids', 0, -1);
+        if (ids && ids.length) {
+          const existing = (await Promise.all(ids.map((id) => kv.get(`recipe:${id}`))))
+            .filter(Boolean);
+
+          const normTitle = normalizeTitle(body.title);
+          const sourceUrl = (body.sourceUrl || '').trim();
+
+          const dup = existing.find((r) => {
+            if (normalizeTitle(r.title) === normTitle) return true;
+            if (sourceUrl && (r.sourceUrl || '').trim() === sourceUrl) return true;
+            return false;
+          });
+
+          if (dup) {
+            return res.status(409).json({
+              error: 'Possible duplicate',
+              duplicate: dup,
+            });
+          }
+        }
+      }
+
+      const id = body.id || ('r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
+      const recipe = {
+        ...body,
+        id,
+        createdAt: body.createdAt || Date.now(),
+      };
+      delete recipe.skipDuplicateCheck;
+
       await kv.set(`recipe:${id}`, recipe);
-      const existing = await kv.lrange('recipe_ids', 0, -1);
-      if (!existing.includes(id)) {
+      const existingIds = await kv.lrange('recipe_ids', 0, -1);
+      if (!existingIds.includes(id)) {
         await kv.lpush('recipe_ids', id);
       }
       return res.status(200).json(recipe);
@@ -50,30 +88,41 @@ export default async function handler(req, res) {
     }
   }
 
-  // ---- PATCH: update the tags on an existing recipe ----
-  // Body: { id: string, tags: string[] }
+  // ---- PATCH: update any editable field on an existing recipe ----
   if (req.method === 'PATCH') {
     const body = req.body || {};
     const id = typeof body.id === 'string' ? body.id : '';
     if (!id) return res.status(400).json({ error: 'Missing recipe id' });
 
-    if (!Array.isArray(body.tags)) {
-      return res.status(400).json({ error: 'Body must include a tags array' });
-    }
-
-    // Normalize: lowercase, trim, drop empties, dedupe
-    const cleanTags = [...new Set(
-      body.tags
-        .map((t) => String(t).trim().toLowerCase())
-        .filter(Boolean)
-    )].slice(0, 20);
-
     try {
       const existing = await kv.get(`recipe:${id}`);
-      if (!existing) {
-        return res.status(404).json({ error: 'Recipe not found' });
+      if (!existing) return res.status(404).json({ error: 'Recipe not found' });
+
+      const updated = { ...existing };
+
+      for (const field of EDITABLE_FIELDS) {
+        if (!(field in body)) continue;
+
+        if (field === 'tags') {
+          if (!Array.isArray(body.tags)) continue;
+          updated.tags = [...new Set(
+            body.tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean)
+          )].slice(0, 20);
+        } else if (field === 'ingredients' || field === 'instructions') {
+          if (!Array.isArray(body[field])) continue;
+          updated[field] = body[field]
+            .map((s) => String(s).trim())
+            .filter(Boolean)
+            .slice(0, 100);
+        } else if (field === 'mealType') {
+          const mt = String(body.mealType || '').toLowerCase();
+          updated.mealType = VALID_MEAL_TYPES.includes(mt) ? mt : 'default';
+        } else {
+          updated[field] = String(body[field] ?? '').trim();
+        }
       }
-      const updated = { ...existing, tags: cleanTags };
+
+      updated.updatedAt = Date.now();
       await kv.set(`recipe:${id}`, updated);
       return res.status(200).json(updated);
     } catch (e) {
@@ -95,4 +144,12 @@ export default async function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
+}
+
+function normalizeTitle(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
