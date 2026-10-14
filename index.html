@@ -49,6 +49,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .empty h2{font-family:Georgia,serif;color:var(--brown);font-size:1.4rem;margin-bottom:8px;font-weight:normal}
 .empty p{font-size:.9rem;margin-bottom:20px}
 .overlay{position:fixed;inset:0;background:rgba(42,26,15,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px;opacity:0;pointer-events:none;transition:.25s}
+.overlay.on{opacity:1;pointer-events:auto}
 #cook-overlay{background:var(--card);padding:0;backdrop-filter:none;display:none}
 #cook-overlay.on{display:block;opacity:1;pointer-events:auto}
 .modal{background:var(--card);border-radius:18px;max-width:800px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(42,26,15,.3);position:relative}
@@ -143,22 +144,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .edit-row{display:flex;gap:12px;flex-wrap:wrap}
 .edit-row > *{flex:1;min-width:120px}
 
-/* Cook mode — simplified */
+/* Cook mode — fullscreen */
 .cook-mode{background:var(--card);width:100%;height:100%;overflow-y:auto;padding:56px max(24px,5vw) 60px;position:relative}
-.cook-close{position:absolute;top:16px;right:16px;width:38px;height:38px;border-radius:50%;background:var(--bg);border:1px solid var(--border);cursor:pointer;font-size:1.2rem;color:var(--brown);display:flex;align-items:center;justify-content:center;transition:.15s}
+.cook-close{position:absolute;top:16px;right:16px;width:38px;height:38px;border-radius:50%;background:var(--bg);border:1px solid var(--border);cursor:pointer;font-size:1.2rem;color:var(--brown);display:flex;align-items:center;justify-content:center;transition:.15s;z-index:10}
 .cook-close:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
-.cook-mode .cook-hero{display:flex;align-items:center;justify-content:center;font-size:5rem;height:140px;border-radius:14px;margin-bottom:24px;position:relative;overflow:hidden}
+.cook-mode .cook-hero{display:flex;align-items:center;justify-content:center;font-size:5rem;height:140px;border-radius:14px;margin-bottom:24px;position:relative;overflow:hidden;max-width:600px}
 .cook-mode .cook-hero::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.25), transparent 60%);pointer-events:none}
 .cook-mode .cook-hero span{filter:drop-shadow(0 6px 20px rgba(0,0,0,.3));position:relative;z-index:1}
 .cook-mode .cook-title{font-family:Georgia,serif;font-size:2rem;color:var(--brown);line-height:1.2;margin-bottom:10px;font-weight:normal;padding-right:40px}
 .cook-mode .cook-meta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:28px}
 .cook-mode .cook-section-h{font-family:Georgia,serif;font-size:1.3rem;color:var(--brown);margin:32px 0 16px;padding-bottom:8px;border-bottom:2px solid var(--primary);display:inline-block;font-weight:600}
-.cook-mode .cook-ing{list-style:none;display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
+.cook-mode .cook-ing{list-style:none;display:flex;flex-direction:column;gap:10px;margin-bottom:8px;max-width:800px}
 .cook-mode .cook-ing li{background:var(--bg);padding:14px 18px;border-radius:10px;font-size:1.1rem;line-height:1.5;border-left:4px solid var(--primary);color:var(--text)}
-.cook-mode .cook-steps{list-style:none;counter-reset:step;display:flex;flex-direction:column;gap:20px}
+.cook-mode .cook-steps{list-style:none;counter-reset:step;display:flex;flex-direction:column;gap:20px;max-width:900px}
 .cook-mode .cook-steps li{counter-increment:step;display:flex;gap:18px;font-size:1.1rem;line-height:1.65;color:var(--text)}
 .cook-mode .cook-steps li::before{content:counter(step);flex-shrink:0;width:38px;height:38px;background:var(--primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:1rem;font-family:Georgia,serif}
-.cook-mode .cook-notes{background:#fff9ee;border-left:4px solid #e8b96c;padding:16px 20px;border-radius:10px;font-size:1rem;line-height:1.6;color:var(--brown);font-style:italic;margin-top:28px}
+.cook-mode .cook-notes{background:#fff9ee;border-left:4px solid #e8b96c;padding:16px 20px;border-radius:10px;font-size:1rem;line-height:1.6;color:var(--brown);font-style:italic;margin-top:28px;max-width:800px}
 .cook-mode .cook-footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--border);text-align:center}
 .cook-mode .cook-footer button{background:var(--primary);color:#fff;border:none;padding:14px 36px;border-radius:24px;font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer;transition:.2s}
 .cook-mode .cook-footer button:hover{background:var(--primary-d)}
@@ -203,15 +204,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   .recipe-content{padding:20px}
   .recipe-title{font-size:1.5rem}
   .card-meal{font-size:2.5rem}
-  .cook-mode{padding:24px 22px 32px}
+  .cook-mode{padding:44px 20px 40px}
   .cook-mode .cook-title{font-size:1.5rem}
   .cook-mode .cook-ing li,.cook-mode .cook-steps li{font-size:1rem}
 }
 @media print{
-  /* Force white background and black text globally */
   html,body{background:#fff !important;color:#000 !important}
-
-  /* Hide everything except the detail modal */
   #lock-screen,
   #app-content,
   #upload-overlay,
@@ -221,8 +219,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   #plan-overlay,
   #picker-overlay,
   #toast{display:none !important}
-
-  /* Turn the detail overlay into a normal in-flow block */
   #detail-overlay{
     position:static !important;
     display:block !important;
@@ -234,7 +230,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
     pointer-events:auto !important;
     z-index:auto !important;
   }
-
   .modal{
     box-shadow:none !important;
     border-radius:0 !important;
@@ -243,8 +238,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
     overflow:visible !important;
     margin:0 !important;
   }
-
-  /* Hide interactive UI inside the modal */
   .modal-close,
   .recipe-actions,
   .recipe-footer .delete-btn,
@@ -252,8 +245,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   .recipe-tags .tag-x,
   .servings-select,
   .recipe-hero{display:none !important}
-
-  /* Clean print typography */
   .recipe-content{padding:0 !important}
   .recipe-title{font-size:1.7rem !important;color:#000 !important;margin-bottom:6px !important}
   .recipe-desc{color:#333 !important;font-size:.95rem !important}
@@ -1071,10 +1062,10 @@ async function saveEdit(id) {
   if (updated) openDetail(id);
 }
 
-// ---- Cook mode (simplified) ----
+// ---- Cook mode (fullscreen) ----
 let wakeLock = null;
 
-function openCookMode(id) {
+async function openCookMode(id) {
   const r = recipes.find(x => x.id === id);
   if (!r) { toast('Recipe not found'); return; }
 
@@ -1122,12 +1113,25 @@ function openCookMode(id) {
   document.getElementById('cook-overlay').classList.add('on');
   document.getElementById('cook-content').scrollTop = 0;
 
+  const overlay = document.getElementById('cook-overlay');
+  try {
+    if (overlay.requestFullscreen) await overlay.requestFullscreen();
+    else if (overlay.webkitRequestFullscreen) overlay.webkitRequestFullscreen();
+  } catch (e) {
+    // Fullscreen was denied or not supported — the overlay still fills the viewport
+  }
+
   requestWakeLock();
 }
 
 function closeCookMode() {
   document.getElementById('cook-overlay').classList.remove('on');
   releaseWakeLock();
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  } else if (document.webkitFullscreenElement) {
+    document.webkitExitFullscreen();
+  }
 }
 
 async function requestWakeLock() {
@@ -1146,10 +1150,20 @@ function releaseWakeLock() {
   }
 }
 
-// Re-acquire the wake lock if the page becomes visible again while cook mode is open
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && document.getElementById('cook-overlay').classList.contains('on')) {
     requestWakeLock();
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && document.getElementById('cook-overlay').classList.contains('on')) {
+    closeCookMode();
+  }
+});
+document.addEventListener('webkitfullscreenchange', () => {
+  if (!document.webkitFullscreenElement && document.getElementById('cook-overlay').classList.contains('on')) {
+    closeCookMode();
   }
 });
 
@@ -1390,14 +1404,13 @@ document.getElementById('user-tag').addEventListener('click', () => {
 document.getElementById('upload-overlay').addEventListener('click', e => { if (e.target.id === 'upload-overlay' && !isProcessing) cancelUpload(); });
 document.getElementById('import-overlay').addEventListener('click', e => { if (e.target.id === 'import-overlay') closeImport(); });
 document.getElementById('detail-overlay').addEventListener('click', e => { if (e.target.id === 'detail-overlay') closeDetail(); });
-document.getElementById('cook-overlay').addEventListener('click', e => { if (e.target.id === 'cook-overlay') closeCookMode(); });
 document.getElementById('shopping-overlay').addEventListener('click', e => { if (e.target.id === 'shopping-overlay') closeShoppingList(); });
 document.getElementById('plan-overlay').addEventListener('click', e => { if (e.target.id === 'plan-overlay') closeMealPlan(); });
 document.getElementById('picker-overlay').addEventListener('click', e => { if (e.target.id === 'picker-overlay') closePicker(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (isProcessing) return;
-    closeImport(); closeDetail(); closeCookMode(); closeShoppingList(); closeMealPlan(); closePicker();
+    closeImport(); closeDetail(); closeShoppingList(); closeMealPlan(); closePicker();
   }
 });
 
