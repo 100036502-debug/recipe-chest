@@ -7,7 +7,7 @@ const kv = new Redis({
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -45,6 +45,37 @@ export default async function handler(req, res) {
         await kv.lpush('recipe_ids', id);
       }
       return res.status(200).json(recipe);
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ---- PATCH: update the tags on an existing recipe ----
+  // Body: { id: string, tags: string[] }
+  if (req.method === 'PATCH') {
+    const body = req.body || {};
+    const id = typeof body.id === 'string' ? body.id : '';
+    if (!id) return res.status(400).json({ error: 'Missing recipe id' });
+
+    if (!Array.isArray(body.tags)) {
+      return res.status(400).json({ error: 'Body must include a tags array' });
+    }
+
+    // Normalize: lowercase, trim, drop empties, dedupe
+    const cleanTags = [...new Set(
+      body.tags
+        .map((t) => String(t).trim().toLowerCase())
+        .filter(Boolean)
+    )].slice(0, 20);
+
+    try {
+      const existing = await kv.get(`recipe:${id}`);
+      if (!existing) {
+        return res.status(404).json({ error: 'Recipe not found' });
+      }
+      const updated = { ...existing, tags: cleanTags };
+      await kv.set(`recipe:${id}`, updated);
+      return res.status(200).json(updated);
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
