@@ -207,18 +207,67 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   .cook-mode .cook-ing li,.cook-mode .cook-steps li{font-size:1rem}
 }
 @media print{
-  body{background:#fff}
-  .header,.stats,.recipe-actions,.recipe-footer .delete-btn,.modal-close,.recipe-tags .tag-add-btn,.recipe-tags .tag-x{display:none!important}
-  .overlay{position:static;background:none;backdrop-filter:none;padding:0;opacity:1;pointer-events:auto}
-  .modal{box-shadow:none;border-radius:0;max-width:100%;max-height:none}
-  .recipe-hero{display:none}
-  .recipe-content{padding:0}
-  .recipe-title{font-size:1.6rem;color:#000}
-  .recipe-desc,.meta-pill,.ing-list li,.step-list li,.notes-box{color:#000}
-  .section-h{border-color:#000;color:#000}
-  .step-list li::before{background:#000}
-  .tag{border-color:#999;color:#000;background:#f0f0f0}
-  .ing-list{grid-template-columns:1fr 1fr}
+  /* Force white background and black text globally */
+  html,body{background:#fff !important;color:#000 !important}
+
+  /* Hide everything except the detail modal */
+  #lock-screen,
+  #app-content,
+  #upload-overlay,
+  #import-overlay,
+  #cook-overlay,
+  #shopping-overlay,
+  #plan-overlay,
+  #picker-overlay,
+  #toast{display:none !important}
+
+  /* Turn the detail overlay into a normal in-flow block */
+  #detail-overlay{
+    position:static !important;
+    display:block !important;
+    inset:auto !important;
+    background:none !important;
+    backdrop-filter:none !important;
+    padding:0 !important;
+    opacity:1 !important;
+    pointer-events:auto !important;
+    z-index:auto !important;
+  }
+
+  .modal{
+    box-shadow:none !important;
+    border-radius:0 !important;
+    max-width:100% !important;
+    max-height:none !important;
+    overflow:visible !important;
+    margin:0 !important;
+  }
+
+  /* Hide interactive UI inside the modal */
+  .modal-close,
+  .recipe-actions,
+  .recipe-footer .delete-btn,
+  .recipe-tags .tag-add-btn,
+  .recipe-tags .tag-x,
+  .servings-select,
+  .recipe-hero{display:none !important}
+
+  /* Clean print typography */
+  .recipe-content{padding:0 !important}
+  .recipe-title{font-size:1.7rem !important;color:#000 !important;margin-bottom:6px !important}
+  .recipe-desc{color:#333 !important;font-size:.95rem !important}
+  .recipe-meta{gap:8px !important;margin-bottom:16px !important}
+  .meta-pill{background:#f5f5f5 !important;border-color:#ccc !important;color:#000 !important;font-size:.78rem !important}
+  .meta-pill a{color:#000 !important;text-decoration:none !important}
+  .recipe-tags{margin-bottom:16px !important}
+  .tag{background:#f0f0f0 !important;border-color:#999 !important;color:#000 !important;padding:3px 10px !important}
+  .section-h{color:#000 !important;border-color:#000 !important;font-size:1.15rem !important;margin:18px 0 10px !important}
+  .ing-list{grid-template-columns:1fr 1fr !important;gap:6px !important}
+  .ing-list li{background:#f7f7f7 !important;border-left:3px solid #333 !important;color:#000 !important;font-size:.85rem !important;padding:8px 12px !important}
+  .step-list li{color:#000 !important;font-size:.9rem !important;gap:10px !important;margin-bottom:10px !important}
+  .step-list li::before{background:#000 !important;color:#fff !important;width:24px !important;height:24px !important;font-size:.78rem !important}
+  .notes-box{background:#f7f7f7 !important;border-left:4px solid #999 !important;color:#333 !important;font-size:.85rem !important}
+  .recipe-footer{color:#666 !important;border-top-color:#ccc !important;margin-top:20px !important;padding-top:12px !important;font-size:.72rem !important}
 }
 </style>
 </head>
