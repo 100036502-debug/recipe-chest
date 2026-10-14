@@ -15,21 +15,21 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;flex-direction:column}
 .locked{overflow:hidden}
-.header{background:var(--card);border-bottom:1px solid var(--border);padding:16px 32px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:50;box-shadow:var(--shadow)}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:16px 32px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:50;box-shadow:var(--shadow);flex-wrap:wrap}
 .header h1{font-family:Georgia,serif;color:var(--primary);font-size:1.6rem;letter-spacing:-.5px;flex-shrink:0}
 .header h1 span{font-size:1.4rem;margin-right:6px}
-.search-wrap{flex:1;max-width:500px;position:relative}
+.search-wrap{flex:1;max-width:500px;position:relative;min-width:180px}
 .search-wrap input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 16px 10px 40px;border-radius:24px;font-size:.9rem;font-family:inherit;outline:none;transition:border .2s}
 .search-wrap input:focus{border-color:var(--primary)}
 .search-wrap::before{content:'🔍';position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:.9rem;opacity:.5}
 .header .user-tag{background:var(--bg);border:1px solid var(--border);padding:6px 12px;border-radius:14px;font-size:.75rem;color:var(--dim);cursor:pointer;white-space:nowrap}
 .header .user-tag:hover{border-color:var(--primary);color:var(--primary)}
 .header-btns{display:flex;gap:8px;flex-wrap:wrap}
-.add-btn,.import-btn{color:#fff;border:none;padding:10px 20px;border-radius:24px;font-family:inherit;font-size:.9rem;font-weight:600;cursor:pointer;transition:.2s;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.add-btn,.import-btn,.list-btn,.plan-btn{color:#fff;border:none;padding:10px 20px;border-radius:24px;font-family:inherit;font-size:.9rem;font-weight:600;cursor:pointer;transition:.2s;white-space:nowrap;display:flex;align-items:center;gap:6px}
 .add-btn{background:var(--primary)}
 .add-btn:hover{background:var(--primary-d);transform:translateY(-1px);box-shadow:var(--shadow-h)}
-.import-btn{background:var(--brown)}
-.import-btn:hover{background:#3d2715;transform:translateY(-1px);box-shadow:var(--shadow-h)}
+.import-btn,.list-btn,.plan-btn{background:var(--brown)}
+.import-btn:hover,.list-btn:hover,.plan-btn:hover{background:#3d2715;transform:translateY(-1px);box-shadow:var(--shadow-h)}
 .main{flex:1;padding:28px 32px;max-width:1400px;margin:0 auto;width:100%}
 .stats{color:var(--dim);font-size:.85rem;margin-bottom:20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .filter-chip{background:var(--card);border:1px solid var(--border);padding:4px 12px;border-radius:14px;font-size:.75rem;cursor:pointer;transition:.15s}
@@ -37,7 +37,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:.25s;display:flex;flex-direction:column;box-shadow:var(--shadow)}
 .card:hover{transform:translateY(-3px);box-shadow:var(--shadow-h);border-color:var(--primary)}
-.card-img{width:100%;aspect-ratio:4/3;background:#f0ebe3;object-fit:cover;display:block}
 .card-meal{width:100%;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;font-size:3.5rem;position:relative;overflow:hidden}
 .card-meal::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.25), transparent 60%);pointer-events:none}
 .card-meal span{filter:drop-shadow(0 4px 12px rgba(0,0,0,.25));position:relative;z-index:1}
@@ -60,11 +59,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .recipe-content{padding:28px 32px 32px}
 .recipe-title{font-family:Georgia,serif;font-size:1.9rem;color:var(--brown);line-height:1.2;margin-bottom:8px;font-weight:normal}
 .recipe-desc{color:var(--dim);font-size:.95rem;line-height:1.5;margin-bottom:20px}
-.recipe-meta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px}
+.recipe-meta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;align-items:center}
 .meta-pill{background:var(--bg);border:1px solid var(--border);padding:6px 14px;border-radius:16px;font-size:.78rem;color:var(--brown);display:flex;align-items:center;gap:6px}
 .meta-pill .k{color:var(--dim);font-size:.7rem}
 .meta-pill a{color:var(--primary);text-decoration:none}
 .meta-pill a:hover{text-decoration:underline}
+.servings-select{background:var(--bg);border:1px solid var(--border);color:var(--brown);padding:5px 10px;border-radius:16px;font-size:.78rem;font-family:inherit;outline:none;cursor:pointer}
 .recipe-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:24px;align-items:center}
 .tag{background:#fff3e8;color:var(--primary-d);padding:4px 8px 4px 12px;border-radius:12px;font-size:.72rem;font-weight:600;border:1px solid #f5dcc6;display:inline-flex;align-items:center;gap:6px}
 .tag-x{background:transparent;border:none;color:var(--primary-d);cursor:pointer;font-size:.9rem;line-height:1;padding:0 2px;opacity:.6;transition:.15s}
@@ -80,6 +80,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .step-list li::before{content:counter(step);flex-shrink:0;width:28px;height:28px;background:var(--primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:.85rem;font-family:Georgia,serif}
 .notes-box{background:#fff9ee;border-left:4px solid #e8b96c;padding:14px 18px;border-radius:8px;font-size:.85rem;line-height:1.55;color:var(--brown);font-style:italic;margin-top:20px}
 .recipe-footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--border);font-size:.75rem;color:var(--dim);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.recipe-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
+.action-btn{background:var(--bg);border:1px solid var(--border);color:var(--brown);padding:10px 18px;border-radius:14px;font-family:inherit;font-size:.82rem;font-weight:600;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.action-btn:hover{border-color:var(--primary);color:var(--primary);background:#fff9ee}
+.action-btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.action-btn.primary:hover{background:var(--primary-d);color:#fff}
 .delete-btn{background:transparent;border:1px solid #e8c8c0;color:#c7541a;padding:8px 16px;border-radius:14px;font-family:inherit;font-size:.8rem;cursor:pointer;transition:.15s}
 .delete-btn:hover{background:#c7541a;color:#fff;border-color:#c7541a}
 .upload-modal .modal{padding:32px;text-align:center;max-width:640px}
@@ -129,8 +134,56 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .lock-box input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:12px 16px;border-radius:12px;font-family:inherit;font-size:1rem;outline:none;margin-bottom:14px;text-align:center;transition:border .2s}
 .lock-box input:focus{border-color:var(--primary)}
 .lock-box .lock-err{color:#c7541a;font-size:.78rem;min-height:18px;margin-bottom:8px}
+/* Edit form */
+.edit-field{margin-bottom:14px}
+.edit-label{display:block;font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;font-weight:600}
+.edit-input,.edit-textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;transition:border .15s}
+.edit-input:focus,.edit-textarea:focus{border-color:var(--primary)}
+.edit-textarea{min-height:120px;resize:vertical;font-family:'SF Mono',Consolas,monospace;font-size:.8rem;line-height:1.5}
+.edit-row{display:flex;gap:12px;flex-wrap:wrap}
+.edit-row > *{flex:1;min-width:120px}
+/* Cook mode */
+.cook-mode{background:var(--card);border-radius:18px;max-width:760px;width:100%;max-height:92vh;overflow-y:auto;padding:32px}
+.cook-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.cook-title{font-family:Georgia,serif;font-size:1.4rem;color:var(--brown);font-weight:normal}
+.cook-progress{font-size:.8rem;color:var(--dim);font-family:'SF Mono',Consolas,monospace}
+.cook-step{font-size:1.15rem;line-height:1.7;color:var(--text);margin:24px 0;min-height:200px}
+.cook-step-num{display:inline-block;width:34px;height:34px;background:var(--primary);color:#fff;border-radius:50%;line-height:34px;text-align:center;font-weight:600;font-family:Georgia,serif;margin-right:12px;vertical-align:middle}
+.cook-controls{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:20px;padding-top:20px;border-top:1px solid var(--border);flex-wrap:wrap}
+.cook-timer{background:#fff9ee;border:2px solid var(--primary);border-radius:14px;padding:12px 18px;font-family:'SF Mono',Consolas,monospace;font-size:1.4rem;font-weight:600;color:var(--primary-d);text-align:center;min-width:120px}
+.cook-timer.warning{background:#fff3e8;border-color:#e8b96c}
+.cook-timer.done{background:#f5fbf5;border-color:#4a8a4a;color:#4a8a4a}
+/* Shopping list */
+.sl-item{display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg);border-radius:10px;margin-bottom:6px;transition:.15s}
+.sl-item:hover{background:#fff9ee}
+.sl-item input[type=checkbox]{width:20px;height:20px;cursor:pointer;accent-color:var(--primary);flex-shrink:0}
+.sl-item.checked .sl-text{text-decoration:line-through;color:var(--dim)}
+.sl-text{flex:1;font-size:.9rem;color:var(--text);min-width:0;word-break:break-word}
+.sl-del{background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:1.1rem;padding:4px 8px;opacity:.5;transition:.15s;flex-shrink:0}
+.sl-del:hover{opacity:1;color:#c7541a}
+.sl-add{display:flex;gap:8px;margin-bottom:16px}
+.sl-add input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:10px;font-family:inherit;font-size:.88rem;outline:none}
+.sl-add input:focus{border-color:var(--primary)}
+.sl-empty{text-align:center;padding:40px 20px;color:var(--dim);font-size:.9rem}
+/* Meal plan */
+.mp-week{display:flex;flex-direction:column;gap:10px}
+.mp-day{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.mp-day-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap}
+.mp-day-name{font-family:Georgia,serif;font-size:.95rem;color:var(--brown);font-weight:600}
+.mp-day-date{font-size:.75rem;color:var(--dim);margin-left:8px;font-weight:normal}
+.mp-add{background:transparent;border:1px dashed var(--border);color:var(--dim);padding:5px 12px;border-radius:10px;font-size:.72rem;font-family:inherit;cursor:pointer;transition:.15s}
+.mp-add:hover{border-color:var(--primary);color:var(--primary);border-style:solid}
+.mp-slots{display:flex;flex-direction:column;gap:6px}
+.mp-slot{display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:.82rem;cursor:pointer;transition:.15s}
+.mp-slot:hover{border-color:var(--primary);background:#fff9ee}
+.mp-slot-title{flex:1;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mp-slot-del{background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:1rem;padding:2px 6px;opacity:.5}
+.mp-slot-del:hover{opacity:1;color:#c7541a}
+.mp-picker{display:grid;grid-template-columns:1fr;gap:6px;max-height:400px;overflow-y:auto;padding:4px}
+.mp-pick{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:.15s;text-align:left;font-family:inherit;font-size:.85rem;color:var(--text)}
+.mp-pick:hover{border-color:var(--primary);background:#fff9ee}
 @media(max-width:700px){
-  .header{flex-wrap:wrap;padding:12px 16px}
+  .header{padding:12px 16px}
   .header h1{font-size:1.3rem}
   .search-wrap{order:4;flex-basis:100%;max-width:none}
   .main{padding:16px}
@@ -138,6 +191,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   .recipe-content{padding:20px}
   .recipe-title{font-size:1.5rem}
   .card-meal{font-size:2.5rem}
+  .cook-step{font-size:1.05rem}
+}
+/* Print */
+@media print{
+  body{background:#fff}
+  .header,.stats,.recipe-actions,.recipe-footer .delete-btn,.modal-close,.recipe-tags .tag-add-btn,.recipe-tags .tag-x{display:none!important}
+  .overlay{position:static;background:none;backdrop-filter:none;padding:0;opacity:1;pointer-events:auto}
+  .modal{box-shadow:none;border-radius:0;max-width:100%;max-height:none}
+  .recipe-hero{display:none}
+  .recipe-content{padding:0}
+  .recipe-title{font-size:1.6rem;color:#000}
+  .recipe-desc,.meta-pill,.ing-list li,.step-list li,.notes-box{color:#000}
+  .section-h{border-color:#000;color:#000}
+  .step-list li::before{background:#000}
+  .tag{border-color:#999;color:#000;background:#f0f0f0}
+  .ing-list{grid-template-columns:1fr 1fr}
 }
 </style>
 </head>
@@ -161,6 +230,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
     <input type="text" id="search-input" placeholder="Search recipes, ingredients, tags...">
   </div>
   <div class="header-btns">
+    <button class="list-btn" onclick="openShoppingList()">🛒 List</button>
+    <button class="plan-btn" onclick="openMealPlan()">📅 Plan</button>
     <button class="import-btn" onclick="openImport()">🔗 Import URL</button>
     <button class="add-btn" onclick="openUpload()">＋ Add Photos</button>
   </div>
@@ -225,654 +296,24 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="overlay" id="cook-overlay">
+  <div class="cook-mode" id="cook-content"></div>
+</div>
 
-<script>
-const API = '/api';
-
-// Meal type visual presets
-const MEAL_STYLES = {
-  breakfast: { bg: 'linear-gradient(135deg, #FFE066 0%, #FFA726 100%)', emoji: '🥞', label: 'Breakfast' },
-  lunch:     { bg: 'linear-gradient(135deg, #A8E063 0%, #56AB2F 100%)', emoji: '🥗', label: 'Lunch' },
-  dinner:    { bg: 'linear-gradient(135deg, #667EEA 0%, #764BA2 100%)', emoji: '🍽️', label: 'Dinner' },
-  dessert:   { bg: 'linear-gradient(135deg, #F093FB 0%, #F5576C 100%)', emoji: '🍰', label: 'Dessert' },
-  snack:     { bg: 'linear-gradient(135deg, #4FACFE 0%, #00F2FE 100%)', emoji: '🍪', label: 'Snack' },
-  drink:     { bg: 'linear-gradient(135deg, #43C6AC 0%, #191654 100%)', emoji: '☕', label: 'Drink' },
-  default:   { bg: 'linear-gradient(135deg, #C7541A 0%, #5A3A22 100%)', emoji: '📖', label: 'Recipe' },
-};
-function mealStyle(t) { return MEAL_STYLES[t] || MEAL_STYLES.default; }
-
-let recipes = [];
-let currentFilter = 'all';
-let currentSearch = '';
-let uploadQueue = [];
-let isProcessing = false;
-let cancelRequested = false;
-
-// ---- Password gate (server-side check) ----
-async function tryUnlock() {
-  const val = document.getElementById('lock-input').value;
-  const err = document.getElementById('lock-err');
-  err.textContent = '';
-
-  if (!val) {
-    err.textContent = 'Enter the access code.';
-    return;
-  }
-
-  try {
-    const res = await fetch(`${API}/verify-code`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: val }),
-      credentials: 'same-origin',
-    });
-    const data = await res.json();
-
-    if (data && data.unlocked) {
-      unlockApp();
-    } else {
-      err.textContent = 'Incorrect access code.';
-      document.getElementById('lock-input').value = '';
-    }
-  } catch (e) {
-    err.textContent = 'Could not verify. Try again.';
-  }
-}
-
-function unlockApp() {
-  document.getElementById('lock-screen').style.display = 'none';
-  document.getElementById('app-content').style.display = 'flex';
-  document.body.classList.remove('locked');
-  setUser(getUser());
-  loadRecipes();
-}
-
-document.getElementById('lock-input').addEventListener('keypress', e => {
-  if (e.key === 'Enter') tryUnlock();
-});
-
-// On page load, ask the server whether our cookie is already valid
-(async function checkSession() {
-  try {
-    const res = await fetch(`${API}/verify-code`, { credentials: 'same-origin' });
-    const data = await res.json();
-    if (data && data.unlocked) {
-      unlockApp();
-      return;
-    }
-  } catch (e) { /* fall through to lock screen */ }
-  const input = document.getElementById('lock-input');
-  if (input) input.focus();
-})();
-
-// ---- Utilities ----
-function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('on');
-  clearTimeout(t._timeout);
-  t._timeout = setTimeout(() => t.classList.remove('on'), 2800);
-}
-function getUser() { return localStorage.getItem('rc_user') || 'Anonymous'; }
-function setUser(name) {
-  localStorage.setItem('rc_user', name || 'Anonymous');
-  document.getElementById('user-tag').textContent = '👤 ' + (name || 'Anonymous');
-}
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-// ---- Image compression ----
-async function compressImage(file, maxDim = 1200, quality = 0.85) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let { width, height } = img;
-        if (width > height && width > maxDim) { height = Math.round(height * maxDim / width); width = maxDim; }
-        else if (height >= width && height > maxDim) { width = Math.round(width * maxDim / height); height = maxDim; }
-        canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
-      };
-      img.onerror = () => reject(new Error('Could not decode image'));
-      img.src = e.target.result;
-    };
-    reader.onerror = () => reject(new Error('Could not read file'));
-    reader.readAsDataURL(file);
-  });
-}
-
-// ---- Batch upload ----
-function openUpload() {
-  document.getElementById('upload-overlay').classList.add('on');
-  document.getElementById('uploader-name').value = getUser() === 'Anonymous' ? '' : getUser();
-  updateQueueUI();
-}
-function cancelUpload() {
-  if (isProcessing) {
-    if (!confirm('Stop processing the remaining images? Already-saved recipes will stay.')) return;
-    cancelRequested = true;
-  }
-  document.getElementById('upload-overlay').classList.remove('on');
-  for (const item of uploadQueue) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-  uploadQueue = [];
-  isProcessing = false;
-  cancelRequested = false;
-  updateQueueUI();
-}
-
-const dz = document.getElementById('dropzone');
-const fi = document.getElementById('file-input');
-dz.addEventListener('click', () => { if (!isProcessing) fi.click(); });
-dz.addEventListener('dragover', (e) => { e.preventDefault(); if (!isProcessing) dz.classList.add('dragover'); });
-dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
-dz.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dz.classList.remove('dragover');
-  if (isProcessing) return;
-  const files = Array.from(e.dataTransfer.files || []);
-  if (files.length) addFilesToQueue(files);
-});
-fi.addEventListener('change', (e) => {
-  const files = Array.from(e.target.files || []);
-  if (files.length) addFilesToQueue(files);
-  fi.value = '';
-});
-
-function addFilesToQueue(files) {
-  const status = document.getElementById('upload-status');
-  status.textContent = '';
-  status.classList.remove('error');
-  let skipped = 0;
-  const added = [];
-  for (const file of files) {
-    if (!file.type.startsWith('image/')) { skipped++; continue; }
-    if (file.size > 25 * 1024 * 1024) { skipped++; continue; }
-    uploadQueue.push({
-      id: 'q_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
-      file,
-      previewUrl: URL.createObjectURL(file),
-      base64: null,
-      mimeType: null,
-      status: 'ready',
-      error: null,
-      recipeId: null,
-      title: null,
-      originalName: file.name,
-    });
-    added.push(file);
-  }
-  if (skipped > 0) status.textContent = `${skipped} file${skipped > 1 ? 's' : ''} skipped`;
-  if (added.length > 0) toast(`Added ${added.length} image${added.length > 1 ? 's' : ''}`);
-  updateQueueUI();
-}
-
-function updateQueueUI() {
-  const wrap = document.getElementById('queue-wrap');
-  const list = document.getElementById('queue-list');
-  const count = document.getElementById('queue-count');
-  const progress = document.getElementById('queue-progress');
-  const btn = document.getElementById('process-btn');
-  const dropzone = document.getElementById('dropzone');
-  const dzText = document.getElementById('dz-text');
-  const cancelBtn = document.getElementById('upload-cancel-btn');
-
-  if (uploadQueue.length === 0) {
-    wrap.classList.remove('on');
-    dropzone.style.display = 'block';
-    dzText.innerHTML = '<strong>Click to add images</strong> or drag &amp; drop them here';
-    btn.disabled = true;
-    btn.textContent = 'Save All to Chest';
-    cancelBtn.textContent = 'Close';
-    return;
-  }
-  wrap.classList.add('on');
-  dropzone.style.display = isProcessing ? 'none' : 'block';
-  if (!isProcessing) dzText.innerHTML = '<strong>Click to add more images</strong> or drag &amp; drop';
-
-  const total = uploadQueue.length;
-  const done = uploadQueue.filter(i => i.status === 'done').length;
-  const failed = uploadQueue.filter(i => i.status === 'failed').length;
-  const ready = uploadQueue.filter(i => i.status === 'ready').length;
-
-  count.textContent = `${total} image${total > 1 ? 's' : ''} in queue`;
-
-  if (isProcessing) {
-    progress.textContent = `${done + failed} / ${total} processed`;
-    btn.disabled = true;
-    btn.textContent = 'Processing...';
-    cancelBtn.textContent = 'Stop';
-  } else if (ready === 0 && total === done + failed) {
-    progress.textContent = `Done: ${done} saved${failed ? `, ${failed} failed` : ''}`;
-    btn.disabled = true;
-    btn.textContent = 'All Done';
-    cancelBtn.textContent = 'Close';
-  } else {
-    progress.textContent = `${ready} ready to save${done + failed > 0 ? ` • ${done + failed} already done` : ''}`;
-    btn.disabled = false;
-    btn.textContent = `Save ${ready} to Chest`;
-    cancelBtn.textContent = 'Close';
-  }
-
-  list.innerHTML = uploadQueue.map(item => {
-    let badge = '';
-    switch (item.status) {
-      case 'ready': badge = 'Ready'; break;
-      case 'processing': badge = '<span class="spinner"></span>Reading...'; break;
-      case 'done': badge = '✓ ' + (item.title ? escapeHtml(item.title) : 'Saved'); break;
-      case 'failed': badge = '⚠ ' + escapeHtml((item.error || 'Failed').slice(0, 100)); break;
-    }
-    const name = item.title ? escapeHtml(item.title) : escapeHtml(item.originalName || 'Image');
-    return `
-      <div class="queue-item ${item.status}">
-        <img class="queue-thumb" src="${item.previewUrl}" alt="">
-        <div class="queue-info">
-          <div class="queue-name">${name}</div>
-          <div class="queue-badge">${badge}</div>
-        </div>
-        ${item.status === 'failed' ? `<button class="queue-retry" onclick="retryItem('${item.id}')">Retry</button>` : ''}
-      </div>
-    `;
-  }).join('');
-
-  if (isProcessing) list.scrollTop = list.scrollHeight;
-}
-
-function retryItem(id) {
-  const item = uploadQueue.find(i => i.id === id);
-  if (!item || isProcessing) return;
-  item.status = 'ready';
-  item.error = null;
-  updateQueueUI();
-}
-
-async function startBatch() {
-  if (isProcessing) return;
-  const ready = uploadQueue.filter(i => i.status === 'ready');
-  if (!ready.length) return;
-
-  const name = document.getElementById('uploader-name').value.trim() || 'Anonymous';
-  setUser(name);
-  isProcessing = true;
-  cancelRequested = false;
-  updateQueueUI();
-
-  let success = 0, failed = 0;
-
-  for (const item of ready) {
-    if (cancelRequested) break;
-    item.status = 'processing';
-    updateQueueUI();
-
-    try {
-      let base64 = item.base64;
-      let mime = item.mimeType;
-      if (!base64) {
-        const compressed = await compressImage(item.file);
-        base64 = compressed.base64;
-        mime = compressed.mimeType;
-        item.base64 = base64;
-        item.mimeType = mime;
-      }
-
-      const res = await fetch(`${API}/process`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ imageBase64: base64, mimeType: mime, addedBy: name }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      item.status = 'done';
-      item.recipeId = data.id;
-      item.title = data.title || 'Saved';
-      item.file = null;
-      item.base64 = null;
-      success++;
-    } catch (err) {
-      item.status = 'failed';
-      item.error = err.message;
-      failed++;
-    }
-    updateQueueUI();
-
-    if (!cancelRequested && uploadQueue.filter(i => i.status === 'ready').length > 0) {
-      await new Promise(r => setTimeout(r, 5000));
-    }
-  }
-
-  isProcessing = false;
-  cancelRequested = false;
-  updateQueueUI();
-  await loadRecipes();
-
-  if (success > 0 && failed === 0) toast(`All ${success} recipe${success > 1 ? 's' : ''} saved!`);
-  else if (success > 0 && failed > 0) toast(`${success} saved, ${failed} failed. Click Retry on failures.`);
-  else if (failed > 0) toast(`All ${failed} failed. Check the errors.`);
-}
-
-// ---- Import from URL ----
-function openImport() {
-  document.getElementById('import-overlay').classList.add('on');
-  document.getElementById('importer-name').value = getUser() === 'Anonymous' ? '' : getUser();
-  document.getElementById('import-url').value = '';
-  document.getElementById('import-status').textContent = '';
-  document.getElementById('import-status').classList.remove('error');
-  document.getElementById('import-url').focus();
-}
-function closeImport() {
-  document.getElementById('import-overlay').classList.remove('on');
-}
-async function processImport() {
-  const url = document.getElementById('import-url').value.trim();
-  const name = document.getElementById('importer-name').value.trim() || 'Anonymous';
-  const status = document.getElementById('import-status');
-  const btn = document.getElementById('import-btn');
-  if (!url) { status.textContent = 'Please enter a URL.'; status.classList.add('error'); return; }
-  if (!/^https?:\/\//i.test(url)) { status.textContent = 'URL must start with http:// or https://'; status.classList.add('error'); return; }
-  btn.disabled = true;
-  status.classList.remove('error');
-  status.innerHTML = '<span class="spinner"></span>Fetching page and reading the recipe...';
-  try {
-    const res = await fetch(`${API}/import-url`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ url, addedBy: name }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Import failed');
-    setUser(name);
-    toast('Recipe imported!');
-    closeImport();
-    await loadRecipes();
-    openDetail(data.id);
-  } catch (err) {
-    status.textContent = err.message;
-    status.classList.add('error');
-    btn.disabled = false;
-  }
-}
-document.getElementById('import-url').addEventListener('keypress', e => { if (e.key === 'Enter') processImport(); });
-
-// ---- Recipes list ----
-async function loadRecipes() {
-  try {
-    const res = await fetch(`${API}/recipes`, { credentials: 'same-origin' });
-    if (!res.ok) throw new Error('Failed to load');
-    recipes = await res.json();
-    renderGrid();
-  } catch (e) {
-    console.error(e);
-    document.getElementById('grid').innerHTML = '';
-    document.getElementById('empty').style.display = 'block';
-    document.getElementById('empty').querySelector('h2').textContent = 'Could not load recipes';
-    document.getElementById('empty').querySelector('p').textContent = e.message;
-  }
-}
-
-function renderGrid() {
-  const grid = document.getElementById('grid');
-  const empty = document.getElementById('empty');
-  const stats = document.getElementById('stats');
-  const allTags = new Set();
-  recipes.forEach(r => (r.tags || []).forEach(t => allTags.add(t)));
-  let filtered = recipes;
-  if (currentFilter !== 'all') filtered = filtered.filter(r => (r.tags || []).includes(currentFilter));
-  if (currentSearch) {
-    const q = currentSearch.toLowerCase();
-    filtered = filtered.filter(r => {
-      const hay = (r.title + ' ' + r.description + ' ' + (r.ingredients || []).join(' ') + ' ' + (r.tags || []).join(' ')).toLowerCase();
-      return hay.includes(q);
-    });
-  }
-  let statHtml = `<span>${recipes.length} recipe${recipes.length === 1 ? '' : 's'}</span>`;
-  if (allTags.size) {
-    statHtml += `<span style="color:var(--border)">•</span>`;
-    statHtml += `<span class="filter-chip ${currentFilter === 'all' ? 'on' : ''}" onclick="setFilter('all')">all</span>`;
-    [...allTags].sort().slice(0, 12).forEach(t => {
-      statHtml += `<span class="filter-chip ${currentFilter === t ? 'on' : ''}" onclick="setFilter('${t.replace(/'/g, "\\'")}')">${t}</span>`;
-    });
-  }
-  stats.innerHTML = statHtml;
-  if (!filtered.length) {
-    grid.innerHTML = '';
-    empty.style.display = 'block';
-    if (recipes.length === 0) {
-      empty.querySelector('h2').textContent = 'The chest is empty';
-      empty.querySelector('p').textContent = 'Upload photos of recipes or import them from a website.';
-    } else {
-      empty.querySelector('h2').textContent = 'No matches';
-      empty.querySelector('p').textContent = 'Try a different search or filter.';
-    }
-    return;
-  }
-  empty.style.display = 'none';
-  grid.innerHTML = filtered.map(r => {
-    const ms = mealStyle(r.mealType);
-    return `
-      <div class="card" onclick="openDetail('${r.id}')">
-        <div class="card-meal" style="background:${ms.bg}"><span>${ms.emoji}</span></div>
-        <div class="card-body">
-          <div class="card-title">${escapeHtml(r.title)}</div>
-          <div class="card-desc">${escapeHtml(r.description || '')}</div>
-          <div class="card-meta">
-            <span>${ms.label}${r.prepTime ? ' • ⏱ ' + escapeHtml(r.prepTime) : ''}</span>
-            <span>${r.addedBy ? 'by ' + escapeHtml(r.addedBy) : ''}</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-function setFilter(t) { currentFilter = t; renderGrid(); }
-
-// ---- Detail modal ----
-function openDetail(id) {
-  const r = recipes.find(x => x.id === id);
-  if (!r) return;
-  const ms = mealStyle(r.mealType);
-  let sourceHost = '';
-  try { sourceHost = new URL(r.sourceUrl).hostname.replace(/^www\./, ''); } catch {}
-
-  const tagsHtml = (r.tags || []).map(t => `
-    <span class="tag">
-      ${escapeHtml(t)}
-      <button class="tag-x" onclick="event.stopPropagation(); removeTag('${r.id}', '${t.replace(/'/g, "\\'")}')" title="Remove tag">✕</button>
-    </span>
-  `).join('');
-
-  const html = `
-    <div class="recipe-hero" style="background:${ms.bg}"><span>${ms.emoji}</span></div>
-    <div class="recipe-content">
-      <h1 class="recipe-title">${escapeHtml(r.title)}</h1>
-      ${r.description ? `<p class="recipe-desc">${escapeHtml(r.description)}</p>` : ''}
-      <div class="recipe-meta">
-        <span class="meta-pill">${ms.emoji} ${ms.label}</span>
-        ${r.prepTime ? `<span class="meta-pill"><span class="k">Prep:</span> ${escapeHtml(r.prepTime)}</span>` : ''}
-        ${r.cookTime ? `<span class="meta-pill"><span class="k">Cook:</span> ${escapeHtml(r.cookTime)}</span>` : ''}
-        ${r.servings ? `<span class="meta-pill"><span class="k">Serves:</span> ${escapeHtml(r.servings)}</span>` : ''}
-        ${r.sourceUrl ? `<span class="meta-pill">🔗 <a href="${escapeHtml(r.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(sourceHost || 'source')}</a></span>` : ''}
-      </div>
-      <div class="recipe-tags" id="tag-row">
-        ${tagsHtml}
-        <button class="tag-add-btn" id="tag-add-btn" onclick="showTagInput('${r.id}')">+ Add tag</button>
-      </div>
-      ${r.ingredients && r.ingredients.length ? `
-        <h3 class="section-h">Ingredients</h3>
-        <ul class="ing-list">${r.ingredients.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
-      ` : ''}
-      ${r.instructions && r.instructions.length ? `
-        <h3 class="section-h">Instructions</h3>
-        <ol class="step-list">${r.instructions.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ol>
-      ` : ''}
-      ${r.notes ? `<div class="notes-box">💡 ${escapeHtml(r.notes)}</div>` : ''}
-      <div class="recipe-footer">
-        <span>Added by ${escapeHtml(r.addedBy || 'Anonymous')} on ${new Date(r.createdAt).toLocaleDateString()}</span>
-        <button class="delete-btn" onclick="deleteRecipe('${r.id}')">Delete</button>
-      </div>
+<div class="overlay" id="shopping-overlay">
+  <div class="modal" style="padding:28px 32px;max-width:600px">
+    <button class="modal-close" onclick="closeShoppingList()">✕</button>
+    <h2 style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Shopping List</h2>
+    <p style="color:var(--dim);font-size:.82rem;margin-bottom:20px">Saved to this device only.</p>
+    <div class="sl-add">
+      <input type="text" id="sl-input" placeholder="Add an item..." maxlength="200" onkeypress="if(event.key==='Enter')addShoppingItem()">
+      <button class="btn-primary" style="margin:0" onclick="addShoppingItem()">Add</button>
     </div>
-  `;
-  document.getElementById('detail-content').innerHTML = html;
-  document.getElementById('detail-overlay').classList.add('on');
-  document.getElementById('detail-modal').scrollTop = 0;
-}
-function closeDetail() { document.getElementById('detail-overlay').classList.remove('on'); }
+    <div id="sl-list"></div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn-secondary" onclick="clearShoppingList()">Clear all</button>
+    </div>
+  </div>
+</div>
 
-// ---- Tag editing ----
-function showTagInput(recipeId) {
-  const row = document.getElementById('tag-row');
-  const btn = document.getElementById('tag-add-btn');
-  if (!row || !btn) return;
-
-  // Hide the "+ Add tag" button and swap in the input
-  btn.style.display = 'none';
-
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'tag-input';
-  input.id = 'tag-input';
-  input.placeholder = 'tag name, Enter to save';
-  input.maxLength = 30;
-
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const val = input.value.trim();
-      if (val) addTag(recipeId, val);
-    } else if (e.key === 'Escape') {
-      cancelTagInput();
-    }
-  });
-  input.addEventListener('blur', () => {
-    // Save on blur if there's text, otherwise just close
-    const val = input.value.trim();
-    if (val) {
-      addTag(recipeId, val);
-    } else {
-      cancelTagInput();
-    }
-  });
-
-  row.insertBefore(input, btn);
-  input.focus();
-}
-
-function cancelTagInput() {
-  const input = document.getElementById('tag-input');
-  const btn = document.getElementById('tag-add-btn');
-  if (input) input.remove();
-  if (btn) btn.style.display = '';
-}
-
-async function addTag(recipeId, tag) {
-  const r = recipes.find(x => x.id === recipeId);
-  if (!r) return;
-  const clean = String(tag).trim().toLowerCase();
-  if (!clean) { cancelTagInput(); return; }
-
-  const existing = r.tags || [];
-  if (existing.includes(clean)) {
-    toast('Tag already present');
-    cancelTagInput();
-    return;
-  }
-
-  const newTags = [...existing, clean];
-  await saveTags(recipeId, newTags);
-}
-
-async function removeTag(recipeId, tag) {
-  const r = recipes.find(x => x.id === recipeId);
-  if (!r) return;
-  const newTags = (r.tags || []).filter(t => t !== tag);
-  await saveTags(recipeId, newTags);
-}
-
-async function saveTags(recipeId, newTags) {
-  try {
-    const res = await fetch(`${API}/recipes`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ id: recipeId, tags: newTags }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Could not save tags');
-
-    // Update the local copy and re-render both the modal and the grid
-    const idx = recipes.findIndex(x => x.id === recipeId);
-    if (idx !== -1) recipes[idx] = data;
-
-    // Reopen the detail view to reflect the new tags
-    openDetail(recipeId);
-    renderGrid();
-    toast('Tags updated');
-  } catch (e) {
-    toast('Could not save tags: ' + e.message);
-    cancelTagInput();
-  }
-}
-
-async function deleteRecipe(id) {
-  if (!confirm('Delete this recipe for everyone?')) return;
-  try {
-    const res = await fetch(`${API}/recipes?id=${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      credentials: 'same-origin',
-    });
-    if (!res.ok) throw new Error('Delete failed');
-    toast('Recipe deleted');
-    closeDetail();
-    await loadRecipes();
-  } catch (e) { toast('Could not delete: ' + e.message); }
-}
-
-// ---- Search ----
-document.getElementById('search-input').addEventListener('input', e => {
-  currentSearch = e.target.value.trim();
-  renderGrid();
-});
-
-// ---- User tag ----
-document.getElementById('user-tag').addEventListener('click', () => {
-  const cur = getUser();
-  const n = prompt('Your display name:', cur === 'Anonymous' ? '' : cur);
-  if (n !== null) setUser(n.trim() || 'Anonymous');
-});
-
-// ---- Close overlays ----
-document.getElementById('upload-overlay').addEventListener('click', e => {
-  if (e.target.id === 'upload-overlay' && !isProcessing) cancelUpload();
-});
-document.getElementById('import-overlay').addEventListener('click', e => {
-  if (e.target.id === 'import-overlay') closeImport();
-});
-document.getElementById('detail-overlay').addEventListener('click', e => {
-  if (e.target.id === 'detail-overlay') closeDetail();
-});
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    if (isProcessing) return;
-    closeImport();
-    closeDetail();
-  }
-});
-
-// ---- PWA service worker ----
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('SW registered:', reg.scope))
-      .catch(err => console.error('SW registration failed:', err));
-  });
-}
-</script>
-</body>
-</html>
+<div
