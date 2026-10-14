@@ -5,7 +5,14 @@ const kv = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
 
-const KEY = 'shopping_list';
+function keyFor(deviceId) {
+  return `shopping_list:${deviceId}`;
+}
+
+function cleanDeviceId(raw) {
+  // Only allow safe characters, max 64 chars
+  return String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,18 +20,26 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // GET: return the current list
+  // deviceId can arrive via query (?deviceId=...) or body
+  const rawId = req.query?.deviceId || (req.body && req.body.deviceId);
+  const deviceId = cleanDeviceId(rawId);
+  if (!deviceId) {
+    return res.status(400).json({ error: 'Missing or invalid deviceId' });
+  }
+
+  const key = keyFor(deviceId);
+
+  // GET: return the current list for this device
   if (req.method === 'GET') {
     try {
-      const list = await kv.get(KEY);
+      const list = await kv.get(key);
       return res.status(200).json(list || { items: [], updatedAt: null });
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
   }
 
-  // POST: replace the whole list
-  // Body: { items: [{ text: string, checked: boolean, recipeId?: string }] }
+  // POST: replace the whole list for this device
   if (req.method === 'POST') {
     const body = req.body || {};
     if (!Array.isArray(body.items)) {
@@ -42,17 +57,17 @@ export default async function handler(req, res) {
     const payload = { items: clean, updatedAt: Date.now() };
 
     try {
-      await kv.set(KEY, payload);
+      await kv.set(key, payload);
       return res.status(200).json(payload);
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
   }
 
-  // DELETE: clear the list
+  // DELETE: clear the list for this device
   if (req.method === 'DELETE') {
     try {
-      await kv.del(KEY);
+      await kv.del(key);
       return res.status(200).json({ success: true });
     } catch (e) {
       return res.status(500).json({ error: e.message });
