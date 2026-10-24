@@ -1,4 +1,8 @@
 import { Redis } from '@upstash/redis';
+import { requireAuth } from '../lib/auth.js';
+import { groqChat } from '../lib/groq.js';
+import { findDishImage } from '../lib/image.js';
+import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -9,38 +13,6 @@ export const config = {
   api: { bodyParser: { sizeLimit: '10mb' } },
   maxDuration: 60,
 };
-
-const GROQ_MODEL = 'qwen/qwen3.8-27b';
-
-async function groqChat(apiKey, messages, options = {}, attempt = 0) {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages,
-      temperature: options.temperature ?? 0.1,
-      max_tokens: options.max_tokens ?? 2200,
-    }),
-  });
-  const data = await res.json();
-
-  if (!data.choices || !data.choices[0]) {
-    const errMsg = (data.error && data.error.message) || JSON.stringify(data);
-    const isRateLimit = /rate limit/i.test(errMsg) || (data.error && data.error.code === 'rate_limit_exceeded');
-    if (isRateLimit && attempt < 3) {
-      const match = errMsg.match(/try again in ([\d.]+)\s*s/i);
-      const waitMs = match ? Math.ceil(parseFloat(match[1]) * 1000) + 800 : 6000;
-      await new Promise(r => setTimeout(r, waitMs));
-      return groqChat(apiKey, messages, options, attempt + 1);
-    }
-    throw new Error('Groq error: ' + errMsg.substring(0, 300));
-  }
-  return data.choices[0].message.content || '';
-}
 
 // ---------- Cleaning ----------
 function preclean(raw) {
@@ -72,7 +44,6 @@ function blockToList(content) {
   const items = [];
 
   for (const line of lines) {
-    // Skip sub-headers or empties
     if (!line) continue;
     // Inline separators: " - item - item" or " • item • item"
     if (/\s[-•·]\s+\S/.test(line)) {
@@ -95,14 +66,6 @@ function blockToList(content) {
 // ---------- Normalizer (from any parsed object) ----------
 function normalizeRecipe(r) {
   if (!r || !r.title) return null;
-  const validMeals = ['breakfast', 'lunch', 'dinner', 'dessert', 'snack', 'drink'];
-  let mealType = 'default';
-  const mtRaw = String(r.mealType || r.meal_type || '').toLowerCase();
-  for (const vm of validMeals) if (mtRaw.includes(vm)) { mealType = vm; break; }
-
-  let tags = [];
-  if (Array.isArray(r.tags)) tags = r.tags.map(t => String(t).trim().toLowerCase()).filter(Boolean);
-  else if (typeof r.tags === 'string') tags = r.tags.split(/[,;]/).map(t => t.trim().toLowerCase()).filter(Boolean);
 
   const toArr = (v) => Array.isArray(v) ? v.map(String).map(cleanItem).filter(Boolean) :
     (typeof v === 'string' ? blockToList(v) : []);
@@ -115,9 +78,9 @@ function normalizeRecipe(r) {
     prepTime: String(r.prepTime || r.prep_time || '').slice(0, 40),
     cookTime: String(r.cookTime || r.cook_time || '').slice(0, 40),
     servings: String(r.servings || '').slice(0, 40),
-    tags: tags.slice(0, 10),
+    tags: cleanTags(r.tags, 10),
     notes: String(r.notes || '').slice(0, 1000),
-    mealType,
+    mealType: normalizeMealType(r.mealType || r.meal_type),
   };
 }
 
@@ -235,11 +198,9 @@ function parseJson(raw) {
 function parseHeuristic(text) {
   const t = text.replace(/[*_#]+/g, '').replace(/\r\n/g, '\n');
 
-  // Find the first non-empty line as title (fallback)
   const lines = t.split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) return null;
 
-  // Look for a line that looks like "TITLE: xxx" anywhere
   let title = '';
   for (const line of lines) {
     const m = line.match(/title\s*[:\-]\s*(.+)/i);
@@ -249,7 +210,6 @@ function parseHeuristic(text) {
 
   if (!title) return null;
 
-  // Look for section keywords
   let ingredients = [];
   let instructions = [];
   let mode = null;
@@ -270,19 +230,15 @@ function parseHeuristic(text) {
 function parseAiOutput(text) {
   const cleaned = preclean(text);
 
-  // 1. Delimiter
   let r = parseDelimited(cleaned);
   if (r && r.title) return r;
 
-  // 2. Colon
   r = parseColon(cleaned);
   if (r && r.title) return r;
 
-  // 3. JSON
   r = parseJson(cleaned);
   if (r && r.title) return r;
 
-  // 4. Heuristic
   r = parseHeuristic(cleaned);
   if (r && r.title) return r;
 
@@ -290,17 +246,14 @@ function parseAiOutput(text) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!requireAuth(req, res)) return;
 
   const { imageBase64, mimeType, addedBy } = req.body || {};
   if (!imageBase64) return res.status(400).json({ error: 'No image provided' });
 
-  const GROQ_API_KEY = process.env.GROQ_API_KEY;
-  if (!GROQ_API_KEY) return res.status(500).json({ error: 'Groq API key not configured' });
+  if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Groq API key not configured' });
 
   const prompt = `Read the recipe from the attached image. Output using EXACTLY this delimiter format. Nothing else — no reasoning, no commentary, no markdown.
 
@@ -343,13 +296,17 @@ IMPORTANT RULES:
 If there is no recipe in the image, output exactly: NO_RECIPE`;
 
   try {
-    const raw = await groqChat(GROQ_API_KEY, [{
-      role: 'user',
-      content: [
-        { type: 'text', text: prompt },
-        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
-      ]
-    }], { temperature: 0.1, max_tokens: 2200 });
+    const raw = await groqChat({
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+        ],
+      }],
+      temperature: 0.1,
+      maxTokens: 2200,
+    });
 
     console.log('=== RAW AI OUTPUT (first 1200 chars) ===');
     console.log(raw.substring(0, 1200));
@@ -364,7 +321,20 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
     if (!recipe) {
       return res.status(500).json({
         error: 'Could not parse AI output',
-        details: 'RAW: ' + raw.substring(0, 1800)
+        details: 'RAW: ' + raw.substring(0, 1800),
+      });
+    }
+
+    // Duplicate check and photo lookup run at the same time to keep imports fast
+    const [dup, image] = await Promise.all([
+      findDuplicate(kv, { title: recipe.title }),
+      findDishImage(recipe.title),
+    ]);
+
+    if (dup) {
+      return res.status(409).json({
+        error: `"${dup.title}" is already in your chest.`,
+        duplicate: dup,
       });
     }
 
@@ -372,6 +342,7 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
     const finalRecipe = {
       id,
       ...recipe,
+      ...(image ? { image } : {}),
       createdAt: Date.now(),
       addedBy: String(addedBy || 'Anonymous').slice(0, 40),
     };
