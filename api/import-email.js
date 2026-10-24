@@ -1,10 +1,12 @@
 import { Redis } from '@upstash/redis';
 import sharp from 'sharp';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { groqChat } from '../lib/groq.js';
+import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 
 const MAX_EMAIL_TEXT_CHARACTERS = 6000;
 const MAX_PDF_TEXT_CHARACTERS = 18000;
-const MAX_IMAGES_PER_REQUEST = 3; // Groq's hard limit for qwen/qwen3.8-27b
+const MAX_IMAGES_PER_REQUEST = 3; // Groq's hard limit for the vision model
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -147,7 +149,7 @@ export default async function handler(req, res) {
 
         const saved = await persistRecipe(recipe, senderName);
         savedRecipes.push(saved);
-        console.log(`Saved recipe from PDF ${filename}: ${saved.recipe.title}`);
+        console.log(`${saved.duplicate ? 'Already had' : 'Saved'} recipe from PDF ${filename}: ${saved.recipe.title}`);
       } catch (err) {
         console.error(`Failed to process PDF ${filename}:`, err.message);
       }
@@ -189,7 +191,7 @@ export default async function handler(req, res) {
           } else {
             const saved = await persistRecipe(recipe, senderName);
             savedRecipes.push(saved);
-            console.log(`Saved recipe from ${images.length} image(s): ${saved.recipe.title}`);
+            console.log(`${saved.duplicate ? 'Already had' : 'Saved'} recipe from ${images.length} image(s): ${saved.recipe.title}`);
           }
         } catch (err) {
           console.error(`Failed to process images:`, err.message);
@@ -214,7 +216,7 @@ export default async function handler(req, res) {
         if (!recipe.error) {
           const saved = await persistRecipe(recipe, senderName);
           savedRecipes.push(saved);
-          console.log(`Saved recipe from email body: ${saved.recipe.title}`);
+          console.log(`${saved.duplicate ? 'Already had' : 'Saved'} recipe from email body: ${saved.recipe.title}`);
         }
       } catch (err) {
         console.error('Failed to process email body text:', err.message);
@@ -248,58 +250,45 @@ export default async function handler(req, res) {
 
 /**
  * Send content parts to Groq and parse the JSON recipe response.
- * Uses qwen/qwen3.8-27b, which handles both text and images.
  */
 async function callGroq(contentPayload) {
-  const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'qwen/qwen3.8-27b',
-      messages: [{ role: 'user', content: contentPayload }],
-      temperature: 0.2,
-      max_completion_tokens: 2000,
-      response_format: { type: 'json_object' },
-    }),
+  const rawContent = await groqChat({
+    messages: [{ role: 'user', content: contentPayload }],
+    temperature: 0.2,
+    maxTokens: 2000,
+    json: true,
   });
-
-  if (!groqRes.ok) {
-    const errorDetails = await groqRes.text();
-    let detail = errorDetails;
-    try {
-      const groqError = JSON.parse(errorDetails).error;
-      if (groqError) {
-        detail = [groqError.code, groqError.message].filter(Boolean).join(': ');
-      }
-    } catch (_) {}
-    throw new Error(`Groq API returned ${groqRes.status}: ${detail.substring(0, 500)}`);
-  }
-
-  const groqData = await groqRes.json();
-  const rawContent = groqData.choices?.[0]?.message?.content || '{}';
-  return JSON.parse(rawContent);
+  return JSON.parse(rawContent || '{}');
 }
 
 /**
  * Normalize, give an id, and store a recipe in Redis.
+ * If a recipe with the same title already exists, the existing one is returned instead.
  */
 async function persistRecipe(parsedRecipe, senderName) {
+  const title = String(parsedRecipe.title || 'Imported Email Recipe').slice(0, 200);
+
+  const dup = await findDuplicate(redis, { title });
+  if (dup) {
+    return { id: dup.id, recipe: dup, duplicate: true };
+  }
+
+  const toStrings = (v, max) =>
+    Array.isArray(v) ? v.slice(0, max).map(String).map((s) => s.trim()).filter(Boolean) : [];
+
   const recipeId = `r_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const recipe = {
     id: recipeId,
-    title: parsedRecipe.title || 'Imported Email Recipe',
-    description: parsedRecipe.description || '',
-    prepTime: parsedRecipe.prepTime || '',
-    cookTime: parsedRecipe.cookTime || '',
-    servings: parsedRecipe.servings || '',
-    mealType: parsedRecipe.mealType || 'Dinner',
-    tags: Array.isArray(parsedRecipe.tags) ? parsedRecipe.tags : [],
-    ingredients: Array.isArray(parsedRecipe.ingredients) ? parsedRecipe.ingredients : [],
-    instructions: Array.isArray(parsedRecipe.instructions) ? parsedRecipe.instructions : [],
-    notes: parsedRecipe.notes || '',
+    title,
+    description: String(parsedRecipe.description || '').slice(0, 500),
+    prepTime: String(parsedRecipe.prepTime || '').slice(0, 40),
+    cookTime: String(parsedRecipe.cookTime || '').slice(0, 40),
+    servings: String(parsedRecipe.servings || '').slice(0, 40),
+    mealType: normalizeMealType(parsedRecipe.mealType),
+    tags: cleanTags(parsedRecipe.tags, 10),
+    ingredients: toStrings(parsedRecipe.ingredients, 60),
+    instructions: toStrings(parsedRecipe.instructions, 60),
+    notes: String(parsedRecipe.notes || '').slice(0, 1000),
     user: senderName,
     addedBy: senderName,
     createdAt: Date.now(),
