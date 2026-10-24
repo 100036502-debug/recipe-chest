@@ -436,7 +436,7 @@ async function tryUnlock() {
     });
     const data = await res.json();
     if (data && data.unlocked) unlockApp();
-    else { err.textContent = 'Incorrect access code.'; document.getElementById('lock-input').value = ''; }
+        else { err.textContent = (data && data.error) || 'Incorrect access code.'; document.getElementById('lock-input').value = ''; }
   } catch (e) { err.textContent = 'Could not verify. Try again.'; }
 }
 function unlockApp() {
@@ -795,7 +795,7 @@ function renderGrid() {
     statHtml += `<span style="color:var(--border)">•</span>`;
     statHtml += `<span class="filter-chip ${currentFilter === 'all' ? 'on' : ''}" onclick="setFilter('all')">all</span>`;
     [...allTags].sort().slice(0, 12).forEach(t => {
-      statHtml += `<span class="filter-chip ${currentFilter === t ? 'on' : ''}" onclick="setFilter('${t.replace(/'/g, "\\'")}')">${t}</span>`;
+    statHtml += `<span class="filter-chip ${currentFilter === t ? 'on' : ''}" data-tag="${escapeHtml(t)}" onclick="setFilter(this.dataset.tag)">${escapeHtml(t)}</span>`;
     });
   }
   stats.innerHTML = statHtml;
@@ -837,10 +837,10 @@ function openDetail(id) {
   const ms = mealStyle(r.mealType);
   let sourceHost = '';
   try { sourceHost = new URL(r.sourceUrl).hostname.replace(/^www\./, ''); } catch {}
-  const tagsHtml = (r.tags || []).map(t => `
+    const tagsHtml = (r.tags || []).map(t => `
     <span class="tag">
       ${escapeHtml(t)}
-      <button class="tag-x" onclick="event.stopPropagation(); removeTag('${r.id}', '${t.replace(/'/g, "\\'")}')" title="Remove tag">✕</button>
+      <button class="tag-x" data-id="${escapeHtml(r.id)}" data-tag="${escapeHtml(t)}" onclick="event.stopPropagation(); removeTag(this.dataset.id, this.dataset.tag)" title="Remove tag">✕</button>
     </span>
   `).join('');
   let servingsHtml = '';
