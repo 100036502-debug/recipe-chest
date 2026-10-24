@@ -1,4 +1,6 @@
 import { Redis } from '@upstash/redis';
+import { requireAuth } from '../lib/auth.js';
+import { ID_PATTERN } from '../lib/recipes.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -14,10 +16,8 @@ function cleanDeviceId(raw) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (!requireAuth(req, res)) return;
 
   const rawId = req.query?.deviceId || (req.body && req.body.deviceId);
   const deviceId = cleanDeviceId(rawId);
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
 
     const ids = body.recipeIds
       .map((id) => String(id).trim())
-      .filter(Boolean)
+      .filter((id) => ID_PATTERN.test(id))
       .slice(0, 10);
 
     try {
