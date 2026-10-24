@@ -1,4 +1,8 @@
 import { Redis } from '@upstash/redis';
+import { requireAuth } from '../lib/auth.js';
+import { groqChat } from '../lib/groq.js';
+import { safeFetchText } from '../lib/safe-fetch.js';
+import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -6,8 +10,6 @@ const kv = new Redis({
 });
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
-
-const GROQ_MODEL = 'qwen/qwen3.8-27b';
 
 function extractBraced(text) {
   const start = text.indexOf('{');
@@ -41,12 +43,28 @@ function tryParseJson(raw) {
   return null;
 }
 
+function stripHtml(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!requireAuth(req, res)) return;
 
   const { url, addedBy } = req.body || {};
   if (!url) return res.status(400).json({ error: 'No URL provided' });
@@ -57,40 +75,32 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Only http and https URLs are allowed' });
   }
 
-  const GROQ_API_KEY = process.env.GROQ_API_KEY;
-  if (!GROQ_API_KEY) return res.status(500).json({ error: 'Groq API key not configured' });
+  if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Groq API key not configured' });
 
-  // Fetch and strip the page
+  // Skip the fetch and the AI call entirely if this exact URL is already saved
+  try {
+    const existing = await findDuplicate(kv, { title: '', sourceUrl: parsedUrl.toString() });
+    if (existing) {
+      return res.status(409).json({
+        error: `"${existing.title}" is already in your chest.`,
+        duplicate: existing,
+      });
+    }
+  } catch (e) {
+    console.error('Duplicate pre-check failed:', e.message);
+  }
+
+  // Fetch and strip the page (private/internal addresses are refused)
   let pageText;
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
-    const response = await fetch(parsedUrl.toString(), {
+    const html = await safeFetchText(parsedUrl.toString(), {
+      timeoutMs: 12000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; RecipeChestBot/1.0)',
         'Accept': 'text/html,application/xhtml+xml',
       },
-      signal: controller.signal,
-      redirect: 'follow',
     });
-    clearTimeout(timeout);
-    if (!response.ok) throw new Error('Page returned ' + response.status);
-    const html = await response.text();
-    pageText = html
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-      .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/\s+/g, ' ')
-      .trim();
+    pageText = stripHtml(html);
     if (pageText.length > 20000) pageText = pageText.substring(0, 20000);
   } catch (e) {
     return res.status(400).json({ error: 'Could not fetch page: ' + e.message });
@@ -106,45 +116,45 @@ WEBPAGE TEXT:
 ${pageText}`;
 
   try {
-    const aiResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
+    let content;
+    try {
+      content = await groqChat({
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1,
-        max_tokens: 1500,
-      }),
-    });
-    const data = await aiResponse.json();
-    if (!data.choices || !data.choices[0]) {
-      return res.status(500).json({ error: 'AI error', details: JSON.stringify(data).substring(0, 400) });
+        maxTokens: 1500,
+      });
+    } catch (e) {
+      return res.status(500).json({ error: 'AI error', details: e.message.substring(0, 400) });
     }
 
-    const recipe = tryParseJson(data.choices[0].message.content);
+    const recipe = tryParseJson(content);
     if (!recipe) return res.status(500).json({ error: 'AI returned invalid JSON' });
     if (recipe.error) return res.status(400).json({ error: recipe.error });
 
+    const title = String(recipe.title || 'Untitled Recipe').slice(0, 200);
+
+    const dup = await findDuplicate(kv, { title, sourceUrl: parsedUrl.toString() });
+    if (dup) {
+      return res.status(409).json({
+        error: `"${dup.title}" is already in your chest.`,
+        duplicate: dup,
+      });
+    }
+
     const id = 'r_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-    const validMeals = ['breakfast', 'lunch', 'dinner', 'dessert', 'snack', 'drink'];
-    const mealType = validMeals.includes(String(recipe.mealType || '').toLowerCase())
-      ? String(recipe.mealType).toLowerCase() : 'default';
 
     const finalRecipe = {
       id,
-      title: String(recipe.title || 'Untitled Recipe').slice(0, 200),
+      title,
       description: String(recipe.description || '').slice(0, 500),
       ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients.slice(0, 60).map(String) : [],
       instructions: Array.isArray(recipe.instructions) ? recipe.instructions.slice(0, 60).map(String) : [],
       prepTime: String(recipe.prepTime || ''),
       cookTime: String(recipe.cookTime || ''),
       servings: String(recipe.servings || ''),
-      tags: Array.isArray(recipe.tags) ? recipe.tags.slice(0, 10).map(t => String(t).toLowerCase()) : [],
+      tags: cleanTags(recipe.tags, 10),
       notes: String(recipe.notes || '').slice(0, 1000),
-      mealType,
+      mealType: normalizeMealType(recipe.mealType),
       sourceUrl: parsedUrl.toString(),
       createdAt: Date.now(),
       addedBy: String(addedBy || 'Anonymous').slice(0, 40),
