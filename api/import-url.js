@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { groqChat } from '../lib/groq.js';
+import { findDishImage } from '../lib/image.js';
 import { safeFetchText } from '../lib/safe-fetch.js';
 import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 
@@ -133,7 +134,12 @@ ${pageText}`;
 
     const title = String(recipe.title || 'Untitled Recipe').slice(0, 200);
 
-    const dup = await findDuplicate(kv, { title, sourceUrl: parsedUrl.toString() });
+    // Duplicate check and photo lookup run at the same time to keep imports fast
+    const [dup, image] = await Promise.all([
+      findDuplicate(kv, { title, sourceUrl: parsedUrl.toString() }),
+      findDishImage(title),
+    ]);
+
     if (dup) {
       return res.status(409).json({
         error: `"${dup.title}" is already in your chest.`,
@@ -156,6 +162,7 @@ ${pageText}`;
       notes: String(recipe.notes || '').slice(0, 1000),
       mealType: normalizeMealType(recipe.mealType),
       sourceUrl: parsedUrl.toString(),
+      ...(image ? { image } : {}),
       createdAt: Date.now(),
       addedBy: String(addedBy || 'Anonymous').slice(0, 40),
     };
