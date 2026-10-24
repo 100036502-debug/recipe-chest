@@ -1,23 +1,46 @@
 import { Redis } from '@upstash/redis';
+import { requireAuth } from '../lib/auth.js';
+import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, findDuplicate } from '../lib/recipes.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
 
-// Fields the client is allowed to edit via PATCH
+// Fields the client is allowed to set or edit
 const EDITABLE_FIELDS = [
   'title', 'description', 'prepTime', 'cookTime', 'servings',
   'mealType', 'tags', 'ingredients', 'instructions', 'notes',
 ];
 
-const VALID_MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'dessert', 'snack', 'drink', 'default'];
+const MEAL_TYPES_WITH_DEFAULT = [...VALID_MEAL_TYPES, 'default'];
+
+function applyEditableFields(target, body) {
+  for (const field of EDITABLE_FIELDS) {
+    if (!(field in body)) continue;
+
+    if (field === 'tags') {
+      if (!Array.isArray(body.tags)) continue;
+      target.tags = cleanTags(body.tags, 20);
+    } else if (field === 'ingredients' || field === 'instructions') {
+      if (!Array.isArray(body[field])) continue;
+      target[field] = body[field]
+        .map((s) => String(s).trim())
+        .filter(Boolean)
+        .slice(0, 100);
+    } else if (field === 'mealType') {
+      const mt = String(body.mealType || '').toLowerCase();
+      target.mealType = MEAL_TYPES_WITH_DEFAULT.includes(mt) ? mt : 'default';
+    } else {
+      target[field] = String(body[field] ?? '').trim();
+    }
+  }
+  return target;
+}
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (!requireAuth(req, res)) return;
 
   // ---- GET: list every recipe, newest first ----
   if (req.method === 'GET') {
@@ -42,40 +65,33 @@ export default async function handler(req, res) {
     }
 
     const skipDuplicateCheck = body.skipDuplicateCheck === true;
+    const sourceUrl = typeof body.sourceUrl === 'string' && /^https?:\/\//i.test(body.sourceUrl.trim())
+      ? body.sourceUrl.trim().slice(0, 2000)
+      : '';
 
     try {
-      // Duplicate detection: match on normalized title, or source URL
       if (!skipDuplicateCheck) {
-        const ids = await kv.lrange('recipe_ids', 0, -1);
-        if (ids && ids.length) {
-          const existing = (await Promise.all(ids.map((id) => kv.get(`recipe:${id}`))))
-            .filter(Boolean);
-
-          const normTitle = normalizeTitle(body.title);
-          const sourceUrl = (body.sourceUrl || '').trim();
-
-          const dup = existing.find((r) => {
-            if (normalizeTitle(r.title) === normTitle) return true;
-            if (sourceUrl && (r.sourceUrl || '').trim() === sourceUrl) return true;
-            return false;
-          });
-
-          if (dup) {
-            return res.status(409).json({
-              error: 'Possible duplicate',
-              duplicate: dup,
-            });
-          }
+        const dup = await findDuplicate(kv, { title: body.title, sourceUrl });
+        if (dup) {
+          return res.status(409).json({ error: 'Possible duplicate', duplicate: dup });
         }
       }
 
-      const id = body.id || ('r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
-      const recipe = {
-        ...body,
+      const rawId = typeof body.id === 'string' ? body.id : '';
+      const id = ID_PATTERN.test(rawId)
+        ? rawId
+        : 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+
+      const recipe = applyEditableFields({
         id,
-        createdAt: body.createdAt || Date.now(),
-      };
-      delete recipe.skipDuplicateCheck;
+        ingredients: [],
+        instructions: [],
+        tags: [],
+        mealType: 'default',
+        sourceUrl,
+        addedBy: String(body.addedBy || 'Anonymous').slice(0, 40),
+        createdAt: Number.isFinite(body.createdAt) ? body.createdAt : Date.now(),
+      }, body);
 
       await kv.set(`recipe:${id}`, recipe);
       const existingIds = await kv.lrange('recipe_ids', 0, -1);
@@ -98,30 +114,7 @@ export default async function handler(req, res) {
       const existing = await kv.get(`recipe:${id}`);
       if (!existing) return res.status(404).json({ error: 'Recipe not found' });
 
-      const updated = { ...existing };
-
-      for (const field of EDITABLE_FIELDS) {
-        if (!(field in body)) continue;
-
-        if (field === 'tags') {
-          if (!Array.isArray(body.tags)) continue;
-          updated.tags = [...new Set(
-            body.tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean)
-          )].slice(0, 20);
-        } else if (field === 'ingredients' || field === 'instructions') {
-          if (!Array.isArray(body[field])) continue;
-          updated[field] = body[field]
-            .map((s) => String(s).trim())
-            .filter(Boolean)
-            .slice(0, 100);
-        } else if (field === 'mealType') {
-          const mt = String(body.mealType || '').toLowerCase();
-          updated.mealType = VALID_MEAL_TYPES.includes(mt) ? mt : 'default';
-        } else {
-          updated[field] = String(body[field] ?? '').trim();
-        }
-      }
-
+      const updated = applyEditableFields({ ...existing }, body);
       updated.updatedAt = Date.now();
       await kv.set(`recipe:${id}`, updated);
       return res.status(200).json(updated);
@@ -144,12 +137,4 @@ export default async function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
-}
-
-function normalizeTitle(s) {
-  return String(s || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9 ]+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
