@@ -817,7 +817,7 @@ function renderGrid() {
   grid.innerHTML = filtered.map(r => {
     const ms = mealStyle(r.mealType);
     return `
-      <div class="card" onclick="openDetail('${r.id}')">
+        <div class="card-meal" style="background:${ms.bg}">${r.image && (r.image.thumb || r.image.url) ? `<img class="card-img" src="${escapeHtml(r.image.thumb || r.image.url)}" alt="${escapeHtml(r.title)}" loading="lazy" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` : `<span>${ms.emoji}</span>`}</div>
         <div class="card-meal" style="background:${ms.bg}"><span>${ms.emoji}</span></div>
         <div class="card-body">
           <div class="card-title">${escapeHtml(r.title)}</div>
@@ -867,7 +867,7 @@ function openDetail(id) {
     return `<li>${escapeHtml(scaled)} ${escapeHtml(m[2])}</li>`;
   }).join('');
   const html = `
-    <div class="recipe-hero" style="background:${ms.bg}"><span>${ms.emoji}</span></div>
+    <div class="recipe-hero" style="background:${ms.bg}">${r.image && r.image.url ? `<img class="hero-img" src="${escapeHtml(r.image.url)}" alt="${escapeHtml(r.title)}" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` + (r.image.photoUrl ? `<a class="img-credit" href="${escapeHtml(r.image.photoUrl)}" target="_blank" rel="noopener">Photo: ${escapeHtml(r.image.photographer || 'Pexels')} / Pexels</a>` : '') : `<span>${ms.emoji}</span>`}</div>
     <div class="recipe-content">
       <h1 class="recipe-title">${escapeHtml(r.title)}</h1>
       ${r.description ? `<p class="recipe-desc">${escapeHtml(r.description)}</p>` : ''}
