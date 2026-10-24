@@ -1,9 +1,8 @@
-echo 'node_modules/
+node_modules/
 .vercel/
 .env
 .env.local
 .env.*.local
 .DS_Store
 Thumbs.db
-*.log' > .gitignore
-node_modules
+*.log
