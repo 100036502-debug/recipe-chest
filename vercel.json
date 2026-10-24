@@ -20,7 +20,7 @@
       ]
     },
     {
-      "source": "/api/(.*)",
+      "source": "/api/((?!photo).*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" }
       ]
