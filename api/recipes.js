@@ -129,6 +129,7 @@ export default async function handler(req, res) {
     if (!id) return res.status(400).json({ error: 'Missing id' });
     try {
       await kv.del(`recipe:${id}`);
+      await kv.del(`photo:${id}`, `photothumb:${id}`);
       await kv.lrem('recipe_ids', 0, id);
       return res.status(200).json({ success: true });
     } catch (e) {
