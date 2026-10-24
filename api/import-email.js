@@ -2,6 +2,7 @@ import { Redis } from '@upstash/redis';
 import sharp from 'sharp';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { groqChat } from '../lib/groq.js';
+import { findDishImage } from '../lib/image.js';
 import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 
 const MAX_EMAIL_TEXT_CHARACTERS = 6000;
@@ -268,7 +269,12 @@ async function callGroq(contentPayload) {
 async function persistRecipe(parsedRecipe, senderName) {
   const title = String(parsedRecipe.title || 'Imported Email Recipe').slice(0, 200);
 
-  const dup = await findDuplicate(redis, { title });
+  // Duplicate check and photo lookup run at the same time to keep imports fast
+  const [dup, image] = await Promise.all([
+    findDuplicate(redis, { title }),
+    findDishImage(title),
+  ]);
+
   if (dup) {
     return { id: dup.id, recipe: dup, duplicate: true };
   }
@@ -289,6 +295,7 @@ async function persistRecipe(parsedRecipe, senderName) {
     ingredients: toStrings(parsedRecipe.ingredients, 60),
     instructions: toStrings(parsedRecipe.instructions, 60),
     notes: String(parsedRecipe.notes || '').slice(0, 1000),
+    ...(image ? { image } : {}),
     user: senderName,
     addedBy: senderName,
     createdAt: Date.now(),
