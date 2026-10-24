@@ -818,8 +818,8 @@ function renderGrid() {
   grid.innerHTML = filtered.map(r => {
     const ms = mealStyle(r.mealType);
     return `
+      <div class="card" onclick="openDetail('${r.id}')">
         <div class="card-meal" style="background:${ms.bg}">${r.image && (r.image.thumb || r.image.url) ? `<img class="card-img" src="${escapeHtml(r.image.thumb || r.image.url)}" alt="${escapeHtml(r.title)}" loading="lazy" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` : `<span>${ms.emoji}</span>`}</div>
-        <div class="card-meal" style="background:${ms.bg}"><span>${ms.emoji}</span></div>
         <div class="card-body">
           <div class="card-title">${escapeHtml(r.title)}</div>
           <div class="card-desc">${escapeHtml(r.description || '')}</div>
@@ -868,8 +868,7 @@ function openDetail(id) {
     return `<li>${escapeHtml(scaled)} ${escapeHtml(m[2])}</li>`;
   }).join('');
   const html = `
-    `<div class="img-credit">Photo by ${r.image.photographerUrl ? `<a href="${escapeHtml(r.image.photographerUrl)}" target="_blank" rel="noopener">${escapeHtml(r.image.photographer || 'Unknown')}</a>` : escapeHtml(r.image.photographer || 'Unknown')} on <a href="https://unsplash.com/?utm_source=recipe_chest&amp;utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></div>`
-    <div class="recipe-content">
+    <div class="recipe-hero" style="background:${ms.bg}">${r.image && r.image.url ? `<img class="hero-img" src="${escapeHtml(r.image.url)}" alt="${escapeHtml(r.image.alt || r.title)}" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` + `<div class="img-credit">Photo by ${r.image.photographerUrl ? `<a href="${escapeHtml(r.image.photographerUrl)}" target="_blank" rel="noopener">${escapeHtml(r.image.photographer || 'Unknown')}</a>` : escapeHtml(r.image.photographer || 'Unknown')} on <a href="https://unsplash.com/?utm_source=recipe_chest&amp;utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></div>` : `<span>${ms.emoji}</span>`}</div>    <div class="recipe-content">
       <h1 class="recipe-title">${escapeHtml(r.title)}</h1>
       ${r.description ? `<p class="recipe-desc">${escapeHtml(r.description)}</p>` : ''}
       <div class="recipe-meta">
