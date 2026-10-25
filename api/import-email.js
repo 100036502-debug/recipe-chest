@@ -6,41 +6,10 @@ import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
+import { recipeFromPdfText } from '../lib/pdf-recipe.js';
 
 const MAX_EMAIL_TEXT_CHARACTERS = 6000;
-const MAX_PDF_TEXT_CHARACTERS = 18000;
 const MAX_IMAGES_PER_REQUEST = 3; // Groq's hard limit for the vision model
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
-});
-
-export const config = {
-  maxDuration: 60,
-};
-
-const PDF_PROMPT = `You are a recipe parser. The text below comes from a PDF, and may span multiple pages of the SAME recipe. Read all of it together and extract ONE recipe.
-
-Return ONLY a json object with these keys:
-{
-  "title": "...",
-  "description": "one short sentence",
-  "prepTime": "...",
-  "cookTime": "...",
-  "servings": "...",
-  "mealType": "breakfast | lunch | dinner | dessert | snack | drink",
-  "tags": ["..."],
-  "ingredients": ["..."],
-  "instructions": ["..."],
-  "notes": "..."
-}
-
-Rules:
-- Treat all the text as parts of a single recipe. Do not create multiple recipes.
-- If ingredients or steps span across pages, combine them in the correct order.
-- Keep each ingredient and each instruction as its own string in the arrays.
-- No commentary, no markdown, no explanation.`;
 
 const IMAGE_PROMPT = `You are a recipe parser. The image(s) below show a recipe (or parts of one recipe). Read everything together and extract ONE recipe.
 
@@ -143,12 +112,7 @@ export default async function handler(req, res) {
           continue;
         }
 
-        const recipe = await callGroq([
-          {
-            type: 'text',
-            text: `${PDF_PROMPT}\n\nPDF TEXT:\n${text.substring(0, MAX_PDF_TEXT_CHARACTERS)}`,
-          },
-        ]);
+        const recipe = await recipeFromPdfText(text);
 
         if (recipe.error) {
           console.warn(`PDF ${filename}: model reported ${recipe.error}`);
