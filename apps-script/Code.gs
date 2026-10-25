@@ -1,4 +1,6 @@
 const IMPORT_LABEL = 'recipe-import';
+const FAILED_LABEL = 'recipe-import-failed';
+const MAX_IMPORT_ATTEMPTS = 3;
 const MAX_PDFS_PER_MESSAGE = 3;
 // Raw bytes, before base64 encoding (which adds ~33%). Vercel rejects
 // request bodies over about 4.5 MB, so keep the total well under that.
@@ -28,16 +30,73 @@ function pollRecipeImports() {
     throw new Error('Set RECIPE_IMPORT_API_URL and RECIPE_IMPORT_SECRET in Script Properties.');
   }
 
-  const threads = GmailApp.search(`label:${IMPORT_LABEL} is:unread`, 0, 20);
+  // 50 threads per poll so a burst of imports cannot be blocked by
+  // a queue of unread messages.
+  const threads = GmailApp.search(`label:${IMPORT_LABEL} is:unread`, 0, 50);
   for (const thread of threads) {
     for (const message of thread.getMessages()) {
       if (!message.isUnread()) continue;
       try {
         importMessage(message, apiUrl, secret);
       } catch (error) {
-        console.error(`Import failed for message ${message.getId()}: ${error.message}`);
+        handleImportError(thread, message, error);
       }
     }
+  }
+}
+
+/**
+ * Called when importMessage throws. Transient failures (HTTP 429 / 5xx)
+ * stay unread so the next poll retries them, but at most
+ * MAX_IMPORT_ATTEMPTS times. Everything else is marked failed once and
+ * never processed again.
+ */
+function handleImportError(thread, message, error) {
+  const msg = String(error && error.message || error || '');
+  console.error(`Import failed for message ${message.getId()}: ${msg}`);
+
+  if (isTransientFailure(msg)) {
+    const properties = PropertiesService.getScriptProperties();
+    const key = `import_attempts:${message.getId()}`;
+    const attempts = Number(properties.getProperty(key) || 0) + 1;
+    if (attempts <= MAX_IMPORT_ATTEMPTS) {
+      properties.setProperty(key, String(attempts));
+      console.warn(`Transient failure (${msg}); attempt ${attempts} of ${MAX_IMPORT_ATTEMPTS}, will retry`);
+      return;
+    }
+    properties.deleteProperty(key);
+    markFailed(thread, message, `repeated server errors (${msg})`);
+    return;
+  }
+
+  markFailed(thread, message, msg);
+}
+
+// True for failures that are worth retrying: rate limits and server errors.
+function isTransientFailure(message) {
+  return /\b(429|5[0-9]{2})\b/.test(message);
+}
+
+/**
+ * Flags a thread as failed, stops further processing (marks read,
+ * moves it off the import label) and tells the sender why, once.
+ */
+function markFailed(thread, message, reason) {
+  const failedLabel = GmailApp.getUserLabelByName(FAILED_LABEL) || GmailApp.createLabel(FAILED_LABEL);
+  failedLabel.addToThread(thread);
+  const importLabel = GmailApp.getUserLabelByName(IMPORT_LABEL);
+  if (importLabel) importLabel.removeFromThread(thread);
+  message.markRead();
+
+  const sender = message.getReplyTo() || message.getFrom();
+  const recipientMatch = String(sender).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if (recipientMatch) {
+    GmailApp.sendEmail(
+      recipientMatch[0],
+      'Recipe Chest: could not import this email',
+      `Could not import this email: ${reason}\n\n` +
+      'Check that it contains a recipe (as text, a PDF or a photo) and try sending it again.'
+    );
   }
 }
 
@@ -58,8 +117,10 @@ function importMessage(message, apiUrl, secret) {
   const budget = { used: 0, skipped: [] };
   const pdfs = extractPdfAttachments(message, budget);
 
-  // Nothing to do if the email has neither body text nor PDFs
+  // Nothing to do if the email has neither body text nor PDFs:
+  // flag it as failed so it is not retried every 5 minutes forever.
   if (!bodyText.trim() && pdfs.length === 0) {
+    markFailed(message.getThread(), message, 'no recipe text or attachments found');
     return;
   }
 
