@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Offline — The Recipe Box</title>
-<meta name="theme-color" content="#1f2b22">
+<title>Offline — Recipe Chest</title>
+<meta name="theme-color" content="#c7541a">
 <style>
   body {
     margin: 0;
-    background: #1f2b22;
-    color: #f2ebda;
-    font-family: system-ui, -apple-system, sans-serif;
+    background: #faf6f0;
+    color: #2a1a0f;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -19,16 +19,16 @@
     padding: 2rem;
   }
   .box { max-width: 420px; }
+  .icon { font-size: 3rem; margin-bottom: 0.75rem; }
   h1 {
     font-family: Georgia, serif;
-    font-style: italic;
     font-weight: 600;
     font-size: 1.6rem;
     margin: 0 0 0.5rem;
-    color: #f2ebda;
+    color: #5a3a22;
   }
   p {
-    color: #c9c3ae;
+    color: #6b5d4d;
     font-size: 0.95rem;
     line-height: 1.5;
     margin: 0 0 1.25rem;
@@ -36,20 +36,22 @@
   button {
     font: inherit;
     font-size: 0.9rem;
-    background: #a63d2f;
-    color: #f2ebda;
+    font-weight: 600;
+    background: #c7541a;
+    color: #fff;
     border: none;
-    padding: 0.7rem 1.1rem;
-    border-radius: 3px;
+    padding: 0.7rem 1.5rem;
+    border-radius: 24px;
     cursor: pointer;
   }
-  button:hover { background: #7d2c22; }
+  button:hover { background: #a34413; }
 </style>
 </head>
 <body>
   <div class="box">
-    <h1>The box is offline</h1>
-    <p>Your saved recipes are still here. Reconnect to generate new ones.</p>
+    <div class="icon">📖</div>
+    <h1>Recipe Chest is offline</h1>
+    <p>You're offline. Reconnect to see your recipes.</p>
     <button onclick="location.reload()">Try again</button>
   </div>
 </body>

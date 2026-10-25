@@ -53,6 +53,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .card-desc{font-size:.78rem;color:var(--dim);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .card-meta{font-size:.7rem;color:var(--dim);margin-top:auto;padding-top:8px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 .empty{text-align:center;padding:80px 20px;color:var(--dim)}
+.offline-banner{background:#fff9ee;border:1px solid #e8b96c;border-left:4px solid #e8b96c;padding:10px 16px;border-radius:10px;font-size:.85rem;color:var(--brown);margin-bottom:16px}
+body.offline .add-btn,body.offline .import-btn,body.offline .action-btn,body.offline .delete-btn,body.offline .fav-btn,body.offline .tag-add-btn,body.offline .tag-x,body.offline .servings-select,body.offline #tag-row{display:none !important}
 .empty .icon{font-size:4rem;margin-bottom:16px;opacity:.4}
 .empty h2{font-family:Georgia,serif;color:var(--brown);font-size:1.4rem;margin-bottom:8px;font-weight:normal}
 .empty p{font-size:.9rem;margin-bottom:20px}
@@ -309,6 +311,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 </header>
 
 <main class="main">
+  <div id="offline-banner" class="offline-banner" style="display:none">⚡ You're offline — showing saved recipes. Some actions are unavailable until you reconnect.</div>
   <div class="stats" id="stats"></div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" style="display:none">
@@ -548,6 +551,7 @@ let cancelRequested = false;
 let shoppingList = { items: [] };
 let mealPlan = {};
 let currentScaling = null;
+let offlineMode = false; // true when showing cached recipes (read-only)
 
 function getDeviceId() {
   let id = localStorage.getItem(DEVICE_KEY);
@@ -914,8 +918,23 @@ async function loadRecipes() {
     const res = await apiFetch(`${API}/recipes`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error('Failed to load');
     recipes = await res.json();
+    offlineMode = false;
+    try { localStorage.setItem('rc_recipes_cache', JSON.stringify(recipes)); } catch (e) { /* storage full */ }
     renderGrid();
   } catch (e) {
+    // Network failure (not a 401): fall back to the last saved recipes
+    // and show them read-only, so offline still works.
+    if (e.message !== 'Session expired') {
+      try {
+        const cached = JSON.parse(localStorage.getItem('rc_recipes_cache') || '[]');
+        if (Array.isArray(cached) && cached.length) {
+          recipes = cached;
+          offlineMode = true;
+          renderGrid();
+          return;
+        }
+      } catch (e2) { /* corrupt cache */ }
+    }
     console.error(e);
     document.getElementById('grid').innerHTML = '';
     document.getElementById('empty').style.display = 'block';
@@ -962,6 +981,9 @@ function renderGrid() {
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
   const stats = document.getElementById('stats');
+  const banner = document.getElementById('offline-banner');
+  if (banner) banner.style.display = offlineMode ? 'block' : 'none';
+  document.body.classList.toggle('offline', offlineMode);
   const allTags = new Map();
   recipes.forEach(r => (r.tags || []).forEach(t => allTags.set(t, (allTags.get(t) || 0) + 1)));
   let filtered = recipes;
@@ -1743,9 +1765,41 @@ document.addEventListener('keydown', e => {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('SW registered:', reg.scope))
+      .then(reg => {
+        console.log('SW registered:', reg.scope);
+        // When a new service worker is ready, offer a reload.
+        reg.addEventListener('updatefound', () => {
+          const installing = reg.installing;
+          if (!installing) return;
+          installing.addEventListener('statechange', () => {
+            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+              showUpdateToast();
+            }
+          });
+        });
+        if (reg.waiting && navigator.serviceWorker.controller) showUpdateToast();
+      })
       .catch(err => console.error('SW registration failed:', err));
   });
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    window.location.reload();
+  });
+}
+function showUpdateToast() {
+  const t = document.getElementById('toast');
+  t.textContent = 'Update available — tap to reload';
+  t.classList.add('on');
+  t.style.pointerEvents = 'auto';
+  t.style.cursor = 'pointer';
+  t.onclick = () => {
+    navigator.serviceWorker.getRegistration().then(reg => {
+      if (reg && reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      else window.location.reload();
+    });
+  };
 }
 </script>
 </body>
