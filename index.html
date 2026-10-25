@@ -489,6 +489,28 @@ function cardPhotoSrc(r) {
   if (r.userPhoto) return `/api/photo?id=${encodeURIComponent(r.id)}&size=thumb&v=${r.userPhoto.updatedAt}`;
   return (r.image && (r.image.thumb || r.image.url)) || '';
 }
+// One place for the hero photo markup: the user's own photo (with its
+// credit), then the Unsplash photo (with attribution), then the emoji.
+function heroPhotoHtml(r, ms) {
+  if (r.userPhoto) {
+    return `<img class="hero-img" src="/api/photo?id=${encodeURIComponent(r.id)}&amp;v=${r.userPhoto.updatedAt}" alt="${escapeHtml(r.title)}" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` +
+      (r.userPhoto.credit ? `<div class="img-credit">${escapeHtml(r.userPhoto.credit)}</div>` : '');
+  }
+  if (r.image && r.image.url) {
+    return `<img class="hero-img" src="${escapeHtml(r.image.url)}" alt="${escapeHtml(r.image.alt || r.title)}" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` +
+      `<div class="img-credit">Photo by ${r.image.photographerUrl ? `<a href="${escapeHtml(r.image.photographerUrl)}" target="_blank" rel="noopener">${escapeHtml(r.image.photographer || 'Unknown')}</a>` : escapeHtml(r.image.photographer || 'Unknown')} on <a href="https://unsplash.com/?utm_source=recipe_chest&amp;utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></div>`;
+  }
+  return `<span>${ms.emoji}</span>`;
+}
+// Scales the leading amount of one ingredient line (shared by the detail
+// view and cook mode). Returns the full line text, HTML-escaped.
+function scaleIngredientLine(ing, factor) {
+  if (factor === 1) return escapeHtml(ing);
+  const m = String(ing).match(/^([\d\/\.\s]+)\s+(.*)$/);
+  if (!m) return escapeHtml(ing);
+  const scaled = scaleAmount(m[1].trim(), factor);
+  return `${escapeHtml(scaled)} ${escapeHtml(m[2])}`;
+}
 
 let recipes = [];
 let currentFilter = 'all';
@@ -957,15 +979,9 @@ function openDetail(id) {
     }
   }
   const scaleFactor = (currentScaling && currentScaling.recipeId === r.id) ? currentScaling.factor : 1;
-  const ingredientsHtml = (r.ingredients || []).map(ing => {
-    if (scaleFactor === 1) return `<li>${escapeHtml(ing)}</li>`;
-    const m = String(ing).match(/^([\d\/\.\s]+)\s+(.*)$/);
-    if (!m) return `<li>${escapeHtml(ing)}</li>`;
-    const scaled = scaleAmount(m[1].trim(), scaleFactor);
-    return `<li>${escapeHtml(scaled)} ${escapeHtml(m[2])}</li>`;
-  }).join('');
+  const ingredientsHtml = (r.ingredients || []).map(ing => `<li>${scaleIngredientLine(ing, scaleFactor)}</li>`).join('');
   const html = `
-    <div class="recipe-hero" style="background:${ms.bg}">${r.userPhoto ? `<img class="hero-img" src="/api/photo?id=${encodeURIComponent(r.id)}&amp;v=${r.userPhoto.updatedAt}" alt="${escapeHtml(r.title)}" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` + (r.userPhoto && r.userPhoto.credit ? `<div class="img-credit">${escapeHtml(r.userPhoto.credit)}</div>` : '') : r.image && r.image.url ? `<img class="hero-img" src="${escapeHtml(r.image.url)}" alt="${escapeHtml(r.image.alt || r.title)}" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` + `<div class="img-credit">Photo by ${r.image.photographerUrl ? `<a href="${escapeHtml(r.image.photographerUrl)}" target="_blank" rel="noopener">${escapeHtml(r.image.photographer || 'Unknown')}</a>` : escapeHtml(r.image.photographer || 'Unknown')} on <a href="https://unsplash.com/?utm_source=recipe_chest&amp;utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></div>` : `<span>${ms.emoji}</span>`}</div>    <div class="recipe-content">
+    <div class="recipe-hero" style="background:${ms.bg}">${heroPhotoHtml(r, ms)}</div>    <div class="recipe-content">
       <h1 class="recipe-title">${escapeHtml(r.title)}</h1>
       ${r.description ? `<p class="recipe-desc">${escapeHtml(r.description)}</p>` : ''}
       <div class="recipe-meta">
@@ -1255,13 +1271,7 @@ async function openCookMode(id) {
   const ms = mealStyle(r.mealType);
   const scaleFactor = (currentScaling && currentScaling.recipeId === r.id) ? currentScaling.factor : 1;
 
-  const ingredientsHtml = (r.ingredients || []).map(ing => {
-    if (scaleFactor === 1) return `<li>${escapeHtml(ing)}</li>`;
-    const m = String(ing).match(/^([\d\/\.\s]+)\s+(.*)$/);
-    if (!m) return `<li>${escapeHtml(ing)}</li>`;
-    const scaled = scaleAmount(m[1].trim(), scaleFactor);
-    return `<li>${escapeHtml(scaled)} ${escapeHtml(m[2])}</li>`;
-  }).join('');
+  const ingredientsHtml = (r.ingredients || []).map(ing => `<li>${scaleIngredientLine(ing, scaleFactor)}</li>`).join('');
 
   const stepsHtml = (r.instructions || []).map(s => `<li>${escapeHtml(s)}</li>`).join('');
 
@@ -1272,7 +1282,7 @@ async function openCookMode(id) {
 
   const html = `
     <button class="cook-close" onclick="closeCookMode()" title="Close">✕</button>
-    <div class="cook-hero" style="background:${ms.bg}"><span>${ms.emoji}</span></div>
+    <div class="cook-hero" style="background:${ms.bg}">${heroPhotoHtml(r, ms)}</div>
     <h1 class="cook-title">${escapeHtml(r.title)}</h1>
     ${r.description ? `<p class="recipe-desc" style="font-size:1.05rem">${escapeHtml(r.description)}</p>` : ''}
     <div class="cook-meta">
