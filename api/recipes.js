@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, findDuplicate } from '../lib/recipes.js';
+import { sendServerError } from '../lib/http.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -53,7 +54,7 @@ export default async function handler(req, res) {
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       return res.status(200).json(valid);
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return sendServerError(res, e);
     }
   }
 
@@ -100,7 +101,7 @@ export default async function handler(req, res) {
       }
       return res.status(200).json(recipe);
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return sendServerError(res, e);
     }
   }
 
@@ -119,7 +120,7 @@ export default async function handler(req, res) {
       await kv.set(`recipe:${id}`, updated);
       return res.status(200).json(updated);
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return sendServerError(res, e);
     }
   }
 
@@ -133,7 +134,7 @@ export default async function handler(req, res) {
       await kv.lrem('recipe_ids', 0, id);
       return res.status(200).json({ success: true });
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return sendServerError(res, e);
     }
   }
 

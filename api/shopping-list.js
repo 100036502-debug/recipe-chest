@@ -1,5 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
+import { sendServerError } from '../lib/http.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -34,7 +35,7 @@ export default async function handler(req, res) {
       const list = await kv.get(key);
       return res.status(200).json(list || { items: [], updatedAt: null });
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return sendServerError(res, e);
     }
   }
 
@@ -59,7 +60,7 @@ export default async function handler(req, res) {
       await kv.set(key, payload);
       return res.status(200).json(payload);
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return sendServerError(res, e);
     }
   }
 
@@ -69,7 +70,7 @@ export default async function handler(req, res) {
       await kv.del(key);
       return res.status(200).json({ success: true });
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return sendServerError(res, e);
     }
   }
 

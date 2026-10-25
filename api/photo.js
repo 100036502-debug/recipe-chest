@@ -4,6 +4,7 @@ import { Redis } from '@upstash/redis';
 import sharp from 'sharp';
 import { requireAuth } from '../lib/auth.js';
 import { ID_PATTERN } from '../lib/recipes.js';
+import { sendServerError } from '../lib/http.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -51,7 +52,7 @@ export default async function handler(req, res) {
       return res.status(200).send(buf);
     } catch (e) {
       res.setHeader('Cache-Control', 'no-store');
-      return res.status(500).json({ error: e.message });
+      return sendServerError(res, e);
     }
   }
 
@@ -101,8 +102,13 @@ export default async function handler(req, res) {
       await kv.set(`recipe:${id}`, updated);
       return res.status(200).json(updated);
     } catch (e) {
-      console.error('Photo upload failed:', e);
-      return res.status(400).json({ error: 'Could not process that image: ' + e.message });
+      // sharp throws for invalid/corrupt images; those are user errors (400).
+      // Anything else (Redis, network) is our failure (500).
+      if (e && (e.message || '').toLowerCase().includes('input buffer is empty') ||
+          e instanceof Error && /sharp|decode|unsupported image|vips/i.test(e.message || '')) {
+        return res.status(400).json({ error: 'Could not process that image. Is it a valid photo?' });
+      }
+      return sendServerError(res, e, 'Could not save that photo. Try again.');
     }
   }
 
@@ -120,7 +126,7 @@ export default async function handler(req, res) {
       await kv.set(`recipe:${id}`, rest);
       return res.status(200).json(rest);
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return sendServerError(res, e);
     }
   }
 

@@ -5,6 +5,7 @@ import { findDishImage } from '../lib/image.js';
 import { safeFetchText } from '../lib/safe-fetch.js';
 import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
+import { sendServerError } from '../lib/http.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -94,7 +95,8 @@ ${pageText}`;
         maxTokens: 1500,
       });
     } catch (e) {
-      return res.status(500).json({ error: 'AI error', details: e.message.substring(0, 400) });
+      console.error('AI error during URL import:', e.message);
+      return res.status(500).json({ error: 'The recipe could not be read. Try again later.' });
     }
 
     const recipe = tryParseJson(content);
@@ -140,6 +142,6 @@ ${pageText}`;
     await kv.lpush('recipe_ids', id);
     return res.status(200).json(finalRecipe);
   } catch (error) {
-    return res.status(500).json({ error: 'Failed: ' + error.message });
+    return sendServerError(res, error, 'Failed to import that page.');
   }
 }
