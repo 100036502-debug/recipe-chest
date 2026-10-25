@@ -1,7 +1,7 @@
 // api/verify-code.js
 import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
-import { makeToken, parseCookies } from '../lib/auth.js';
+import { makeSessionValue, hasValidSession } from '../lib/auth.js';
 
 const ACCESS_CODE = process.env.ACCESS_CODE;
 const SESSION_SECRET = process.env.SESSION_SECRET;
@@ -31,16 +31,9 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Server configuration error' });
   }
 
-  const expectedToken = makeToken(ACCESS_CODE);
-
   // GET: check if the caller already has a valid session cookie
   if (req.method === 'GET') {
-    const cookies = parseCookies(req.headers.cookie || '');
-    const token = cookies['rc_session'] || '';
-    const a = Buffer.from(token);
-    const b = Buffer.from(expectedToken);
-    const unlocked = a.length === b.length && crypto.timingSafeEqual(a, b);
-    return res.status(200).json({ unlocked });
+    return res.status(200).json({ unlocked: hasValidSession(req) });
   }
 
   // POST: verify a submitted code
@@ -79,7 +72,7 @@ export default async function handler(req, res) {
     // Set an HttpOnly cookie so the browser doesn't send the code again
     const isHttps = (req.headers['x-forwarded-proto'] || '').includes('https');
     const cookie = [
-      `rc_session=${expectedToken}`,
+      `rc_session=${makeSessionValue(ACCESS_CODE)}`,
       'Path=/',
       'HttpOnly',
       'SameSite=Lax',
@@ -89,6 +82,21 @@ export default async function handler(req, res) {
 
     res.setHeader('Set-Cookie', cookie);
     return res.status(200).json({ unlocked: true });
+  }
+
+  // DELETE: log out — clear the session cookie
+  if (req.method === 'DELETE') {
+    const isHttps = (req.headers['x-forwarded-proto'] || '').includes('https');
+    const cookie = [
+      'rc_session=',
+      'Path=/',
+      'HttpOnly',
+      'SameSite=Lax',
+      isHttps ? 'Secure' : '',
+      'Max-Age=0',
+    ].filter(Boolean).join('; ');
+    res.setHeader('Set-Cookie', cookie);
+    return res.status(200).json({ unlocked: false });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

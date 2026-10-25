@@ -23,6 +23,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .search-wrap input:focus{border-color:var(--primary)}
 .search-wrap::before{content:'🔍';position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:.9rem;opacity:.5}
 .header .user-tag{background:var(--bg);border:1px solid var(--border);padding:6px 12px;border-radius:14px;font-size:.75rem;color:var(--dim);cursor:pointer;white-space:nowrap}
+.header .lock-btn{background:var(--bg);border:1px solid var(--border);color:var(--dim);width:34px;height:34px;border-radius:50%;font-size:.9rem;cursor:pointer;transition:.15s;flex-shrink:0}
+.header .lock-btn:hover{border-color:var(--primary);color:var(--primary)}
 .header .user-tag:hover{border-color:var(--primary);color:var(--primary)}
 .header-btns{display:flex;gap:8px;flex-wrap:wrap}
 .add-btn,.import-btn,.list-btn,.plan-btn{color:#fff;border:none;padding:10px 20px;border-radius:24px;font-family:inherit;font-size:.9rem;font-weight:600;cursor:pointer;transition:.2s;white-space:nowrap;display:flex;align-items:center;gap:6px}
@@ -292,6 +294,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
     <button class="add-btn" onclick="openUpload()">＋ Add Photos</button>
   </div>
   <span class="user-tag" id="user-tag" title="Click to change your name">👤 Anonymous</span>
+  <button class="lock-btn" onclick="lockApp()" title="Lock Recipe Chest">🔒</button>
 </header>
 
 <main class="main">
@@ -496,6 +499,10 @@ function toast(msg) {
   t.classList.add('on');
   clearTimeout(t._timeout);
   t._timeout = setTimeout(() => t.classList.remove('on'), 2800);
+}
+async function lockApp() {
+  try { await apiFetch(`${API}/verify-code`, { method: 'DELETE' }); } catch (e) { /* already locked */ }
+  showLockScreen('Locked. Enter the access code.');
 }
 function getUser() { return localStorage.getItem('rc_user') || 'Anonymous'; }
 function setUser(name) {
