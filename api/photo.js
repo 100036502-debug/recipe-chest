@@ -94,7 +94,10 @@ export default async function handler(req, res) {
         await kv.del(`photo:${id}`, `photothumb:${id}`);
         return res.status(404).json({ error: 'Recipe was deleted' });
       }
-      const updated = { ...fresh, userPhoto: { updatedAt: Date.now() } };
+      const credit = typeof body.credit === 'string' ? body.credit.trim().slice(0, 100) : '';
+      const userPhoto = { updatedAt: Date.now() };
+      if (credit) userPhoto.credit = credit;
+      const updated = { ...fresh, userPhoto };
       await kv.set(`recipe:${id}`, updated);
       return res.status(200).json(updated);
     } catch (e) {
