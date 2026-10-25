@@ -611,6 +611,14 @@ async function tryUnlock() {
         else { err.textContent = (data && data.error) || 'Incorrect access code.'; document.getElementById('lock-input').value = ''; }
   } catch (e) { err.textContent = 'Could not verify. Try again.'; }
 }
+// PWA shortcuts: /?action=add opens the upload dialog, ?action=import the URL import
+function handleAppShortcut() {
+  const action = new URLSearchParams(location.search).get('action');
+  if (!action) return;
+  history.replaceState({}, '', '/');
+  if (action === 'add' && document.getElementById('app-content').style.display !== 'none') openUpload();
+  else if (action === 'import' && document.getElementById('app-content').style.display !== 'none') openImport();
+}
 function unlockApp() {
   // Close whatever overlay was open when the session expired so the
   // app comes back clean.
@@ -624,6 +632,7 @@ function unlockApp() {
   setUser(getUser());
   getDeviceId();
   loadRecipes();
+  handleAppShortcut();
 }
 document.getElementById('lock-input').addEventListener('keypress', e => { if (e.key === 'Enter') tryUnlock(); });
 (async function checkSession() {
