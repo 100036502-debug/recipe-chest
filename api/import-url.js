@@ -4,6 +4,7 @@ import { groqChat } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { safeFetchText } from '../lib/safe-fetch.js';
 import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
+import { tryParseJson } from '../lib/parse.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -11,38 +12,6 @@ const kv = new Redis({
 });
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
-
-function extractBraced(text) {
-  const start = text.indexOf('{');
-  if (start === -1) return null;
-  let depth = 0, inString = false, escape = false, end = -1;
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (escape) { escape = false; continue; }
-    if (ch === '\\') { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === '{') depth++;
-    else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
-  }
-  return end === -1 ? null : text.substring(start, end + 1);
-}
-
-function tryParseJson(raw) {
-  if (!raw) return null;
-  let t = String(raw)
-    .replace(/<think[\s\S]*?<\/think>/gi, '')
-    .replace(/<\/?think>/gi, '')
-    .replace(/```json\s*/gi, '').replace(/```/g, '')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim();
-  try { return JSON.parse(t); } catch {}
-  const braced = extractBraced(t);
-  if (braced) {
-    try { return JSON.parse(braced); } catch {}
-    try { return JSON.parse(braced.replace(/,(\s*[}\]])/g, '$1').replace(/[\u201C\u201D]/g, '"')); } catch {}
-  }
-  return null;
-}
 
 function stripHtml(html) {
   return html

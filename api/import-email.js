@@ -4,6 +4,7 @@ import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { groqChat } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
+import { tryParseJson } from '../lib/parse.js';
 
 const MAX_EMAIL_TEXT_CHARACTERS = 6000;
 const MAX_PDF_TEXT_CHARACTERS = 18000;
@@ -259,7 +260,9 @@ async function callGroq(contentPayload) {
     maxTokens: 2000,
     json: true,
   });
-  return JSON.parse(rawContent || '{}');
+  // Tolerant parse so a stray code fence or thinking block cannot
+  // fail the whole import (shared helper from lib/parse.js).
+  return tryParseJson(rawContent) || {};
 }
 
 /**
