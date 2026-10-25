@@ -448,8 +448,9 @@ const overlayFocusStack = [];
 let overlayHistoryNav = false;
 
 function overlayOpened(id) {
-  const el = document.getElementById(id);
-  if (el && el.classList.contains('on')) return; // already open (re-render)
+  // Re-renders of an already-open overlay (openDetail after save) must not
+  // push a second history entry; the stack tells us if it is really new.
+  if (openOverlayStack.includes(id)) return;
   openOverlayStack.push(id);
   try { history.pushState({ overlay: id }, ''); } catch (e) { /* no History API */ }
   // Accessibility: move focus into the dialog, remember where to return.
