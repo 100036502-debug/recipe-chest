@@ -148,11 +148,14 @@ function importMessage(message, apiUrl, secret) {
   }
 
   const result = JSON.parse(responseText);
-  if (!result.success || !result.recipe) {
-    throw new Error('Recipe API response did not include a saved recipe.');
+  const saved = (result.recipes && result.recipes.length)
+    ? result.recipes
+    : (result.recipe ? [result.recipe] : []);
+  if (!result.success || saved.length === 0) {
+    throw new Error('Recipe API response did not include any saved recipes.');
   }
 
-  sendConfirmation(recipientMatch[0], result.recipe, budget.skipped);
+  sendConfirmation(recipientMatch[0], saved, budget.skipped);
   message.markRead();
 }
 
@@ -208,20 +211,34 @@ function extractPdfAttachments(message, budget) {
 }
 
 /**
- * Replies to the original sender with a short summary of what was saved.
+ * Replies to the original sender with one summary covering every recipe
+ * in the import: newly added ones get the full listing, duplicates just
+ * a one-line note. Skipped oversized attachments are mentioned at the end.
  */
-function sendConfirmation(email, recipe, skippedFiles) {
-  const lines = [
-    `Added to Recipe Chest: ${recipe.title}`,
-    '',
-    recipe.description || '',
-    '',
-    'Ingredients',
-    ...(recipe.ingredients || []).map((item) => `- ${item}`),
-    '',
-    'Instructions',
-    ...(recipe.instructions || []).map((step, index) => `${index + 1}. ${step}`),
-  ];
+function sendConfirmation(email, recipes, skippedFiles) {
+  const entries = Array.isArray(recipes) ? recipes : [recipes];
+
+  const lines = [];
+  entries.forEach((entry, index) => {
+    const recipe = entry.recipe || entry;
+    if (index > 0) lines.push('', '----------', '');
+
+    if (entry.duplicate) {
+      lines.push(`Already in your Recipe Chest: ${recipe.title}`);
+      return;
+    }
+
+    lines.push(`Added to Recipe Chest: ${recipe.title}`);
+    if (recipe.description) lines.push('', recipe.description);
+    if (recipe.ingredients && recipe.ingredients.length) {
+      lines.push('', 'Ingredients');
+      for (const item of recipe.ingredients) lines.push(`- ${item}`);
+    }
+    if (recipe.instructions && recipe.instructions.length) {
+      lines.push('', 'Instructions');
+      recipe.instructions.forEach((step, i) => lines.push(`${i + 1}. ${step}`));
+    }
+  });
 
   if (skippedFiles && skippedFiles.length > 0) {
     lines.push('');
@@ -233,9 +250,11 @@ function sendConfirmation(email, recipe, skippedFiles) {
     }
   }
 
-  GmailApp.sendEmail(
-    email,
-    `Added to Recipe Chest: ${recipe.title}`,
-    lines.join('\n')
-  );
+  const subject = entries.length === 1
+    ? (entries[0].duplicate
+        ? `Already in your Recipe Chest: ${(entries[0].recipe || entries[0]).title}`
+        : `Added to Recipe Chest: ${(entries[0].recipe || entries[0]).title}`)
+    : `Recipe Chest: ${entries.length} recipes from your email`;
+
+  GmailApp.sendEmail(email, subject, lines.join('\n'));
 }
