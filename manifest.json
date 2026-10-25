@@ -1,6 +1,7 @@
 {
   "name": "Recipe Chest",
   "short_name": "Recipe Chest",
+  "id": "/",
   "description": "Upload photos or URLs of recipes, and the AI files them in your chest.",
   "start_url": "/",
   "scope": "/",
@@ -8,7 +9,10 @@
   "orientation": "portrait-primary",
   "background_color": "#faf6f0",
   "theme_color": "#c7541a",
-  "categories": ["food", "lifestyle"],
+  "categories": [
+    "food",
+    "lifestyle"
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -17,10 +21,34 @@
       "purpose": "any"
     },
     {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add photos or PDFs",
+      "url": "/?action=add",
+      "description": "Upload recipe photos or PDFs"
+    },
+    {
+      "name": "Import URL",
+      "url": "/?action=import",
+      "description": "Import a recipe from a website"
     }
   ]
 }
