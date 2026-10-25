@@ -25,6 +25,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .header .user-tag{background:var(--bg);border:1px solid var(--border);padding:6px 12px;border-radius:14px;font-size:.75rem;color:var(--dim);cursor:pointer;white-space:nowrap}
 .header .lock-btn{background:var(--bg);border:1px solid var(--border);color:var(--dim);width:34px;height:34px;border-radius:50%;font-size:.9rem;cursor:pointer;transition:.15s;flex-shrink:0}
 .header .lock-btn:hover{border-color:var(--primary);color:var(--primary)}
+.menu-wrap{position:relative}
+.menu{position:absolute;top:calc(100% + 6px);right:0;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-h);display:none;flex-direction:column;min-width:230px;z-index:60;overflow:hidden;padding:4px 0}
+.menu.on{display:flex}
+.menu-item{background:none;border:none;padding:10px 16px;text-align:left;font-family:inherit;font-size:.85rem;color:var(--brown);cursor:pointer;white-space:nowrap}
+.menu-item:hover{background:var(--bg);color:var(--primary)}
 .header .user-tag:hover{border-color:var(--primary);color:var(--primary)}
 .header-btns{display:flex;gap:8px;flex-wrap:wrap}
 .add-btn,.import-btn,.list-btn,.plan-btn{color:#fff;border:none;padding:10px 20px;border-radius:24px;font-family:inherit;font-size:.9rem;font-weight:600;cursor:pointer;transition:.2s;white-space:nowrap;display:flex;align-items:center;gap:6px}
@@ -311,6 +316,13 @@ body.offline .add-btn,body.offline .import-btn,body.offline .action-btn,body.off
     <button class="add-btn" onclick="openUpload()">＋ Add Photos</button>
   </div>
   <span class="user-tag" id="user-tag" title="Click to change your name">👤 Anonymous</span>
+  <div class="menu-wrap">
+    <button class="lock-btn" id="menu-btn" onclick="toggleAppMenu()" aria-label="More options" aria-haspopup="true" title="More options">⋯</button>
+    <div class="menu" id="app-menu" role="menu">
+      <button class="menu-item" role="menuitem" onclick="exportBackup(false)">⬇️ Export backup</button>
+      <button class="menu-item" role="menuitem" onclick="exportBackup(true)">⬇️ Export with photos</button>
+    </div>
+  </div>
   <button class="lock-btn" onclick="lockApp()" title="Lock Recipe Chest">🔒</button>
 </header>
 
@@ -629,6 +641,34 @@ function toast(msg) {
   t.classList.add('on');
   clearTimeout(t._timeout);
   t._timeout = setTimeout(() => t.classList.remove('on'), 2800);
+}
+function toggleAppMenu() {
+  document.getElementById('app-menu').classList.toggle('on');
+}
+function closeAppMenu() {
+  document.getElementById('app-menu').classList.remove('on');
+}
+document.addEventListener('click', e => {
+  const menu = document.getElementById('app-menu');
+  if (menu && menu.classList.contains('on') && !e.target.closest('.menu-wrap')) closeAppMenu();
+});
+async function exportBackup(withPhotos) {
+  closeAppMenu();
+  try {
+    const res = await apiFetch(`${API}/export${withPhotos ? '?photos=1' : ''}`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('Export failed');
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `recipe-chest-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast('Backup downloaded');
+  } catch (e) {
+    toast('Could not export: ' + e.message);
+  }
 }
 async function lockApp() {
   try { await apiFetch(`${API}/verify-code`, { method: 'DELETE' }); } catch (e) { /* already locked */ }
