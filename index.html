@@ -531,9 +531,17 @@ function heroPhotoHtml(r, ms) {
 }
 // Scales the leading amount of one ingredient line (shared by the detail
 // view and cook mode). Returns the full line text, HTML-escaped.
+// Fraction characters (½ ¼ ¾ ⅓ ⅔ ⅛) are converted to decimals first so
+// "1½ cups" and "½ tsp" scale too; scaleAmount writes the result via
+// formatAmount() (nicest fraction form).
+const FRACTION_CHARS = { '½': 1/2, '¼': 1/4, '¾': 3/4, '⅓': 1/3, '⅔': 2/3, '⅛': 1/8 };
 function scaleIngredientLine(ing, factor) {
   if (factor === 1) return escapeHtml(ing);
-  const m = String(ing).match(/^([\d\/\.\s]+)\s+(.*)$/);
+  const s = String(ing).replace(/(\d*)([½¼¾⅓⅔⅛])/g, (_, whole, frac) => {
+    const value = (whole ? parseInt(whole, 10) : 0) + FRACTION_CHARS[frac];
+    return String(value);
+  });
+  const m = s.match(/^([\d\/\.\s]+)\s+(.*)$/);
   if (!m) return escapeHtml(ing);
   const scaled = scaleAmount(m[1].trim(), factor);
   return `${escapeHtml(scaled)} ${escapeHtml(m[2])}`;
