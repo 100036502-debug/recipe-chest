@@ -1,5 +1,8 @@
 const IMPORT_LABEL = 'recipe-import';
 const MAX_PDFS_PER_MESSAGE = 3;
+// Raw bytes, before base64 encoding (which adds ~33%). Vercel rejects
+// request bodies over about 4.5 MB, so keep the total well under that.
+const MAX_ATTACHMENT_BYTES_TOTAL = 3 * 1024 * 1024;
 
 /**
  * Run this once from the Apps Script editor to install a trigger
@@ -49,7 +52,11 @@ function importMessage(message, apiUrl, secret) {
   }
 
   const bodyText = message.getPlainBody() || '';
-  const pdfs = extractPdfAttachments(message);
+
+  // One shared size budget per email so the attachments in one message
+  // can never exceed what the serverless function will accept.
+  const budget = { used: 0, skipped: [] };
+  const pdfs = extractPdfAttachments(message, budget);
 
   // Nothing to do if the email has neither body text nor PDFs
   if (!bodyText.trim() && pdfs.length === 0) {
@@ -84,7 +91,7 @@ function importMessage(message, apiUrl, secret) {
     throw new Error('Recipe API response did not include a saved recipe.');
   }
 
-  sendConfirmation(recipientMatch[0], result.recipe);
+  sendConfirmation(recipientMatch[0], result.recipe, budget.skipped);
   message.markRead();
 }
 
@@ -96,9 +103,10 @@ function importMessage(message, apiUrl, secret) {
  *   - attachment.type    (MIME type)
  *   - attachment.content (base64 string)
  */
-function extractPdfAttachments(message) {
+function extractPdfAttachments(message, budget) {
   const attachments = message.getAttachments() || [];
   const pdfs = [];
+  if (!budget) budget = { used: 0, skipped: [] };
 
   for (const att of attachments) {
     if (pdfs.length >= MAX_PDFS_PER_MESSAGE) break;
@@ -115,12 +123,15 @@ function extractPdfAttachments(message) {
     try {
       const bytes = att.getBytes();
 
-      // Gmail caps total message size around 25 MB.
-      // Base64 inflates by ~33%, and UrlFetchApp caps at ~50 MB payload.
-      if (bytes.length > 15 * 1024 * 1024) {
-        console.warn(`Skipping oversized PDF ${name}: ${Math.round(bytes.length / 1024 / 1024)} MB`);
+      // Count against the shared per-message budget so the JSON body
+      // (base64) stays under the serverless function's request cap.
+      if (budget.used + bytes.length > MAX_ATTACHMENT_BYTES_TOTAL) {
+        const label = name || 'a PDF';
+        budget.skipped.push(label);
+        console.warn(`Skipping PDF ${name}: would exceed the ${MAX_ATTACHMENT_BYTES_TOTAL / 1024 / 1024} MB attachment budget`);
         continue;
       }
+      budget.used += bytes.length;
 
       pdfs.push({
         filename: name,
@@ -138,7 +149,7 @@ function extractPdfAttachments(message) {
 /**
  * Replies to the original sender with a short summary of what was saved.
  */
-function sendConfirmation(email, recipe) {
+function sendConfirmation(email, recipe, skippedFiles) {
   const lines = [
     `Added to Recipe Chest: ${recipe.title}`,
     '',
@@ -150,6 +161,16 @@ function sendConfirmation(email, recipe) {
     'Instructions',
     ...(recipe.instructions || []).map((step, index) => `${index + 1}. ${step}`),
   ];
+
+  if (skippedFiles && skippedFiles.length > 0) {
+    lines.push('');
+    for (const name of skippedFiles) {
+      lines.push(
+        `Skipped ${name} (over ${MAX_ATTACHMENT_BYTES_TOTAL / 1024 / 1024} MB). ` +
+        'Try a smaller file or paste the recipe text instead.'
+      );
+    }
+  }
 
   GmailApp.sendEmail(
     email,
