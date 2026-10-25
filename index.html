@@ -417,6 +417,51 @@ function showLockScreen(message) {
   if (input) input.value = '';
 }
 
+// ---- History-backed overlays: the phone Back button closes the topmost
+// modal instead of leaving the app. Each open overlay gets a history
+// entry; closing it with its own X button pops that entry again.
+const openOverlayStack = [];
+let overlayHistoryNav = false;
+
+function overlayOpened(id) {
+  const el = document.getElementById(id);
+  if (el && el.classList.contains('on')) return; // already open (re-render)
+  openOverlayStack.push(id);
+  try { history.pushState({ overlay: id }, ''); } catch (e) { /* no History API */ }
+}
+
+function overlayClosed(id) {
+  const i = openOverlayStack.indexOf(id);
+  if (i !== -1) openOverlayStack.splice(i, 1);
+  if (history.state && history.state.overlay === id) {
+    overlayHistoryNav = true;
+    history.back(); // fires popstate, which must not close another overlay
+  }
+}
+
+function closeOverlayById(id) {
+  switch (id) {
+    case 'upload-overlay': cancelUpload(); break;
+    case 'import-overlay': closeImport(); break;
+    case 'detail-overlay': closeDetail(); break;
+    case 'cook-overlay': closeCookMode(); break;
+    case 'shopping-overlay': closeShoppingList(); break;
+    case 'plan-overlay': closeMealPlan(); break;
+    case 'picker-overlay': closePicker(); break;
+  }
+}
+
+window.addEventListener('popstate', () => {
+  if (overlayHistoryNav) { overlayHistoryNav = false; return; }
+  // Back was pressed: close the topmost still-open overlay.
+  for (let i = openOverlayStack.length - 1; i >= 0; i--) {
+    const id = openOverlayStack[i];
+    const el = document.getElementById(id);
+    if (el && el.classList.contains('on')) { closeOverlayById(id); return; }
+    openOverlayStack.splice(i, 1); // stale entry
+  }
+});
+
 const MEAL_STYLES = {
   breakfast: { bg: 'linear-gradient(135deg, #FFE066 0%, #FFA726 100%)', emoji: '🥞', label: 'Breakfast' },
   lunch:     { bg: 'linear-gradient(135deg, #A8E063 0%, #56AB2F 100%)', emoji: '🥗', label: 'Lunch' },
@@ -472,7 +517,7 @@ function unlockApp() {
   // Close whatever overlay was open when the session expired so the
   // app comes back clean.
   for (const id of ['upload-overlay', 'import-overlay', 'detail-overlay', 'shopping-overlay', 'plan-overlay', 'picker-overlay']) {
-    document.getElementById(id).classList.remove('on');
+    if (document.getElementById(id).classList.contains('on')) closeOverlayById(id);
   }
   if (document.getElementById('cook-overlay').classList.contains('on')) closeCookMode();
   document.getElementById('lock-screen').style.display = 'none';
@@ -586,10 +631,12 @@ async function compressImage(file, maxDim = 1200, quality = 0.85) {
 
 function openUpload() {
   document.getElementById('upload-overlay').classList.add('on');
+  overlayOpened('upload-overlay');
   document.getElementById('uploader-name').value = getUser() === 'Anonymous' ? '' : getUser();
   updateQueueUI();
 }
 function cancelUpload() {
+  overlayClosed('upload-overlay');
   if (isProcessing) {
     if (!confirm('Stop processing the remaining images? Already-saved recipes will stay.')) return;
     cancelRequested = true;
@@ -760,13 +807,14 @@ async function startBatch() {
 
 function openImport() {
   document.getElementById('import-overlay').classList.add('on');
+  overlayOpened('import-overlay');
   document.getElementById('importer-name').value = getUser() === 'Anonymous' ? '' : getUser();
   document.getElementById('import-url').value = '';
   document.getElementById('import-status').textContent = '';
   document.getElementById('import-status').classList.remove('error');
   document.getElementById('import-url').focus();
 }
-function closeImport() { document.getElementById('import-overlay').classList.remove('on'); }
+function closeImport() { document.getElementById('import-overlay').classList.remove('on'); overlayClosed('import-overlay'); }
 async function processImport() {
   const url = document.getElementById('import-url').value.trim();
   const name = document.getElementById('importer-name').value.trim() || 'Anonymous';
@@ -943,9 +991,10 @@ function openDetail(id) {
   `;
   document.getElementById('detail-content').innerHTML = html;
   document.getElementById('detail-overlay').classList.add('on');
+  overlayOpened('detail-overlay');
   document.getElementById('detail-modal').scrollTop = 0;
 }
-function closeDetail() { document.getElementById('detail-overlay').classList.remove('on'); currentScaling = null; }
+function closeDetail() { document.getElementById('detail-overlay').classList.remove('on'); overlayClosed('detail-overlay'); currentScaling = null; }
 function printRecipe() { window.print(); }
 
 // ---- User photos of the finished dish ----
@@ -1207,6 +1256,7 @@ async function openCookMode(id) {
   `;
   document.getElementById('cook-content').innerHTML = html;
   document.getElementById('cook-overlay').classList.add('on');
+  overlayOpened('cook-overlay');
   document.getElementById('cook-content').scrollTop = 0;
 
   const overlay = document.getElementById('cook-overlay');
@@ -1222,6 +1272,7 @@ async function openCookMode(id) {
 
 function closeCookMode() {
   document.getElementById('cook-overlay').classList.remove('on');
+  overlayClosed('cook-overlay');
   releaseWakeLock();
   if (document.fullscreenElement) {
     document.exitFullscreen().catch(() => {});
@@ -1266,10 +1317,11 @@ document.addEventListener('webkitfullscreenchange', () => {
 // ---- Shopping list ----
 async function openShoppingList() {
   document.getElementById('shopping-overlay').classList.add('on');
+  overlayOpened('shopping-overlay');
   await loadShoppingList();
   renderShoppingList();
 }
-function closeShoppingList() { document.getElementById('shopping-overlay').classList.remove('on'); }
+function closeShoppingList() { document.getElementById('shopping-overlay').classList.remove('on'); overlayClosed('shopping-overlay'); }
 async function loadShoppingList() {
   try {
     const res = await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, { credentials: 'same-origin' });
@@ -1358,10 +1410,11 @@ async function addRecipeToShoppingList(id) {
 // ---- Meal plan ----
 async function openMealPlan() {
   document.getElementById('plan-overlay').classList.add('on');
+  overlayOpened('plan-overlay');
   await loadMealPlan();
   renderMealPlan();
 }
-function closeMealPlan() { document.getElementById('plan-overlay').classList.remove('on'); }
+function closeMealPlan() { document.getElementById('plan-overlay').classList.remove('on'); overlayClosed('plan-overlay'); }
 async function loadMealPlan() {
   try {
     const res = await apiFetch(`${API}/meal-plan?deviceId=${encodeURIComponent(getDeviceId())}`, { credentials: 'same-origin' });
@@ -1465,8 +1518,9 @@ function openPicker(date) {
     }).join('');
   }
   document.getElementById('picker-overlay').classList.add('on');
+  overlayOpened('picker-overlay');
 }
-function closePicker() { document.getElementById('picker-overlay').classList.remove('on'); }
+function closePicker() { document.getElementById('picker-overlay').classList.remove('on'); overlayClosed('picker-overlay'); }
 function pickRecipe(id) {
   if (!pickerDate) return;
   addToPlan(pickerDate, id);
