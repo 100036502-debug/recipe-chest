@@ -392,6 +392,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   </div>
 </div>
 
+<div class="overlay upload-modal" id="credit-overlay">
+  <div class="modal" style="max-width:420px">
+    <h2>Add your photo of the dish</h2>
+    <label class="sub" for="credit-input">Photo credit (optional)</label>
+    <input type="text" class="name-input" id="credit-input" placeholder="Who took the photo, if it wasn't you" maxlength="100">
+    <div>
+      <button class="btn-secondary" onclick="cancelPhotoUpload()">Cancel</button>
+      <button class="btn-primary" id="credit-upload-btn" onclick="confirmPhotoUpload()">Upload photo</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -448,6 +460,7 @@ function closeOverlayById(id) {
     case 'shopping-overlay': closeShoppingList(); break;
     case 'plan-overlay': closeMealPlan(); break;
     case 'picker-overlay': closePicker(); break;
+    case 'credit-overlay': cancelPhotoUpload(); break;
   }
 }
 
@@ -998,6 +1011,8 @@ function closeDetail() { document.getElementById('detail-overlay').classList.rem
 function printRecipe() { window.print(); }
 
 // ---- User photos of the finished dish ----
+let pendingPhotoUpload = null;
+
 function pickRecipePhoto(id) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -1005,12 +1020,35 @@ function pickRecipePhoto(id) {
   input.onchange = () => {
     const file = input.files && input.files[0];
     if (!file) return;
-    const current = (recipes.find(x => x.id === id) || {}).userPhoto || {};
-    const credit = (prompt('Photo credit (optional), e.g. "Bob Joe, Unsplash":', current.credit || '') || '').trim().slice(0, 100);
-    uploadRecipePhoto(id, file, credit);
+    pendingPhotoUpload = { id, file };
+
+    // Small modal instead of a blocking prompt(): credit is optional
+    // and Cancel genuinely aborts the upload.
+    const r = recipes.find(x => x.id === id);
+    const current = (r && r.userPhoto) ? (r.userPhoto.credit || '') : '';
+    const field = document.getElementById('credit-input');
+    field.value = current;
+    document.getElementById('credit-overlay').classList.add('on');
+    overlayOpened('credit-overlay');
+    field.focus();
   };
   input.click();
 }
+function cancelPhotoUpload() {
+  pendingPhotoUpload = null;
+  document.getElementById('credit-overlay').classList.remove('on');
+  overlayClosed('credit-overlay');
+}
+function confirmPhotoUpload() {
+  if (!pendingPhotoUpload) { cancelPhotoUpload(); return; }
+  const { id, file } = pendingPhotoUpload;
+  const credit = document.getElementById('credit-input').value.trim().slice(0, 100);
+  pendingPhotoUpload = null;
+  document.getElementById('credit-overlay').classList.remove('on');
+  overlayClosed('credit-overlay');
+  uploadRecipePhoto(id, file, credit);
+}
+document.getElementById('credit-input').addEventListener('keypress', e => { if (e.key === 'Enter') confirmPhotoUpload(); });
 async function uploadRecipePhoto(id, file, credit) {
   if (!file.type.startsWith('image/')) { toast('Please choose an image file'); return; }
   if (file.size > 25 * 1024 * 1024) { toast('That image is too large'); return; }
@@ -1557,10 +1595,11 @@ document.getElementById('detail-overlay').addEventListener('click', e => { if (e
 document.getElementById('shopping-overlay').addEventListener('click', e => { if (e.target.id === 'shopping-overlay') closeShoppingList(); });
 document.getElementById('plan-overlay').addEventListener('click', e => { if (e.target.id === 'plan-overlay') closeMealPlan(); });
 document.getElementById('picker-overlay').addEventListener('click', e => { if (e.target.id === 'picker-overlay') closePicker(); });
+document.getElementById('credit-overlay').addEventListener('click', e => { if (e.target.id === 'credit-overlay') cancelPhotoUpload(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (isProcessing) return;
-    cancelUpload(); closeImport(); closeDetail(); closeShoppingList(); closeMealPlan(); closePicker();
+    cancelUpload(); cancelPhotoUpload(); closeImport(); closeDetail(); closeShoppingList(); closeMealPlan(); closePicker();
   }
 });
 
