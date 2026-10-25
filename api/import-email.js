@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
 import sharp from 'sharp';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
@@ -72,7 +73,12 @@ export default async function handler(req, res) {
   if (!importSecret) {
     return res.status(500).json({ error: 'Email import is not configured' });
   }
-  if (req.headers.authorization !== `Bearer ${importSecret}`) {
+  const authHeader = String(req.headers.authorization || '');
+  const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const a = Buffer.from(presented);
+  const b = Buffer.from(importSecret);
+  const match = a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (!match) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -84,7 +90,7 @@ export default async function handler(req, res) {
     const payload = req.body || {};
     const sender = String(payload.from || payload.From || 'Email Import');
     const senderName =
-      (sender.match(/^\s*"?([^"<]+)"?\s*</)?.[1] || sender).trim() || 'Email Contributor';
+      (sender.match(/^\s*"?([^"<]+)"?\s*</)?.[1] || sender).trim().slice(0, 40) || 'Email Contributor';
     const bodyText = String(payload.text || payload['body-plain'] || payload.html || '');
     const messageId = String(payload.messageId || '');
 
@@ -240,7 +246,7 @@ export default async function handler(req, res) {
     };
 
     if (messageId) {
-      await redis.set(`email_import:${messageId}`, result);
+      await redis.set(`email_import:${messageId}`, result, { ex: 60 * 60 * 24 * 30 });
     }
 
     return res.status(200).json({ success: true, ...result });
