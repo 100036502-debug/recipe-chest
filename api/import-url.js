@@ -106,6 +106,7 @@ ${pageText}`;
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1,
         maxTokens: 3500,
+        reasoningEffort: 'none',
       });
     } catch (e) {
       console.error('AI error during URL import:', e.message);

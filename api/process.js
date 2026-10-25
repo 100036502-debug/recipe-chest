@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
-import { groqChat } from '../lib/groq.js';
+import { groqChat, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 import { parseAiOutput } from '../lib/parse.js';
@@ -81,7 +81,9 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
         ],
       }],
       temperature: 0.1,
-      maxTokens: 2200,
+      maxTokens: 3500,
+      model: GROQ_VISION_MODEL,
+      reasoningEffort: 'none',
     });
 
     if (process.env.DEBUG_AI === '1') {

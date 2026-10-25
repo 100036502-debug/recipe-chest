@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
 import sharp from 'sharp';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
-import { groqChat } from '../lib/groq.js';
+import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
@@ -192,7 +192,7 @@ export default async function handler(req, res) {
             ...images.map((url) => ({ type: 'image_url', image_url: { url } })),
           ];
 
-          const recipe = await callGroq(contentPayload);
+          const recipe = await callGroq(contentPayload, { vision: true });
 
           if (recipe.error) {
             console.warn(`Image recipe: model reported ${recipe.error}`);
@@ -259,12 +259,14 @@ export default async function handler(req, res) {
 /**
  * Send content parts to Groq and parse the JSON recipe response.
  */
-async function callGroq(contentPayload) {
+async function callGroq(contentPayload, { vision = false } = {}) {
   const rawContent = await groqChat({
     messages: [{ role: 'user', content: contentPayload }],
     temperature: 0.2,
-    maxTokens: 2000,
+    maxTokens: 3500,
     json: true,
+    model: vision ? GROQ_VISION_MODEL : GROQ_MODEL,
+    reasoningEffort: 'none',
   });
   // Tolerant parse so a stray code fence or thinking block cannot
   // fail the whole import (shared helper from lib/parse.js).
