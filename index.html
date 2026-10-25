@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Recipe Chest">
 <style>
-:root{--bg:#faf6f0;--card:#fff;--border:#e8dfd2;--primary:#c7541a;--primary-d:#a34413;--brown:#5a3a22;--text:#2a1a0f;--dim:#8a7a68;--shadow:0 2px 8px rgba(90,58,34,.08);--shadow-h:0 8px 24px rgba(90,58,34,.16);}
+:root{--bg:#faf6f0;--card:#fff;--border:#e8dfd2;--primary:#c7541a;--primary-d:#a34413;--brown:#5a3a22;--text:#2a1a0f;--dim:#6b5d4d;--shadow:0 2px 8px rgba(90,58,34,.08);--shadow-h:0 8px 24px rgba(90,58,34,.16);}
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;flex-direction:column}
 .locked{overflow:hidden}
@@ -220,6 +220,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
   .cook-mode .cook-title{font-size:1.5rem}
   .cook-mode .cook-ing li,.cook-mode .cook-steps li{font-size:1rem}
 }
+@media (prefers-reduced-motion: reduce){
+  *{transition:none !important;animation:none !important;scroll-behavior:auto !important}
+  .card:hover,.add-btn:hover,.import-btn:hover,.list-btn:hover,.plan-btn:hover,.btn-primary:hover{transform:none !important}
+}
 @media print{
   html,body{background:#fff !important;color:#000 !important}
   #lock-screen,
@@ -317,8 +321,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 </div>
 
 <div class="overlay upload-modal" id="upload-overlay">
-  <div class="modal">
-    <h2>Add Recipes from Photos</h2>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-title">
+    <h2 id="upload-title">Add Recipes from Photos</h2>
     <p class="sub">Drop as many images as you like — the AI processes them one at a time.</p>
     <div class="dropzone" id="dropzone">
       <div class="dz-icon">📷</div>
@@ -342,8 +346,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 </div>
 
 <div class="overlay upload-modal" id="import-overlay">
-  <div class="modal">
-    <h2>Import from Website</h2>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <h2 id="import-title">Import from Website</h2>
     <p class="sub">Paste a recipe URL. The AI will read the page and save it.</p>
     <input type="text" class="url-input" id="import-url" placeholder="https://example.com/recipe" autocomplete="off">
     <input type="text" class="name-input" id="importer-name" placeholder="Your name (optional)" maxlength="40">
@@ -356,20 +360,20 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 </div>
 
 <div class="overlay" id="detail-overlay">
-  <div class="modal" id="detail-modal">
-    <button class="modal-close" onclick="closeDetail()">✕</button>
+  <div class="modal" id="detail-modal" role="dialog" aria-modal="true" aria-label="Recipe details">
+    <button class="modal-close" onclick="closeDetail()" aria-label="Close recipe details">✕</button>
     <div id="detail-content"></div>
   </div>
 </div>
 
 <div class="overlay" id="cook-overlay">
-  <div class="cook-mode" id="cook-content"></div>
+  <div class="cook-mode" id="cook-content" role="dialog" aria-modal="true" aria-label="Cook mode"></div>
 </div>
 
 <div class="overlay" id="shopping-overlay">
-  <div class="modal" style="padding:28px 32px;max-width:600px">
-    <button class="modal-close" onclick="closeShoppingList()">✕</button>
-    <h2 style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Shopping List</h2>
+  <div class="modal" style="padding:28px 32px;max-width:600px" role="dialog" aria-modal="true" aria-labelledby="shopping-title">
+    <button class="modal-close" onclick="closeShoppingList()" aria-label="Close shopping list">✕</button>
+    <h2 id="shopping-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Shopping List</h2>
     <p style="color:var(--dim);font-size:.82rem;margin-bottom:20px">Saved to this device only.</p>
     <div class="sl-add">
       <input type="text" id="sl-input" placeholder="Add an item..." maxlength="200" onkeypress="if(event.key==='Enter')addShoppingItem()">
@@ -383,25 +387,25 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 </div>
 
 <div class="overlay" id="plan-overlay">
-  <div class="modal" style="padding:28px 32px;max-width:680px">
-    <button class="modal-close" onclick="closeMealPlan()">✕</button>
-    <h2 style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Meal Plan</h2>
+  <div class="modal" style="padding:28px 32px;max-width:680px" role="dialog" aria-modal="true" aria-labelledby="plan-title">
+    <button class="modal-close" onclick="closeMealPlan()" aria-label="Close meal plan">✕</button>
+    <h2 id="plan-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Meal Plan</h2>
     <p style="color:var(--dim);font-size:.82rem;margin-bottom:20px">Saved to this device only. Tap a day to add recipes.</p>
     <div class="mp-week" id="mp-week"></div>
   </div>
 </div>
 
 <div class="overlay" id="picker-overlay">
-  <div class="modal" style="padding:28px 32px;max-width:560px">
-    <button class="modal-close" onclick="closePicker()">✕</button>
+  <div class="modal" style="padding:28px 32px;max-width:560px" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <button class="modal-close" onclick="closePicker()" aria-label="Close recipe picker">✕</button>
     <h2 style="font-family:Georgia,serif;color:var(--brown);font-size:1.3rem;font-weight:normal;margin-bottom:16px" id="picker-title">Pick a recipe</h2>
     <div class="mp-picker" id="picker-list"></div>
   </div>
 </div>
 
 <div class="overlay upload-modal" id="credit-overlay">
-  <div class="modal" style="max-width:420px">
-    <h2>Add your photo of the dish</h2>
+  <div class="modal" style="max-width:420px" role="dialog" aria-modal="true" aria-labelledby="credit-title">
+    <h2 id="credit-title">Add your photo of the dish</h2>
     <label class="sub" for="credit-input">Photo credit (optional)</label>
     <input type="text" class="name-input" id="credit-input" placeholder="Who took the photo, if it wasn't you" maxlength="100">
     <div>
@@ -440,6 +444,7 @@ function showLockScreen(message) {
 // modal instead of leaving the app. Each open overlay gets a history
 // entry; closing it with its own X button pops that entry again.
 const openOverlayStack = [];
+const overlayFocusStack = [];
 let overlayHistoryNav = false;
 
 function overlayOpened(id) {
@@ -447,11 +452,22 @@ function overlayOpened(id) {
   if (el && el.classList.contains('on')) return; // already open (re-render)
   openOverlayStack.push(id);
   try { history.pushState({ overlay: id }, ''); } catch (e) { /* no History API */ }
+  // Accessibility: move focus into the dialog, remember where to return.
+  const dialog = el.querySelector('.modal, .cook-mode') || el;
+  overlayFocusStack.push(document.activeElement);
+  const focusables = dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])');
+  const target = focusables.length ? focusables[0] : dialog;
+  if (target && typeof target.focus === 'function') target.focus();
 }
 
 function overlayClosed(id) {
   const i = openOverlayStack.indexOf(id);
   if (i !== -1) openOverlayStack.splice(i, 1);
+  // Accessibility: return focus to the element that opened the overlay.
+  const prev = overlayFocusStack.pop();
+  if (prev && document.contains(prev) && typeof prev.focus === 'function') {
+    try { prev.focus(); } catch (e) { /* detached node */ }
+  }
   if (history.state && history.state.overlay === id) {
     overlayHistoryNav = true;
     history.back(); // fires popstate, which must not close another overlay
@@ -1006,7 +1022,7 @@ function renderGrid() {
   grid.innerHTML = sorted.map(r => {
     const ms = mealStyle(r.mealType);
     return `
-      <div class="card" onclick="openDetail('${r.id}')">
+      <div class="card" onclick="openDetail('${r.id}')" tabindex="0" role="button" aria-label="${escapeHtml(r.title)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDetail('${r.id}')}">
         <div class="card-meal" style="background:${ms.bg}">
           <button class="fav-btn ${r.favorite === true ? 'on' : ''}" onclick="event.stopPropagation(); toggleFavorite('${r.id}')" aria-label="${r.favorite === true ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥' : '♡'}</button>${r.userPhoto || (r.image && (r.image.thumb || r.image.url)) ? `<img class="card-img" src="${escapeHtml(cardPhotoSrc(r))}" alt="${escapeHtml(r.title)}" loading="lazy" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` : `<span>${ms.emoji}</span>`}${r.image && r.image.url && !r.userPhoto ? `<div class="card-credit">Photo: ${escapeHtml(r.image.photographer || 'Unknown')} on Unsplash</div>` : ''}</div>
         <div class="card-body">
@@ -1056,7 +1072,7 @@ function openDetail(id) {
     const tagsHtml = (r.tags || []).map(t => `
     <span class="tag">
       ${escapeHtml(t)}
-      <button class="tag-x" data-id="${escapeHtml(r.id)}" data-tag="${escapeHtml(t)}" onclick="event.stopPropagation(); removeTag(this.dataset.id, this.dataset.tag)" title="Remove tag">✕</button>
+      <button class="tag-x" data-id="${escapeHtml(r.id)}" data-tag="${escapeHtml(t)}" onclick="event.stopPropagation(); removeTag(this.dataset.id, this.dataset.tag)" title="Remove tag" aria-label="Remove tag ${escapeHtml(t)}">✕</button>
     </span>
   `).join('');
   let servingsHtml = '';
@@ -1376,7 +1392,7 @@ async function openCookMode(id) {
   if (r.servings) metaBits.push(`<span class="meta-pill"><span class="k">Serves:</span> ${escapeHtml(r.servings)}</span>`);
 
   const html = `
-    <button class="cook-close" onclick="closeCookMode()" title="Close">✕</button>
+    <button class="cook-close" onclick="closeCookMode()" title="Close" aria-label="Close cook mode">✕</button>
     <div class="cook-hero" style="background:${ms.bg}">${heroPhotoHtml(r, ms)}</div>
     <h1 class="cook-title">${escapeHtml(r.title)}</h1>
     ${r.description ? `<p class="recipe-desc" style="font-size:1.05rem">${escapeHtml(r.description)}</p>` : ''}
@@ -1485,7 +1501,7 @@ function renderShoppingList() {
     <div class="sl-item ${it.checked ? 'checked' : ''}">
       <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="toggleShoppingItem(${i})">
       <span class="sl-text">${escapeHtml(it.text)}</span>
-      <button class="sl-del" onclick="removeShoppingItem(${i})" title="Remove">✕</button>
+      <button class="sl-del" onclick="removeShoppingItem(${i})" title="Remove" aria-label="Remove item">✕</button>
     </div>
   `).join('');
 }
@@ -1596,7 +1612,7 @@ function renderMealPlan() {
       const r = recipes.find(x => x.id === rid);
       const title = r ? r.title : '(deleted)';
       const ms = r ? mealStyle(r.mealType) : mealStyle('default');
-      return `<div class="mp-slot" onclick="if(${r ? 'true' : 'false'}) openDetail('${rid}')"><span>${ms.emoji}</span><span class="mp-slot-title">${escapeHtml(title)}</span><button class="mp-slot-del" onclick="event.stopPropagation(); removeFromPlan('${key}', '${rid}')" title="Remove">✕</button></div>`;
+      return `<div class="mp-slot" onclick="if(${r ? 'true' : 'false'}) openDetail('${rid}')"><span>${ms.emoji}</span><span class="mp-slot-title">${escapeHtml(title)}</span><button class="mp-slot-del" onclick="event.stopPropagation(); removeFromPlan('${key}', '${rid}')" title="Remove" aria-label="Remove ${escapeHtml(title)} from plan">✕</button></div>`;
     }).join('');
     return `
       <div class="mp-day">
@@ -1702,6 +1718,21 @@ document.getElementById('plan-overlay').addEventListener('click', e => { if (e.t
 document.getElementById('picker-overlay').addEventListener('click', e => { if (e.target.id === 'picker-overlay') closePicker(); });
 document.getElementById('credit-overlay').addEventListener('click', e => { if (e.target.id === 'credit-overlay') cancelPhotoUpload(); });
 document.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    // Trap Tab inside the topmost open overlay
+    const top = openOverlayStack[openOverlayStack.length - 1];
+    const el = top ? document.getElementById(top) : null;
+    if (el && el.classList.contains('on')) {
+      const focusables = [...el.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')]
+        .filter((f) => !f.disabled && f.getClientRects().length > 0);
+      if (focusables.length) {
+        const first = focusables[0], last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
+    return;
+  }
   if (e.key === 'Escape') {
     if (isProcessing) return;
     cancelUpload(); cancelPhotoUpload(); closeImport(); closeDetail(); closeShoppingList(); closeMealPlan(); closePicker();
