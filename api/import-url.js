@@ -5,6 +5,7 @@ import { findDishImage } from '../lib/image.js';
 import { safeFetchText } from '../lib/safe-fetch.js';
 import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
+import { extractRecipeFromJsonLd } from '../lib/jsonld-recipe.js';
 import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';
 
@@ -67,48 +68,56 @@ export default async function handler(req, res) {
     console.error('Duplicate pre-check failed:', e.message);
   }
 
-  // Fetch and strip the page (private/internal addresses are refused)
-  let pageText;
+  // Fetch the page (private/internal addresses are refused)
+  let html;
   try {
-    const html = await safeFetchText(parsedUrl.toString(), {
+    html = await safeFetchText(parsedUrl.toString(), {
       timeoutMs: 12000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; RecipeChestBot/1.0)',
         'Accept': 'text/html,application/xhtml+xml',
       },
     });
-    pageText = stripHtml(html);
-    if (pageText.length > 20000) pageText = pageText.substring(0, 20000);
   } catch (e) {
     return res.status(400).json({ error: 'Could not fetch page: ' + e.message });
   }
 
-  if (pageText.length < 50) return res.status(400).json({ error: 'Page appears to be empty or blocked.' });
+  // 1. Structured data first: exact, fast and free. Most recipe sites
+  //    publish a complete Recipe in ld+json; if it is there, use it and
+  //    skip the AI call entirely.
+  let recipe = extractRecipeFromJsonLd(html);
 
-  const prompt = `Output ONLY a JSON object (no markdown, no reasoning) with the recipe extracted from this webpage. Pick the best mealType: breakfast, lunch, dinner, dessert, snack, or drink. If no recipe is found, output {"error":"no recipe found"}.
+  // 2. Fall back to the AI path for plain blog pages.
+  if (!recipe) {
+    let pageText = stripHtml(html);
+    if (pageText.length > 20000) pageText = pageText.substring(0, 20000);
+    if (pageText.length < 50) return res.status(400).json({ error: 'Page appears to be empty or blocked.' });
+
+    const prompt = `Output ONLY a JSON object (no markdown, no reasoning) with the recipe extracted from this webpage. Pick the best mealType: breakfast, lunch, dinner, dessert, snack, or drink. If no recipe is found, output {"error":"no recipe found"}.
 
 {"title":"","description":"","ingredients":[],"instructions":[],"prepTime":"","cookTime":"","servings":"","tags":[],"notes":"","mealType":"dinner"}
 
 WEBPAGE TEXT:
 ${pageText}`;
 
-  try {
     let content;
     try {
       content = await groqChat({
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1,
-        maxTokens: 1500,
+        maxTokens: 3500,
       });
     } catch (e) {
       console.error('AI error during URL import:', e.message);
       return res.status(500).json({ error: 'The recipe could not be read. Try again later.' });
     }
 
-    const recipe = tryParseJson(content);
+    recipe = tryParseJson(content);
     if (!recipe) return res.status(500).json({ error: 'AI returned invalid JSON' });
     if (recipe.error) return res.status(400).json({ error: recipe.error });
+  }
 
+  try {
     const title = String(recipe.title || 'Untitled Recipe').slice(0, 200);
 
     // Duplicate check and photo lookup run at the same time to keep imports fast
