@@ -125,8 +125,8 @@ export default async function handler(req, res) {
 
   // ---- DELETE: remove one recipe by id ----
   if (req.method === 'DELETE') {
-    const id = req.query.id;
-    if (!id) return res.status(400).json({ error: 'Missing id' });
+    const id = String(req.query.id || '');
+    if (!ID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid or missing id' });
     try {
       await kv.del(`recipe:${id}`);
       await kv.del(`photo:${id}`, `photothumb:${id}`);
