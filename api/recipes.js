@@ -11,7 +11,7 @@ const kv = new Redis({
 // Fields the client is allowed to set or edit
 const EDITABLE_FIELDS = [
   'title', 'description', 'prepTime', 'cookTime', 'servings',
-  'mealType', 'tags', 'ingredients', 'instructions', 'notes',
+  'mealType', 'tags', 'ingredients', 'instructions', 'notes', 'favorite',
 ];
 
 const MEAL_TYPES_WITH_DEFAULT = [...VALID_MEAL_TYPES, 'default'];
@@ -32,6 +32,9 @@ function applyEditableFields(target, body) {
     } else if (field === 'mealType') {
       const mt = String(body.mealType || '').toLowerCase();
       target.mealType = MEAL_TYPES_WITH_DEFAULT.includes(mt) ? mt : 'default';
+    } else if (field === 'favorite') {
+      // Booleans only; a missing field means false (older recipes stay valid).
+      target.favorite = body.favorite === true;
     } else {
       target[field] = String(body[field] ?? '').trim();
     }

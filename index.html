@@ -74,7 +74,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .meta-pill .k{color:var(--dim);font-size:.7rem}
 .meta-pill a{color:var(--primary);text-decoration:none}
 .meta-pill a:hover{text-decoration:underline}
-.servings-select{background:var(--bg);border:1px solid var(--border);color:var(--brown);padding:5px 10px;border-radius:16px;font-size:.78rem;font-family:inherit;outline:none;cursor:pointer}
+.servings-select,.sort-select{background:var(--bg);border:1px solid var(--border);color:var(--brown);padding:5px 10px;border-radius:16px;font-size:.78rem;font-family:inherit;outline:none;cursor:pointer}
+.fav-btn{position:absolute;top:8px;right:8px;z-index:3;background:rgba(255,255,255,.88);border:none;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:1rem;color:var(--dim);display:flex;align-items:center;justify-content:center;transition:.15s;box-shadow:var(--shadow)}
+.fav-btn:hover{background:#fff;color:#e0245e}
+.fav-btn.on{color:#e0245e}
 .recipe-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:24px;align-items:center}
 .tag{background:#fff3e8;color:var(--primary-d);padding:4px 8px 4px 12px;border-radius:12px;font-size:.72rem;font-weight:600;border:1px solid #f5dcc6;display:inline-flex;align-items:center;gap:6px}
 .tag-x{background:transparent;border:none;color:var(--primary-d);cursor:pointer;font-size:.9rem;line-height:1;padding:0 2px;opacity:.6;transition:.15s}
@@ -205,6 +208,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 
 @media(max-width:700px){
   .header{padding:12px 16px}
+  .stats{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
   .header h1{font-size:1.3rem}
   .search-wrap{order:4;flex-basis:100%;max-width:none}
   .main{padding:16px}
@@ -517,6 +521,9 @@ function scaleIngredientLine(ing, factor) {
 
 let recipes = [];
 let currentFilter = 'all';
+let currentMealFilter = 'all';
+let currentSort = 'newest';
+let showAllTags = false;
 let currentSearch = '';
 let uploadQueue = [];
 let isProcessing = false;
@@ -900,14 +907,50 @@ async function loadRecipes() {
   }
 }
 
+// Total prep+cook time in minutes, or -1 when the recipe has no times
+// (those always sort last under 'Quickest').
+function timeToMinutes(s) {
+  const str = String(s || '').toLowerCase();
+  if (!str) return -1;
+  let total = 0, found = false;
+  const re = /(\d+(?:\.\d+)?)\s*(hour|hr|h\b|minute|min|m\b)?/g;
+  let m;
+  while ((m = re.exec(str))) {
+    const n = parseFloat(m[1]);
+    if (!m[2] || /^h/.test(m[2])) total += m[2] && /^h/.test(m[2]) ? n * 60 : n;
+    else total += n;
+    found = true;
+  }
+  return found ? total : -1;
+}
+function totalTimeMinutes(r) {
+  const p = timeToMinutes(r.prepTime), c = timeToMinutes(r.cookTime);
+  if (p >= 0 && c >= 0) return p + c;
+  return Math.max(p, c); // -1 when neither parses
+}
+const SORTERS = {
+  newest: (a, b) => (b.createdAt || 0) - (a.createdAt || 0),
+  oldest: (a, b) => (a.createdAt || 0) - (b.createdAt || 0),
+  az: (a, b) => String(a.title || '').localeCompare(String(b.title || '')),
+  quickest: (a, b) => {
+    const ta = totalTimeMinutes(a), tb = totalTimeMinutes(b);
+    if (ta === -1 && tb === -1) return (b.createdAt || 0) - (a.createdAt || 0);
+    if (ta === -1) return 1;
+    if (tb === -1) return -1;
+    return ta - tb;
+  },
+};
+
 function renderGrid() {
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
   const stats = document.getElementById('stats');
-  const allTags = new Set();
-  recipes.forEach(r => (r.tags || []).forEach(t => allTags.add(t)));
+  const allTags = new Map();
+  recipes.forEach(r => (r.tags || []).forEach(t => allTags.set(t, (allTags.get(t) || 0) + 1)));
   let filtered = recipes;
-  if (currentFilter !== 'all') filtered = filtered.filter(r => (r.tags || []).includes(currentFilter));
+  if (currentFilter === 'favorites') filtered = filtered.filter(r => r.favorite === true);
+  else if (currentFilter !== 'all') filtered = filtered.filter(r => (r.tags || []).includes(currentFilter));
+  if (currentMealFilter !== 'all') filtered = filtered.filter(r => r.mealType === currentMealFilter);
   if (currentSearch) {
     const q = currentSearch.toLowerCase();
     filtered = filtered.filter(r => {
@@ -915,13 +958,36 @@ function renderGrid() {
       return hay.includes(q);
     });
   }
+  const sorted = [...filtered].sort(SORTERS[currentSort] || SORTERS.newest);
+
+  // Sort dropdown next to the recipe count
   let statHtml = `<span>${recipes.length} recipe${recipes.length === 1 ? '' : 's'}</span>`;
-  if (allTags.size) {
+  statHtml += `<select class="sort-select" onchange="setSort(this.value)" aria-label="Sort recipes">` +
+    ['newest', 'oldest', 'az', 'quickest'].map(s =>
+      `<option value="${s}"${currentSort === s ? ' selected' : ''}>${({ newest: 'Newest', oldest: 'Oldest', az: 'A to Z', quickest: 'Quickest' })[s]}</option>`
+    ).join('') + `</select>`;
+
+  if (recipes.length) {
     statHtml += `<span style="color:var(--border)">•</span>`;
     statHtml += `<span class="filter-chip ${currentFilter === 'all' ? 'on' : ''}" onclick="setFilter('all')">all</span>`;
-    [...allTags].sort().slice(0, 12).forEach(t => {
-    statHtml += `<span class="filter-chip ${currentFilter === t ? 'on' : ''}" data-tag="${escapeHtml(t)}" onclick="setFilter(this.dataset.tag)">${escapeHtml(t)}</span>`;
-    });
+    if (recipes.some(r => r.favorite)) {
+      statHtml += `<span class="filter-chip ${currentFilter === 'favorites' ? 'on' : ''}" onclick="setFilter('favorites')">♥</span>`;
+    }
+    // Meal-type filter chips, only for types that are actually in use
+    for (const m of Object.keys(MEAL_STYLES)) {
+      if (m === 'default') continue;
+      if (!recipes.some(r => r.mealType === m)) continue;
+      statHtml += `<span class="filter-chip ${currentMealFilter === m ? 'on' : ''}" onclick="setMealFilter('${m}')" data-meal="${m}">${MEAL_STYLES[m].emoji} ${MEAL_STYLES[m].label}</span>`;
+    }
+    // Tag chips: most used first, top 12, rest behind a "more" toggle
+    const tagList = [...allTags.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const shownTags = showAllTags ? tagList : tagList.slice(0, 12);
+    for (const [t] of shownTags) {
+      statHtml += `<span class="filter-chip ${currentFilter === t ? 'on' : ''}" data-tag="${escapeHtml(t)}" onclick="setFilter(this.dataset.tag)">${escapeHtml(t)}</span>`;
+    }
+    if (tagList.length > 12) {
+      statHtml += `<span class="filter-chip" onclick="toggleShowAllTags()">${showAllTags ? '− less' : `+ ${tagList.length - 12} more`}</span>`;
+    }
   }
   stats.innerHTML = statHtml;
   if (!filtered.length) {
@@ -937,11 +1003,12 @@ function renderGrid() {
     return;
   }
   empty.style.display = 'none';
-  grid.innerHTML = filtered.map(r => {
+  grid.innerHTML = sorted.map(r => {
     const ms = mealStyle(r.mealType);
     return `
       <div class="card" onclick="openDetail('${r.id}')">
-        <div class="card-meal" style="background:${ms.bg}">${r.userPhoto || (r.image && (r.image.thumb || r.image.url)) ? `<img class="card-img" src="${escapeHtml(cardPhotoSrc(r))}" alt="${escapeHtml(r.title)}" loading="lazy" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` : `<span>${ms.emoji}</span>`}${r.image && r.image.url && !r.userPhoto ? `<div class="card-credit">Photo: ${escapeHtml(r.image.photographer || 'Unknown')} on Unsplash</div>` : ''}</div>
+        <div class="card-meal" style="background:${ms.bg}">
+          <button class="fav-btn ${r.favorite === true ? 'on' : ''}" onclick="event.stopPropagation(); toggleFavorite('${r.id}')" aria-label="${r.favorite === true ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥' : '♡'}</button>${r.userPhoto || (r.image && (r.image.thumb || r.image.url)) ? `<img class="card-img" src="${escapeHtml(cardPhotoSrc(r))}" alt="${escapeHtml(r.title)}" loading="lazy" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` : `<span>${ms.emoji}</span>`}${r.image && r.image.url && !r.userPhoto ? `<div class="card-credit">Photo: ${escapeHtml(r.image.photographer || 'Unknown')} on Unsplash</div>` : ''}</div>
         <div class="card-body">
           <div class="card-title">${escapeHtml(r.title)}</div>
           <div class="card-desc">${escapeHtml(r.description || '')}</div>
@@ -955,6 +1022,30 @@ function renderGrid() {
   }).join('');
 }
 function setFilter(t) { currentFilter = t; renderGrid(); }
+function setMealFilter(m) { currentMealFilter = currentMealFilter === m ? 'all' : m; renderGrid(); }
+function setSort(s) { currentSort = s; renderGrid(); }
+function toggleShowAllTags() { showAllTags = !showAllTags; renderGrid(); }
+async function toggleFavorite(id) {
+  const r = recipes.find(x => x.id === id);
+  if (!r) return;
+  const want = !(r.favorite === true);
+  try {
+    const res = await apiFetch(`${API}/recipes`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, favorite: want }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not save');
+    const idx = recipes.findIndex(x => x.id === id);
+    if (idx !== -1) recipes[idx] = data;
+    renderGrid();
+    if (document.getElementById('detail-overlay').classList.contains('on')) openDetail(id);
+    toast(data.favorite ? 'Added to favorites' : 'Removed from favorites');
+  } catch (e) {
+    toast('Could not save: ' + e.message);
+  }
+}
 
 function openDetail(id) {
   const r = recipes.find(x => x.id === id);
@@ -1000,6 +1091,7 @@ function openDetail(id) {
       </div>
       <div class="recipe-actions">
         <button class="action-btn primary" onclick="openCookMode('${r.id}')">👨‍🍳 Cook mode</button>
+        <button class="action-btn ${r.favorite === true ? 'primary' : ''}" onclick="toggleFavorite('${r.id}')" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥ Favorited' : '♡ Favorite'}</button>
         <button class="action-btn" onclick="addRecipeToShoppingList('${r.id}')">🛒 Add to list</button>
         <button class="action-btn" onclick="openEditMode('${r.id}')">✎ Edit</button>
         <button class="action-btn" onclick="pickRecipePhoto('${r.id}')">📷 ${r.userPhoto ? 'Replace my photo' : 'Add my photo'}</button>
