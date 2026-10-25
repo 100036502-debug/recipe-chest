@@ -5,6 +5,7 @@ import { findDishImage } from '../lib/image.js';
 import { safeFetchText } from '../lib/safe-fetch.js';
 import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
+import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';
 
 const kv = new Redis({
@@ -36,6 +37,11 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!requireAuth(req, res)) return;
+
+  if (await rateLimited(kv, req, 'import-url', 60)) {
+    res.setHeader('Retry-After', '3600');
+    return res.status(429).json({ error: 'Too many imports this hour. Try again later.' });
+  }
 
   const { url, addedBy } = req.body || {};
   if (!url) return res.status(400).json({ error: 'No URL provided' });

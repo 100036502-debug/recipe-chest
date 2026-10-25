@@ -5,6 +5,7 @@ import sharp from 'sharp';
 import { requireAuth } from '../lib/auth.js';
 import { ID_PATTERN } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
+import { rateLimited } from '../lib/rate-limit.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -58,6 +59,10 @@ export default async function handler(req, res) {
 
   // ---- POST: save a photo for a recipe ----
   if (req.method === 'POST') {
+    if (await rateLimited(kv, req, 'photo', 30)) {
+      res.setHeader('Retry-After', '3600');
+      return res.status(429).json({ error: 'Too many uploads this hour. Try again later.' });
+    }
     const body = req.body || {};
     const id = String(body.id || '');
     if (!ID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid recipe id' });

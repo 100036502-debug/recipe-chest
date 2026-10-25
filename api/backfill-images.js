@@ -4,6 +4,7 @@ import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { lookupDishImage } from '../lib/image.js';
 import { getRecipesByIds } from '../lib/recipes.js';
+import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';
 
 const kv = new Redis({
@@ -22,6 +23,11 @@ export default async function handler(req, res) {
 
   if (!process.env.UNSPLASH_ACCESS_KEY) {
     return res.status(500).json({ error: 'UNSPLASH_ACCESS_KEY is not set' });
+  }
+
+  if (await rateLimited(kv, req, 'backfill', 30)) {
+    res.setHeader('Retry-After', '3600');
+    return res.status(429).json({ error: 'Too many backfill runs this hour.' });
   }
 
   const body = req.body || {};
