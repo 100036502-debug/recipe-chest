@@ -395,6 +395,25 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 const API = '/api';
 const DEVICE_KEY = 'rc_device_id';
 
+// Every API call goes through here: if the session cookie has expired,
+// show the lock screen again instead of a cryptic "Failed to load".
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, { credentials: 'same-origin', ...opts });
+  if (res.status === 401 && !String(url).includes('/verify-code')) {
+    showLockScreen('Session expired. Enter the access code.');
+    throw new Error('Session expired');
+  }
+  return res;
+}
+function showLockScreen(message) {
+  document.getElementById('lock-screen').style.display = 'flex';
+  document.getElementById('app-content').style.display = 'none';
+  document.body.classList.add('locked');
+  document.getElementById('lock-err').textContent = message || '';
+  const input = document.getElementById('lock-input');
+  if (input) input.value = '';
+}
+
 const MEAL_STYLES = {
   breakfast: { bg: 'linear-gradient(135deg, #FFE066 0%, #FFA726 100%)', emoji: '🥞', label: 'Breakfast' },
   lunch:     { bg: 'linear-gradient(135deg, #A8E063 0%, #56AB2F 100%)', emoji: '🥗', label: 'Lunch' },
@@ -447,6 +466,12 @@ async function tryUnlock() {
   } catch (e) { err.textContent = 'Could not verify. Try again.'; }
 }
 function unlockApp() {
+  // Close whatever overlay was open when the session expired so the
+  // app comes back clean.
+  for (const id of ['upload-overlay', 'import-overlay', 'detail-overlay', 'shopping-overlay', 'plan-overlay', 'picker-overlay']) {
+    document.getElementById(id).classList.remove('on');
+  }
+  if (document.getElementById('cook-overlay').classList.contains('on')) closeCookMode();
   document.getElementById('lock-screen').style.display = 'none';
   document.getElementById('app-content').style.display = 'flex';
   document.body.classList.remove('locked');
@@ -693,7 +718,7 @@ async function startBatch() {
         item.base64 = base64;
         item.mimeType = mime;
       }
-      const res = await fetch(`${API}/process`, {
+      const res = await apiFetch(`${API}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
@@ -746,7 +771,7 @@ async function processImport() {
   status.classList.remove('error');
   status.innerHTML = '<span class="spinner"></span>Fetching page and reading the recipe...';
   try {
-    const res = await fetch(`${API}/import-url`, {
+    const res = await apiFetch(`${API}/import-url`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -769,7 +794,7 @@ document.getElementById('import-url').addEventListener('keypress', e => { if (e.
 
 async function loadRecipes() {
   try {
-    const res = await fetch(`${API}/recipes`, { credentials: 'same-origin' });
+    const res = await apiFetch(`${API}/recipes`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error('Failed to load');
     recipes = await res.json();
     renderGrid();
@@ -936,7 +961,7 @@ async function uploadRecipePhoto(id, file, credit) {
   toast('Uploading photo...');
   try {
     const { base64 } = await compressImage(file, 1200, 0.85);
-    const res = await fetch(`${API}/photo`, {
+    const res = await apiFetch(`${API}/photo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -956,7 +981,7 @@ async function uploadRecipePhoto(id, file, credit) {
 async function removeRecipePhoto(id) {
   if (!confirm('Remove your photo from this recipe?')) return;
   try {
-    const res = await fetch(`${API}/photo?id=${encodeURIComponent(id)}`, {
+    const res = await apiFetch(`${API}/photo?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
       credentials: 'same-origin',
     });
@@ -1026,7 +1051,7 @@ async function removeTag(recipeId, tag) {
 }
 async function patchRecipe(recipeId, fields, successMsg) {
   try {
-    const res = await fetch(`${API}/recipes`, {
+    const res = await apiFetch(`${API}/recipes`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -1240,7 +1265,7 @@ async function openShoppingList() {
 function closeShoppingList() { document.getElementById('shopping-overlay').classList.remove('on'); }
 async function loadShoppingList() {
   try {
-    const res = await fetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, { credentials: 'same-origin' });
+    const res = await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error('Could not load');
     shoppingList = await res.json();
   } catch (e) {
@@ -1264,7 +1289,7 @@ function renderShoppingList() {
 }
 async function saveShoppingList() {
   try {
-    const res = await fetch(`${API}/shopping-list`, {
+    const res = await apiFetch(`${API}/shopping-list`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -1297,7 +1322,7 @@ function removeShoppingItem(i) {
 async function clearShoppingList() {
   if (!confirm('Clear the entire shopping list?')) return;
   try {
-    await fetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, {
+    await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, {
       method: 'DELETE',
       credentials: 'same-origin',
     });
@@ -1332,7 +1357,7 @@ async function openMealPlan() {
 function closeMealPlan() { document.getElementById('plan-overlay').classList.remove('on'); }
 async function loadMealPlan() {
   try {
-    const res = await fetch(`${API}/meal-plan?deviceId=${encodeURIComponent(getDeviceId())}`, { credentials: 'same-origin' });
+    const res = await apiFetch(`${API}/meal-plan?deviceId=${encodeURIComponent(getDeviceId())}`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error('Could not load');
     mealPlan = await res.json();
   } catch (e) {
@@ -1386,7 +1411,7 @@ async function addToPlan(date, recipeId) {
   if (current.includes(recipeId)) { toast('Already in this day'); return; }
   const updated = [...current, recipeId];
   try {
-    const res = await fetch(`${API}/meal-plan`, {
+    const res = await apiFetch(`${API}/meal-plan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -1404,7 +1429,7 @@ async function removeFromPlan(date, recipeId) {
   const current = mealPlan[date] || [];
   const updated = current.filter(id => id !== recipeId);
   try {
-    const res = await fetch(`${API}/meal-plan`, {
+    const res = await apiFetch(`${API}/meal-plan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -1444,7 +1469,7 @@ function pickRecipe(id) {
 async function deleteRecipe(id) {
   if (!confirm('Delete this recipe for everyone?')) return;
   try {
-    const res = await fetch(`${API}/recipes?id=${encodeURIComponent(id)}`, {
+    const res = await apiFetch(`${API}/recipes?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
       credentials: 'same-origin',
     });
