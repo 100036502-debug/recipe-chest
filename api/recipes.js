@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
-import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, findDuplicate } from '../lib/recipes.js';
+import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, findDuplicate, getRecipesByIds } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
 
 const kv = new Redis({
@@ -48,11 +48,9 @@ export default async function handler(req, res) {
     try {
       const ids = await kv.lrange('recipe_ids', 0, -1);
       if (!ids || !ids.length) return res.status(200).json([]);
-      const recipes = await Promise.all(ids.map((id) => kv.get(`recipe:${id}`)));
-      const valid = recipes
-        .filter(Boolean)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      return res.status(200).json(valid);
+      const recipes = await getRecipesByIds(kv, ids);
+      recipes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      return res.status(200).json(recipes);
     } catch (e) {
       return sendServerError(res, e);
     }

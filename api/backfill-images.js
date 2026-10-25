@@ -3,6 +3,7 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { lookupDishImage } from '../lib/image.js';
+import { getRecipesByIds } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
 
 const kv = new Redis({
@@ -30,7 +31,7 @@ export default async function handler(req, res) {
 
   try {
     const ids = (await kv.lrange('recipe_ids', 0, -1)) || [];
-    const all = (await Promise.all(ids.map((id) => kv.get(`recipe:${id}`)))).filter(Boolean);
+    const all = await getRecipesByIds(kv, ids);
 
     const todo = all.filter((r) => !r.image && (retryMisses || !r.imageChecked));
 
