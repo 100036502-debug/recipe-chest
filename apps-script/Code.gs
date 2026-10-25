@@ -2,6 +2,7 @@ const IMPORT_LABEL = 'recipe-import';
 const FAILED_LABEL = 'recipe-import-failed';
 const MAX_IMPORT_ATTEMPTS = 3;
 const MAX_PDFS_PER_MESSAGE = 3;
+const MAX_IMAGES_PER_MESSAGE = 3; // matches the vision model's limit in api/import-email.js
 // Raw bytes, before base64 encoding (which adds ~33%). Vercel rejects
 // request bodies over about 4.5 MB, so keep the total well under that.
 const MAX_ATTACHMENT_BYTES_TOTAL = 3 * 1024 * 1024;
@@ -116,10 +117,11 @@ function importMessage(message, apiUrl, secret) {
   // can never exceed what the serverless function will accept.
   const budget = { used: 0, skipped: [] };
   const pdfs = extractPdfAttachments(message, budget);
+  const images = extractImageAttachments(message, budget);
 
-  // Nothing to do if the email has neither body text nor PDFs:
+  // Nothing to do if the email has neither body text nor attachments:
   // flag it as failed so it is not retried every 5 minutes forever.
-  if (!bodyText.trim() && pdfs.length === 0) {
+  if (!bodyText.trim() && pdfs.length === 0 && images.length === 0) {
     markFailed(message.getThread(), message, 'no recipe text or attachments found');
     return;
   }
@@ -129,8 +131,8 @@ function importMessage(message, apiUrl, secret) {
     text: bodyText,
     messageId: message.getId(),
   };
-  if (pdfs.length > 0) {
-    payload.attachments = pdfs;
+  if (pdfs.length > 0 || images.length > 0) {
+    payload.attachments = [...pdfs, ...images];
   }
 
   const response = UrlFetchApp.fetch(apiUrl, {
@@ -208,6 +210,55 @@ function extractPdfAttachments(message, budget) {
   }
 
   return pdfs;
+}
+
+/**
+ * Walks the message's attachments and returns up to MAX_IMAGES_PER_MESSAGE
+ * photos (jpeg, png, webp) as { filename, type, content } with base64
+ * content, counted against the same per-message byte budget as the PDFs.
+ * The API resizes them before sending them to the vision model.
+ */
+function extractImageAttachments(message, budget) {
+  const attachments = message.getAttachments() || [];
+  const images = [];
+  if (!budget) budget = { used: 0, skipped: [] };
+
+  const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+
+  for (const att of attachments) {
+    if (images.length >= MAX_IMAGES_PER_MESSAGE) break;
+
+    const name = att.getName() || '';
+    const contentType = (att.getContentType() || '').toLowerCase();
+    const ext = (name.toLowerCase().split('.').pop() || '').trim();
+
+    const isImage =
+      (contentType.startsWith('image/jpeg') ||
+       contentType.startsWith('image/png') ||
+       contentType.startsWith('image/webp')) ||
+      IMAGE_EXTENSIONS.includes(ext);
+    if (!isImage) continue;
+
+    try {
+      const bytes = att.getBytes();
+      if (budget.used + bytes.length > MAX_ATTACHMENT_BYTES_TOTAL) {
+        budget.skipped.push(name || 'an image');
+        console.warn(`Skipping image ${name}: would exceed the ${MAX_ATTACHMENT_BYTES_TOTAL / 1024 / 1024} MB attachment budget`);
+        continue;
+      }
+      budget.used += bytes.length;
+
+      images.push({
+        filename: name,
+        type: contentType || 'image/jpeg',
+        content: Utilities.base64Encode(bytes),
+      });
+    } catch (err) {
+      console.warn(`Could not read attachment ${name}: ${err.message}`);
+    }
+  }
+
+  return images;
 }
 
 /**
