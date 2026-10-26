@@ -3,7 +3,7 @@
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
-import { findDuplicate, isUsableRecipe } from '../lib/recipes.js';
+import { findDuplicate, isUsableRecipe, cleanTags, normalizeMealType } from '../lib/recipes.js';
 import { findDishImage } from '../lib/image.js';
 import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';
@@ -82,10 +82,12 @@ export default async function handler(req, res) {
       prepTime: String(recipe.prepTime || '').slice(0, 40),
       cookTime: String(recipe.cookTime || '').slice(0, 40),
       servings: String(recipe.servings || '').slice(0, 40),
-      tags: (Array.isArray(recipe.tags) ? recipe.tags : []).slice(0, 10).map(String),
+      // Never trust model output: sanitise tags and mealType, and ignore any
+      // sourceUrl the model invented (a PDF has no source page).
+      tags: cleanTags(recipe.tags, 10),
       notes: String(recipe.notes || '').slice(0, 1000),
-      mealType: String(recipe.mealType || 'default'),
-      sourceUrl: String(recipe.sourceUrl || ''),
+      mealType: normalizeMealType(recipe.mealType),
+      sourceUrl: '',
       ...(image ? { image } : {}),
       createdAt: Date.now(),
       addedBy: String(addedBy || 'Anonymous').slice(0, 40),
