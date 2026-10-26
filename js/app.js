@@ -103,7 +103,7 @@ function heroPhotoHtml(r, ms) {
   }
   if (r.image && r.image.url) {
     return `<img class="hero-img" src="${escapeHtml(r.image.url)}" alt="${escapeHtml(r.image.alt || r.title)}" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` +
-      `<div class="img-credit">Photo by ${r.image.photographerUrl ? `<a href="${escapeHtml(r.image.photographerUrl)}" target="_blank" rel="noopener">${escapeHtml(r.image.photographer || 'Unknown')}</a>` : escapeHtml(r.image.photographer || 'Unknown')} on <a href="https://unsplash.com/?utm_source=recipe_chest&amp;utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></div>`;
+      `<div class="img-credit">Photo by ${(r.image.photographerUrl && safeHref(r.image.photographerUrl)) ? `<a href="${escapeHtml(safeHref(r.image.photographerUrl))}" target="_blank" rel="noopener">${escapeHtml(r.image.photographer || 'Unknown')}</a>` : escapeHtml(r.image.photographer || 'Unknown')} on <a href="https://unsplash.com/?utm_source=recipe_chest&amp;utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></div>`;
   }
   return `<span>${ms.emoji}</span>`;
 }
@@ -243,6 +243,11 @@ function getUser() { return localStorage.getItem('rc_user') || 'Anonymous'; }
 function setUser(name) {
   localStorage.setItem('rc_user', name || 'Anonymous');
   document.getElementById('user-tag').textContent = '👤 ' + (name || 'Anonymous');
+}
+// Only http(s) URLs may become hrefs; anything stored weirdly renders as text.
+function safeHref(u) {
+  try { const x = new URL(u); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href : ''; }
+  catch { return ''; }
 }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -727,8 +732,9 @@ function openDetail(id) {
   const r = recipes.find(x => x.id === id);
   if (!r) return;
   const ms = mealStyle(r.mealType);
+  const sourceHref = safeHref(r.sourceUrl);
   let sourceHost = '';
-  try { sourceHost = new URL(r.sourceUrl).hostname.replace(/^www\./, ''); } catch {}
+  try { sourceHost = new URL(sourceHref).hostname.replace(/^www\./, ''); } catch {}
     const tagsHtml = (r.tags || []).map(t => `
     <span class="tag">
       ${escapeHtml(t)}
@@ -759,7 +765,7 @@ function openDetail(id) {
         ${r.prepTime ? `<span class="meta-pill"><span class="k">Prep:</span> ${escapeHtml(r.prepTime)}</span>` : ''}
         ${r.cookTime ? `<span class="meta-pill"><span class="k">Cook:</span> ${escapeHtml(r.cookTime)}</span>` : ''}
         ${r.servings ? `<span class="meta-pill"><span class="k">Serves:</span> ${escapeHtml(r.servings)}</span>${servingsHtml}` : ''}
-        ${r.sourceUrl ? `<span class="meta-pill">🔗 <a href="${escapeHtml(r.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(sourceHost || 'source')}</a></span>` : ''}
+        ${sourceHref ? `<span class="meta-pill">🔗 <a href="${escapeHtml(sourceHref)}" target="_blank" rel="noopener">${escapeHtml(sourceHost || 'source')}</a></span>` : (r.sourceUrl ? `<span class="meta-pill">🔗 ${escapeHtml(sourceHost || 'source')}</span>` : '')}
       </div>
       <div class="recipe-tags" id="tag-row">
         ${tagsHtml}
