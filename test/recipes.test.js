@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { cleanTags, normalizeTitle, normalizeMealType, isUsableRecipe } from '../lib/recipes.js';
+import { cleanTags, normalizeTitle, normalizeMealType, isUsableRecipe, sanitizeStoredRecipe } from '../lib/recipes.js';
 
 test('cleanTags dedupes, strips angle brackets, caps length and count', () => {
   assert.deepEqual(cleanTags(['Soup', 'soup', '<script>x</script>', '  a  b  ']), ['soup', 'scriptx/script', 'a b']);
@@ -37,4 +37,35 @@ test('isUsableRecipe rejects junk the AI might return', () => {
   assert.equal(isUsableRecipe('string'), false);
   assert.equal(isUsableRecipe({ title: 'Pancakes', ingredients: ['1 cup flour'] }), true);
   assert.equal(isUsableRecipe({ title: 'Pancakes', instructions: ['Mix'] }), true); // steps alone are enough
+});
+
+test("sanitizeStoredRecipe cleans untrusted backup data", () => {
+  // javascript: sourceUrl removed
+  const r1 = sanitizeStoredRecipe({ id: "r_1", title: "T", sourceUrl: "javascript:alert(1)" });
+  assert.equal(r1.sourceUrl, "");
+  assert.equal(sanitizeStoredRecipe({ id: "r_1", title: "T", sourceUrl: "https://ok.example/p" }).sourceUrl, "https://ok.example/p");
+
+  // non-Unsplash image dropped entirely
+  const r2 = sanitizeStoredRecipe({ id: "r_2", title: "T", image: { url: "https://evil.example/x.jpg" } });
+  assert.equal("image" in r2, false);
+  const r2b = sanitizeStoredRecipe({ id: "r_2", title: "T", image: { url: "http://images.unsplash.com/x.jpg" } }); // http not https
+  assert.equal("image" in r2b, false);
+  const goodImg = sanitizeStoredRecipe({ id: "r_2", title: "T",
+    image: { url: "https://images.unsplash.com/x.jpg", photographerUrl: "javascript:alert(2)", photoUrl: "https://unsplash.com/photos/x" } });
+  assert.ok(goodImg.image.url.startsWith("https://images.unsplash.com"));
+  assert.equal(goodImg.image.photographerUrl, ""); // javascript: photographer link removed
+  assert.ok(goodImg.image.photoUrl.startsWith("https://unsplash.com"));
+
+  // tags with angle brackets cleaned
+  const r3 = sanitizeStoredRecipe({ id: "r_3", title: "T", tags: ["<b>dinner</b>"] });
+  assert.deepEqual(r3.tags, ["bdinner/b"]);
+
+  // unknown fields dropped, userPhoto never copied
+  const r4 = sanitizeStoredRecipe({ id: "r_4", title: "T", injected: "x", userPhoto: { updatedAt: 1 } });
+  assert.equal("injected" in r4, false);
+  assert.equal("userPhoto" in r4, false);
+
+  // bad id rejected, missing title rejected
+  assert.equal(sanitizeStoredRecipe({ id: "bad id!", title: "T" }), null);
+  assert.equal(sanitizeStoredRecipe({ id: "r_5", title: " " }), null);
 });

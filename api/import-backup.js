@@ -1,11 +1,13 @@
 // POST /api/import-backup — restores a backup produced by GET /api/export.
 // Recipes whose id already exists are skipped, never overwritten.
-// Photos included in the file are restored to photo:<id> / photothumb:<id>.
+// Photos included in the file are restored to photo:<id> / photothumb:<id>
+// only when both strings are plausible base64 (and then set userPhoto on
+// the restored recipe). userPhoto is never copied from the recipe itself.
 // Keep files under ~4.5 MB (Vercel's request limit) — export photos in
 // batches for large chests.
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
-import { ID_PATTERN } from '../lib/recipes.js';
+import { sanitizeStoredRecipe } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
 
 const kv = new Redis({
@@ -18,8 +20,28 @@ export const config = {
   maxDuration: 60,
 };
 
+const MAX_RECIPES_PER_REQUEST = 500;
+const BASE64_PATTERN = /^[A-Za-z0-9+/=]+$/;
+const MAX_PHOTO_CHARS = 1200000; // ~900 KB binary, safe within the request limit
+
+// Valid base64 photo pair or nothing: both strings are required together.
+function validPhotoPair(photo) {
+  if (!photo || typeof photo !== 'object') return null;
+  const { photo: main, photothumb } = photo;
+  if (typeof main !== 'string' || typeof photothumb !== 'string') return null;
+  if (main.length > MAX_PHOTO_CHARS || photothumb.length > MAX_PHOTO_CHARS) return null;
+  if (!BASE64_PATTERN.test(main) || !BASE64_PATTERN.test(photothumb)) return null;
+  return { main, photothumb };
+}
+
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method === 'POST') {
+    /* fall through */;
+  } else if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  } else {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
   if (!requireAuth(req, res)) return;
 
   try {
@@ -27,39 +49,38 @@ export default async function handler(req, res) {
     const incoming = Array.isArray(body.recipes)
       ? body.recipes
       : (Array.isArray(body) ? body : []);
-    if (!incoming.length) return res.status(400).json({ error: 'No recipes in that backup' });
+    if (incoming.length > MAX_RECIPES_PER_REQUEST) {
+      return res.status(400).json({ error: `Too many recipes in one request (max ${MAX_RECIPES_PER_REQUEST}).` });
+    }
 
     const existingIds = new Set((await kv.lrange('recipe_ids', 0, -1)) || []);
     const photos = (body.photos && typeof body.photos === 'object') ? body.photos : {};
 
     let imported = 0;
     let skipped = 0;
-    const importedIds = [];
 
     for (const recipe of incoming) {
-      const id = String(recipe && recipe.id || '');
-      if (!ID_PATTERN.test(id)) { skipped++; continue; }
+      // Rebuild the recipe from known-clean fields only; reject on failure.
+      const clean = sanitizeStoredRecipe(recipe);
+      if (!clean) { skipped++; continue; }
 
-      const exists = existingIds.has(id) || Boolean(await kv.get(`recipe:${id}`));
-      if (exists) { skipped++; continue; }
+      if (existingIds.has(clean.id)) { skipped++; continue; }
 
-      // Sanitize the same way a normal create would.
-      const clean = {
-        ...recipe,
-        id,
-        title: String(recipe.title || 'Untitled Recipe').slice(0, 200),
-        createdAt: Number.isFinite(recipe.createdAt) ? recipe.createdAt : Date.now(),
-      };
+      // Photos: both strings must be valid base64, or neither is written.
+      const pair = validPhotoPair(photos[clean.id]);
+      if (pair) {
+        clean.userPhoto = { updatedAt: Date.now() };
+      }
 
-      await kv.set(`recipe:${id}`, clean);
-      await kv.lpush('recipe_ids', id);
-      existingIds.add(id);
-      importedIds.push(id);
+      await kv.set(`recipe:${clean.id}`, clean);
+      await kv.lpush('recipe_ids', clean.id);
+      existingIds.add(clean.id);
       imported++;
 
-      const photo = photos[id] || {};
-      if (photo.photo) await kv.set(`photo:${id}`, photo.photo);
-      if (photo.photothumb) await kv.set(`photothumb:${id}`, photo.photothumb);
+      if (pair) {
+        await kv.set(`photo:${clean.id}`, pair.main);
+        await kv.set(`photothumb:${clean.id}`, pair.photothumb);
+      }
     }
 
     return res.status(200).json({ imported, skipped });
