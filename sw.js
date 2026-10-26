@@ -1,12 +1,14 @@
 // Recipe Chest — service worker
-const CACHE_NAME = 'recipe-chest-v2';
+const CACHE_NAME = 'recipe-chest-v3';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/offline.html'
+  '/offline.html',
+  '/css/app.css',
+  '/js/app.js',
 ];
 
 // Install: pre-cache the app shell. Each asset is added independently
@@ -71,6 +73,24 @@ self.addEventListener('fetch', (event) => {
           return cached || fetchPromise;
         })
       )
+    );
+    return;
+  }
+
+  // 3b. App code (CSS/JS): network-first so a new deploy is used immediately.
+  //     The cache is only the offline fallback.
+  if (url.origin === self.location.origin &&
+      (url.pathname.startsWith('/css/') || url.pathname.startsWith('/js/'))) {
+    event.respondWith(
+      fetch(request, { cache: 'no-cache' })
+        .then((res) => {
+          if (res && res.status === 200 && res.type === 'basic') {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return res;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match(OFFLINE_URL)))
     );
     return;
   }
