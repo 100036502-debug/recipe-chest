@@ -99,9 +99,11 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
 
     const recipe = parseAiOutput(raw);
 
-    if (!recipe) {
-      console.error('Could not parse AI output. RAW (first 1800 chars):', raw.substring(0, 1800));
-      return res.status(500).json({ error: 'Could not read a recipe from that image. Try a clearer photo.' });
+    if (!isUsableRecipe(recipe)) {
+      if (!recipe || !recipe.title) {
+        console.error('Could not parse AI output. RAW (first 1800 chars):', raw.substring(0, 1800));
+      }
+      return res.status(400).json({ error: 'Could not read a recipe from that image. Try a clearer photo.' });
     }
 
     // Duplicate check and photo lookup run at the same time to keep imports fast

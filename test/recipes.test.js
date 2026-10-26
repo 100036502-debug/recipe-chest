@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { cleanTags, normalizeTitle, normalizeMealType } from '../lib/recipes.js';
+import { cleanTags, normalizeTitle, normalizeMealType, isUsableRecipe } from '../lib/recipes.js';
 
 test('cleanTags dedupes, strips angle brackets, caps length and count', () => {
   assert.deepEqual(cleanTags(['Soup', 'soup', '<script>x</script>', '  a  b  ']), ['soup', 'scriptx/script', 'a b']);
@@ -27,4 +27,14 @@ test('normalizeMealType matches by substring with a default fallback', () => {
   assert.equal(normalizeMealType('late-night snack'), 'snack');
   assert.equal(normalizeMealType('whatever'), 'default');
   assert.equal(normalizeMealType(undefined), 'default');
+});
+
+test('isUsableRecipe rejects junk the AI might return', () => {
+  assert.equal(isUsableRecipe({}), false); // empty object
+  assert.equal(isUsableRecipe({ title: 'Only a title' }), false); // nothing to cook
+  assert.equal(isUsableRecipe({ error: 'no recipe found' }), false);
+  assert.equal(isUsableRecipe(null), false);
+  assert.equal(isUsableRecipe('string'), false);
+  assert.equal(isUsableRecipe({ title: 'Pancakes', ingredients: ['1 cup flour'] }), true);
+  assert.equal(isUsableRecipe({ title: 'Pancakes', instructions: ['Mix'] }), true); // steps alone are enough
 });

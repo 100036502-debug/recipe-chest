@@ -3,7 +3,7 @@
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
-import { findDuplicate } from '../lib/recipes.js';
+import { findDuplicate, isUsableRecipe } from '../lib/recipes.js';
 import { findDishImage } from '../lib/image.js';
 import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';
@@ -52,10 +52,10 @@ export default async function handler(req, res) {
     }
 
     const recipe = await recipeFromPdfText(text);
-    if (!recipe || recipe.error) {
-      return res.status(400).json({ error: 'No recipe detected in that PDF.' });
+    if (recipe && recipe.error) {
+      return res.status(400).json({ error: recipe.error });
     }
-    if (!recipe.title || !(recipe.ingredients || []).length) {
+    if (!isUsableRecipe(recipe)) {
       return res.status(400).json({ error: 'No recipe detected in that PDF.' });
     }
 

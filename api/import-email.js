@@ -4,7 +4,7 @@ import sharp from 'sharp';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
-import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
+import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
 
@@ -121,8 +121,8 @@ export default async function handler(req, res) {
 
         const recipe = await recipeFromPdfText(text);
 
-        if (recipe.error) {
-          console.warn(`PDF ${filename}: model reported ${recipe.error}`);
+        if (!isUsableRecipe(recipe)) {
+          console.warn(`PDF ${filename}: no usable recipe in the model output`, recipe.error || '');
           continue;
         }
 
@@ -165,8 +165,8 @@ export default async function handler(req, res) {
 
           const recipe = await callGroq(contentPayload, { vision: true });
 
-          if (recipe.error) {
-            console.warn(`Image recipe: model reported ${recipe.error}`);
+          if (!isUsableRecipe(recipe)) {
+            console.warn('Image recipe: no usable recipe in the model output', recipe.error || '');
           } else {
             const saved = await persistRecipe(recipe, senderName);
             savedRecipes.push(saved);
@@ -192,7 +192,7 @@ export default async function handler(req, res) {
           },
         ]);
 
-        if (!recipe.error) {
+        if (isUsableRecipe(recipe)) {
           const saved = await persistRecipe(recipe, senderName);
           savedRecipes.push(saved);
           console.log(`${saved.duplicate ? 'Already had' : 'Saved'} recipe from email body: ${saved.recipe.title}`);
@@ -249,7 +249,8 @@ async function callGroq(contentPayload, { vision = false } = {}) {
  * If a recipe with the same title already exists, the existing one is returned instead.
  */
 async function persistRecipe(parsedRecipe, senderName) {
-  const title = String(parsedRecipe.title || 'Imported Email Recipe').slice(0, 200);
+  // isUsableRecipe guards every call site, so a real title is guaranteed here.
+  const title = String(parsedRecipe.title || '').trim().slice(0, 200);
 
   // Duplicate check and photo lookup run at the same time to keep imports fast
   const [dup, image] = await Promise.all([
