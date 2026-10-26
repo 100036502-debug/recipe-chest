@@ -8,6 +8,13 @@ import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
 
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
+});
+
+export const config = { maxDuration: 60 };
+
 const MAX_EMAIL_TEXT_CHARACTERS = 6000;
 const MAX_IMAGES_PER_REQUEST = 3; // Groq's hard limit for the vision model
 
