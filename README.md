@@ -77,6 +77,8 @@ Do not rename these keys casually; the app relies on them:
 
 ## Development
 
+The app is a single page: `index.html` (markup) plus `css/app.css` (all styles) and `js/app.js` (the whole app script, a classic non-module script so the inline `onclick` handlers keep working).
+
 ```bash
 npm install
 npm test        # unit tests (node --test, no extra dependencies)
