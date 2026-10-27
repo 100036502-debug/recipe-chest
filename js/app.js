@@ -673,7 +673,7 @@ async function startBatch() {
         item.mimeType = mime;
       }
       const plan = buildImportRequest(item, name, base64, mime);
-      const res = await apiFetch(`${API}${plan.path}`, {
+      const res = await apiFetch(plan.path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',

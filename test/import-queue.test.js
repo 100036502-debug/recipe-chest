@@ -118,3 +118,9 @@ test('queueCountLabel names PDFs and images correctly', () => {
   assert.equal(app.queueCountLabel([img, pdf]), '1 image + 1 PDF in queue');
   assert.equal(app.queueCountLabel([img, img, pdf, pdf]), '2 images + 2 PDFs in queue');
 });
+
+test('startBatch passes the planned path straight to apiFetch (no second /api prefix)', () => {
+  // plan.path already starts with /api, so prefixing API again would request /api/api/process
+  assert.ok(!/\$\{API\}\$\{plan\.path\}/.test(appSource), 'plan.path must not be prefixed with API');
+  assert.ok(/apiFetch\(plan\.path,/.test(appSource), 'startBatch must call apiFetch(plan.path, ...)');
+});
