@@ -138,6 +138,10 @@ let isProcessing = false;
 let cancelRequested = false;
 let shoppingList = { items: [] };
 let mealPlan = {};
+// 'unknown' until a load actually succeeds. Anything but 'ok' means we do not
+// know what the server holds, so we must not write over it.
+let shoppingListState = 'unknown';
+let mealPlanState = 'unknown';
 let planWeekOffset = 0;
 let currentScaling = null;
 let offlineMode = false; // true when showing cached recipes (read-only)
@@ -202,13 +206,37 @@ document.getElementById('lock-input').addEventListener('keypress', e => { if (e.
   if (input) input.focus();
 })();
 
+let toastActionHandler = null;
 function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
+  toastActionHandler = null;
   t.classList.add('on');
   clearTimeout(t._timeout);
   t._timeout = setTimeout(() => t.classList.remove('on'), 2800);
 }
+// A toast with one action button (used for Undo). The handler is cleared as
+// soon as the toast goes away, so a stale tap cannot act on something else.
+function toastWithUndo(message, label, onUndo, ms = 10000) {
+  const t = document.getElementById('toast');
+  t.innerHTML = `${escapeHtml(message)} <button type="button" class="toast-action" id="toast-action">${escapeHtml(label)}</button>`;
+  t.classList.add('on');
+  clearTimeout(t._timeout);
+  toastActionHandler = typeof onUndo === 'function' ? onUndo : null;
+  t._timeout = setTimeout(() => {
+    t.classList.remove('on');
+    toastActionHandler = null;
+  }, ms);
+}
+document.getElementById('toast').addEventListener('click', e => {
+  if (!e.target.closest('#toast-action')) return;
+  const t = document.getElementById('toast');
+  const fn = toastActionHandler;
+  toastActionHandler = null;
+  clearTimeout(t._timeout);
+  t.classList.remove('on');
+  if (fn) fn();
+});
 function toggleAppMenu() {
   document.getElementById('app-menu').classList.toggle('on');
 }
@@ -1329,23 +1357,69 @@ async function openShoppingList() {
   renderShoppingList();
 }
 function closeShoppingList() { document.getElementById('shopping-overlay').classList.remove('on'); overlayClosed('shopping-overlay'); }
+// ---- Load state: a failed load is not an empty list ----
+// What a load actually told us. Only a 2xx says what the server holds; any
+// other outcome means "unknown", and writing after it would replace the real
+// list with whatever this device happens to be holding.
+function loadOutcome(ok, body) {
+  if (!ok) return { status: 'failed', data: null };
+  const data = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  return { status: 'ok', data };
+}
+// Every write (add / tick / remove / clear / add recipe / add week) is gated on
+// this: it is only safe once a load has succeeded.
+function listWriteBlocked(loadState) {
+  return loadState !== 'ok';
+}
+// A delete can only be undone when the server says it kept a copy.
+function undoOffer(ok, body) {
+  const data = body && typeof body === 'object' ? body : {};
+  if (!ok || data.undoable !== true) return { offer: false, seconds: 0 };
+  const seconds = Number(data.undoWindowSeconds);
+  return { offer: true, seconds: Number.isFinite(seconds) && seconds > 0 ? seconds : 0 };
+}
+
 async function loadShoppingList() {
+  let ok;
+  let data = null;
   try {
     const res = await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, { credentials: 'same-origin' });
-    if (!res.ok) throw new Error('Could not load');
-    shoppingList = await res.json();
+    ok = res.ok;
+    if (ok) data = await res.json();
   } catch (e) {
-    shoppingList = { items: [] };
+    ok = false;
   }
+  const out = loadOutcome(ok, data);
+  if (out.status === 'ok') {
+    shoppingListState = 'ok';
+    shoppingList = { items: [], ...out.data };
+    if (!Array.isArray(shoppingList.items)) shoppingList.items = [];
+  } else {
+    // Keep whatever we already hold on screen: it may be the only copy left,
+    // and it is still not allowed to be written back over the server's list.
+    shoppingListState = 'failed';
+  }
+  return shoppingListState;
+}
+async function retryShoppingList() {
+  await loadShoppingList();
+  renderShoppingList();
 }
 function renderShoppingList() {
   const el = document.getElementById('sl-list');
   const items = shoppingList.items || [];
+  const blocked = listWriteBlocked(shoppingListState);
+  const banner = blocked
+    ? `<div class="sl-error" role="alert">
+        <span>Your list didn't load, so it can't be changed right now. Nothing on the server has been overwritten.</span>
+        <button class="btn-secondary" onclick="retryShoppingList()">Retry</button>
+      </div>`
+    : '';
   if (!items.length) {
-    el.innerHTML = '<div class="sl-empty">No items yet. Add one above or open a recipe and tap "Add to list".</div>';
+    el.innerHTML = banner + '<div class="sl-empty">No items yet. Add one above or open a recipe and tap "Add to list".</div>';
     return;
   }
-  el.innerHTML = items.map((it, i) => `
+  el.innerHTML = banner + items.map((it, i) => `
     <div class="sl-item ${it.checked ? 'checked' : ''}">
       <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="toggleShoppingItem(${i})">
       <span class="sl-text">${escapeHtml(it.text)}</span>
@@ -1353,7 +1427,15 @@ function renderShoppingList() {
     </div>
   `).join('');
 }
+// Blocks a shopping-list write while the load is failed, with a message that
+// says what to do, instead of saving an empty-looking list over the real one.
+function shoppingListReady() {
+  if (!listWriteBlocked(shoppingListState)) return true;
+  toast('Your list didn\'t load — open Shopping List and tap Retry first.');
+  return false;
+}
 async function saveShoppingList() {
+  if (!shoppingListReady()) return;
   try {
     const res = await apiFetch(`${API}/shopping-list`, {
       method: 'POST',
@@ -1372,21 +1454,25 @@ function addShoppingItem() {
   const input = document.getElementById('sl-input');
   const text = input.value.trim();
   if (!text) return;
+  if (!shoppingListReady()) return;
   shoppingList.items.push({ text, checked: false });
   input.value = '';
   saveShoppingList();
 }
 function toggleShoppingItem(i) {
   if (!shoppingList.items[i]) return;
+  if (!shoppingListReady()) return;
   shoppingList.items[i].checked = !shoppingList.items[i].checked;
   saveShoppingList();
 }
 function removeShoppingItem(i) {
+  if (!shoppingListReady()) return;
   shoppingList.items.splice(i, 1);
   saveShoppingList();
 }
 async function clearShoppingList() {
   if (!confirm('Clear the entire shopping list?')) return;
+  if (!shoppingListReady()) return;
   try {
     await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, {
       method: 'DELETE',
@@ -1402,6 +1488,7 @@ async function addRecipeToShoppingList(id) {
   const r = recipes.find(x => x.id === id);
   if (!r || !r.ingredients) return;
   await loadShoppingList();
+  if (!shoppingListReady()) return;
   const existing = new Set((shoppingList.items || []).map(it => it.text.toLowerCase()));
   let added = 0;
   for (const ing of r.ingredients) {
@@ -1424,13 +1511,35 @@ async function openMealPlan() {
 }
 function closeMealPlan() { document.getElementById('plan-overlay').classList.remove('on'); overlayClosed('plan-overlay'); }
 async function loadMealPlan() {
+  let ok;
+  let data = null;
   try {
     const res = await apiFetch(`${API}/meal-plan?deviceId=${encodeURIComponent(getDeviceId())}`, { credentials: 'same-origin' });
-    if (!res.ok) throw new Error('Could not load');
-    mealPlan = await res.json();
+    ok = res.ok;
+    if (ok) data = await res.json();
   } catch (e) {
-    mealPlan = {};
+    ok = false;
   }
+  const out = loadOutcome(ok, data);
+  if (out.status === 'ok') {
+    mealPlanState = 'ok';
+    mealPlan = out.data && typeof out.data === 'object' && !Array.isArray(out.data) ? out.data : {};
+  } else {
+    // Same rule as the shopping list: a failed load leaves the plan unknown,
+    // and writing a day from a guessed plan would wipe it.
+    mealPlanState = 'failed';
+  }
+  return mealPlanState;
+}
+async function retryMealPlan() {
+  await loadMealPlan();
+  renderMealPlan();
+}
+// Blocks a meal-plan write while the load is failed.
+function mealPlanReady() {
+  if (!listWriteBlocked(mealPlanState)) return true;
+  toast('Your meal plan didn\'t load — tap Retry before changing it.');
+  return false;
 }
 function getWeekDays() {
   const days = [];
@@ -1465,7 +1574,12 @@ function renderMealPlan() {
         + days[0].toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' – '
         + days[6].toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
-  el.innerHTML = days.map((d, idx) => {
+  el.innerHTML = (listWriteBlocked(mealPlanState)
+    ? `<div class="mp-error" role="alert">
+        <span>Your meal plan didn't load, so it can't be changed right now. Nothing on the server has been overwritten.</span>
+        <button class="btn-secondary" onclick="retryMealPlan()">Retry</button>
+      </div>`
+    : '') + days.map((d, idx) => {
     const key = ymd(d);
     const ids = mealPlan[key] || [];
     const label = planWeekOffset === 0 && idx === 0 ? 'Today' : (planWeekOffset === 0 && idx === 1 ? 'Tomorrow' : weekNames[d.getDay()]);
@@ -1488,6 +1602,7 @@ function renderMealPlan() {
   }).join('');
 }
 async function addToPlan(date, recipeId) {
+  if (!mealPlanReady()) return;
   const current = mealPlan[date] || [];
   if (current.includes(recipeId)) { toast('Already in this day'); return; }
   const updated = [...current, recipeId];
@@ -1507,6 +1622,7 @@ async function addToPlan(date, recipeId) {
   }
 }
 async function removeFromPlan(date, recipeId) {
+  if (!mealPlanReady()) return;
   const current = mealPlan[date] || [];
   const updated = current.filter(id => id !== recipeId);
   try {
@@ -1525,11 +1641,13 @@ async function removeFromPlan(date, recipeId) {
 }
 
 async function addWeekToShoppingList() {
+  if (!mealPlanReady()) return;
   const days = getWeekDays();
   const ids = new Set();
   for (const d of days) for (const rid of (mealPlan[ymd(d)] || [])) ids.add(rid);
   if (!ids.size) { toast('No meals planned this week'); return; }
   await loadShoppingList();
+  if (!shoppingListReady()) return;
   const existing = new Set((shoppingList.items || []).map(it => it.text.toLowerCase()));
   let added = 0;
   for (const rid of ids) {
@@ -1577,11 +1695,33 @@ async function deleteRecipe(id) {
       method: 'DELETE',
       credentials: 'same-origin',
     });
-    if (!res.ok) throw new Error('Delete failed');
-    toast('Recipe deleted');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Delete failed');
     closeDetail();
+    // Offer Undo only when the server actually kept a copy of the recipe.
+    const offer = undoOffer(true, data);
+    if (offer.offer) toastWithUndo('Recipe deleted', 'Undo', () => undoDelete(id), Math.min(offer.seconds * 1000, 10000));
+    else toast('Recipe deleted');
     await loadRecipes();
   } catch (e) { toast('Could not delete: ' + e.message); }
+}
+// Puts a just-deleted recipe back, with the same id. If the undo window has
+// passed the server says so and we show that, rather than pretending.
+async function undoDelete(id) {
+  try {
+    const res = await apiFetch(`${API}/undo-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || 'Could not undo that delete.'); return; }
+    toast(`Restored ${data.title || 'recipe'}`);
+    await loadRecipes();
+  } catch (e) {
+    toast('Could not undo: ' + e.message);
+  }
 }
 
 document.getElementById('search-input').addEventListener('input', e => {

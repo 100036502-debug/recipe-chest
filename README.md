@@ -88,6 +88,10 @@ Do not rename these keys casually; the app relies on them:
 - `email_import:<messageId>` — idempotency markers (30-day TTL)
 - `rl:<name>:<ip>` — rate-limit counters (1-hour TTL)
 - `shopping_list:<deviceId>`, `meal_plan:<deviceId>` — per-device lists
+- `trash:<id>` — a copy of a recipe (`{recipe, photo?, photothumb?, deletedAt}`)
+  written just before it is deleted, so the Undo in the toast can put it back
+  with the same id. 10-minute TTL, after which it expires on its own; there is
+  no trash screen and no other endpoint reads it
 
 ## Development
 
