@@ -117,9 +117,12 @@ function heroPhotoHtml(r, ms) {
 const FRACTION_CHARS = { '½': 1/2, '¼': 1/4, '¾': 3/4, '⅓': 1/3, '⅔': 2/3, '⅛': 1/8 };
 function scaleIngredientLine(ing, factor) {
   if (factor === 1) return escapeHtml(ing);
-  const s = String(ing).replace(/(\d*)([½¼¾⅓⅔⅛])/g, (_, whole, frac) => {
+  // Merge a preceding whole number INTO the fraction ("2 ½" -> 2.5, then
+  // formatAmount renders "2 1/2"). Returning "2 0.5" left scaleAmount
+  // with a string it could not parse, so nothing was scaled.
+  const s = String(ing).replace(/(\d*)\s*([½¼¾⅓⅔⅛])/g, (_, whole, frac) => {
     const value = (whole ? parseInt(whole, 10) : 0) + FRACTION_CHARS[frac];
-    return String(value);
+    return formatAmount(value);
   });
   const m = s.match(/^([\d/.\s]+)\s+(.*)$/);
   if (!m) return escapeHtml(ing);

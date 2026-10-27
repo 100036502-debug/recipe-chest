@@ -124,3 +124,23 @@ test('startBatch passes the planned path straight to apiFetch (no second /api pr
   assert.ok(!/\$\{API\}\$\{plan\.path\}/.test(appSource), 'plan.path must not be prefixed with API');
   assert.ok(/apiFetch\(plan\.path,/.test(appSource), 'startBatch must call apiFetch(plan.path, ...)');
 });
+
+test('scaling merges a whole number with a unicode fraction', () => {
+  // vm context needs the helpers' dependencies; escapeHtml is stubbed out below.
+  const parts = [
+    appSource.match(/^const FRACTION_CHARS.*$/m)[0],
+    ...['formatAmount', 'scaleAmount', 'scaleIngredientLine'].map((name) => {
+      const start = appSource.indexOf(`\nfunction ${name}(`);
+      const end = appSource.indexOf('\n}\n', start);
+      return appSource.slice(start + 1, end + 2);
+    }),
+    'this.escapeHtml = (s) => String(s);',
+  ];
+  const ctx = vm.createContext({ escapeHtml: null });
+  vm.runInContext(parts.join('\n'), ctx);
+  const scale = (line, factor) => ctx.scaleIngredientLine(line, factor);
+  assert.equal(scale('2 ½ cups', 2), '5 cups'); // was "2 0.5 cups" before the fix
+  assert.equal(scale('1½ cups', 2), '3 cups');
+  assert.equal(scale('½ tsp', 2), '1 tsp');
+  assert.equal(scale('2 ½ cups', 0.5), '1 1/4 cups');
+});
