@@ -30,7 +30,9 @@ export default [
       ...js.configs.recommended.rules,
       'no-undef': 'error',
       'no-empty': ['error', { allowEmptyCatch: true }],
-      'no-unused-vars': ['warn', { args: 'none' }],
+      // app.js is a classic script driven by inline onclick attributes, so
+      // "unused" functions are the norm here; no-undef is the check that matters.
+      'no-unused-vars': 'off',
     },
   },
   {
