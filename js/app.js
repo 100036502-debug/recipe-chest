@@ -1768,7 +1768,15 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'Escape') {
     if (isProcessing) return;
-    cancelUpload(); cancelPhotoUpload(); closeImport(); closeDetail(); closeShoppingList(); closeMealPlan(); closePicker();
+    // Close only the TOPMOST open overlay, like the Back button does.
+    // Closing every overlay scrambles focus restoration and leaves the
+    // history stack with stale entries.
+    for (let i = openOverlayStack.length - 1; i >= 0; i--) {
+      const id = openOverlayStack[i];
+      const el = document.getElementById(id);
+      if (el && el.classList.contains('on')) { closeOverlayById(id); return; }
+      openOverlayStack.splice(i, 1); // stale entry: overlay already gone
+    }
   }
 });
 
