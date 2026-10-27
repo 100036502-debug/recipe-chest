@@ -75,7 +75,10 @@ function handleImportError(thread, message, error) {
 
 // True for failures that are worth retrying: rate limits and server errors.
 function isTransientFailure(message) {
-  return /\b(429|5[0-9]{2})\b/.test(message);
+  // Only the status in the first line counts. The message can quote up to
+  // 300 characters of the response body, and a 400 whose body happens to
+  // contain e.g. "503" must NOT be treated as a transient server error.
+  return /^Recipe API returned (429|5\d\d):/.test(message);
 }
 
 /**
