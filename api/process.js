@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: 'Too many imports this hour. Try again later.' });
   }
 
-  const { imageBase64, mimeType, addedBy } = req.body || {};
+  const { imageBase64, mimeType, addedBy, skipDuplicateCheck } = req.body || {};
   if (!imageBase64) return res.status(400).json({ error: 'No image provided' });
 
   if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Groq API key not configured' });
@@ -106,9 +106,12 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
       return res.status(400).json({ error: 'Could not read a recipe from that image. Try a clearer photo.' });
     }
 
-    // Duplicate check and photo lookup run at the same time to keep imports fast
+    // Duplicate check and photo lookup run at the same time to keep imports fast.
+    // skipDuplicateCheck: true saves a new copy even when a match exists
+    // (the client's "Save a copy" on an already-in-your-chest queue row).
+    const skipDup = skipDuplicateCheck === true;
     const [dup, image] = await Promise.all([
-      findDuplicate(kv, { title: recipe.title }),
+      skipDup ? null : findDuplicate(kv, { title: recipe.title }),
       findDishImage(recipe.title),
     ]);
 

@@ -443,6 +443,15 @@ fi.addEventListener('change', (e) => {
   if (files.length) addFilesToQueue(files);
   fi.value = '';
 });
+// Queue-row buttons are delegated, so a re-render never loses the handler.
+document.getElementById('queue-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-queue-action]');
+  if (!btn || btn.disabled) return;
+  const id = btn.dataset.queueId;
+  if (btn.dataset.queueAction === 'retry') retryItem(id);
+  else if (btn.dataset.queueAction === 'open') openQueuedRecipe(id);
+  else if (btn.dataset.queueAction === 'copy') saveCopyAnyway(id);
+});
 const MAX_PDF_UPLOAD_BYTES = 3 * 1024 * 1024; // Vercel caps request bodies at ~4.5 MB
 function addFilesToQueue(files) {
   const status = document.getElementById('upload-status');
@@ -477,6 +486,49 @@ function fileToBase64(file) {
     reader.readAsDataURL(file);
   });
 }
+// Which endpoint and body a queued item needs. Pure: no DOM, no uploads.
+// A PDF goes to /api/process-pdf as raw base64; an image goes to /api/process
+// after client-side compression.
+function buildImportRequest(item, name, base64, mimeType) {
+  if (item.isPdf) {
+    return {
+      path: '/api/process-pdf',
+      body: { pdfBase64: base64, addedBy: name, skipDuplicateCheck: item.skipDuplicateCheck === true },
+    };
+  }
+  return {
+    path: '/api/process',
+    body: { imageBase64: base64, mimeType, addedBy: name, skipDuplicateCheck: item.skipDuplicateCheck === true },
+  };
+}
+// Map an import response to a queue state. Pure: takes the status code and the
+// parsed body, returns what updateQueueUI() should show.
+// A 409 with a duplicate payload is NOT a failure — it is a recipe we already have.
+function importOutcome(status, data) {
+  const body = data && typeof data === 'object' ? data : {};
+  if (status >= 200 && status < 300) {
+    return { state: 'done', recipeId: body.id || null, title: body.title || 'Saved', message: '' };
+  }
+  if (status === 409 && body.duplicate && body.duplicate.id) {
+    return {
+      state: 'duplicate',
+      recipeId: body.duplicate.id,
+      title: body.duplicate.title || '',
+      message: body.error || 'Already in your chest',
+    };
+  }
+  return { state: 'failed', recipeId: null, title: '', message: body.error || `Failed (HTTP ${status})` };
+}
+// "3 images + 1 PDF in queue" rather than calling every item an image.
+function queueCountLabel(items) {
+  const total = items.length;
+  const pdfs = items.filter(i => i.isPdf).length;
+  const images = total - pdfs;
+  const part = (n, word, plural) => `${n} ${n === 1 ? word : plural}`;
+  if (!pdfs) return `${part(images, 'image', 'images')} in queue`;
+  if (!images) return `${part(pdfs, 'PDF', 'PDFs')} in queue`;
+  return `${part(images, 'image', 'images')} + ${part(pdfs, 'PDF', 'PDFs')} in queue`;
+}
 function updateQueueUI() {
   const wrap = document.getElementById('queue-wrap');
   const list = document.getElementById('queue-list');
@@ -501,15 +553,16 @@ function updateQueueUI() {
   const total = uploadQueue.length;
   const done = uploadQueue.filter(i => i.status === 'done').length;
   const failed = uploadQueue.filter(i => i.status === 'failed').length;
+  const dupes = uploadQueue.filter(i => i.status === 'duplicate').length;
   const ready = uploadQueue.filter(i => i.status === 'ready').length;
-  count.textContent = `${total} image${total > 1 ? 's' : ''} in queue`;
+  count.textContent = queueCountLabel(uploadQueue);
   if (isProcessing) {
-    progress.textContent = `${done + failed} / ${total} processed`;
+    progress.textContent = `${done + failed + dupes} / ${total} processed`;
     btn.disabled = true;
     btn.textContent = 'Processing...';
     cancelBtn.textContent = 'Stop';
-  } else if (ready === 0 && total === done + failed) {
-    progress.textContent = `Done: ${done} saved${failed ? `, ${failed} failed` : ''}`;
+  } else if (ready === 0 && total === done + failed + dupes) {
+    progress.textContent = `Done: ${done} saved${dupes ? `, ${dupes} already in your chest` : ''}${failed ? `, ${failed} failed` : ''}`;
     btn.disabled = true;
     btn.textContent = 'All Done';
     cancelBtn.textContent = 'Close';
@@ -525,10 +578,14 @@ function updateQueueUI() {
       case 'ready': badge = 'Ready'; break;
       case 'processing': badge = '<span class="spinner"></span>Reading...'; break;
       case 'done': badge = '✓ ' + (item.title ? escapeHtml(item.title) : 'Saved'); break;
+      case 'duplicate': badge = '📖 Already in your chest' + (item.title ? ': ' + escapeHtml(item.title) : ''); break;
       case 'failed': badge = '⚠ ' + escapeHtml((item.error || 'Failed').slice(0, 100)); break;
     }
+    let actions = '';
+    if (item.status === 'failed') actions = `<button class="queue-retry" data-queue-action="retry" data-queue-id="${item.id}">Retry</button>`;
+    else if (item.status === 'duplicate') actions = `<button class="queue-retry queue-open" data-queue-action="open" data-queue-id="${item.id}">Open</button><button class="queue-retry" data-queue-action="copy" data-queue-id="${item.id}"${isProcessing ? ' disabled' : ''}>Save a copy</button>`;
     const name = item.title ? escapeHtml(item.title) : escapeHtml(item.originalName || 'Image');
-    return `<div class="queue-item ${item.status}">${item.previewUrl ? `<img class="queue-thumb" src="${item.previewUrl}" alt="">` : `<span class="queue-thumb queue-pdf" aria-hidden="true">📄</span>`}<div class="queue-info"><div class="queue-name">${name}</div><div class="queue-badge">${badge}</div></div>${item.status === 'failed' ? `<button class="queue-retry" onclick="retryItem('${item.id}')">Retry</button>` : ''}</div>`;
+    return `<div class="queue-item ${item.status}">${item.previewUrl ? `<img class="queue-thumb" src="${item.previewUrl}" alt="">` : `<span class="queue-thumb queue-pdf" aria-hidden="true">📄</span>`}<div class="queue-info"><div class="queue-name">${name}</div><div class="queue-badge">${badge}</div></div>${actions}</div>`;
   }).join('');
   if (isProcessing) list.scrollTop = list.scrollHeight;
 }
@@ -539,6 +596,23 @@ function retryItem(id) {
   item.error = null;
   updateQueueUI();
 }
+// Open the recipe we already have, straight from a duplicate queue row.
+function openQueuedRecipe(queueItemId) {
+  const item = uploadQueue.find(i => i.id === queueItemId);
+  if (!item || !item.recipeId) return;
+  if (recipes.some(r => r.id === item.recipeId)) { openDetail(item.recipeId); return; }
+  loadRecipes().then(() => openDetail(item.recipeId));
+}
+// "Save a copy" on a duplicate: re-queue it with the duplicate check off.
+function saveCopyAnyway(queueItemId) {
+  const item = uploadQueue.find(i => i.id === queueItemId);
+  if (!item || isProcessing) return;
+  item.status = 'ready';
+  item.skipDuplicateCheck = true;
+  item.error = null;
+  updateQueueUI();
+  startBatch();
+}
 async function startBatch() {
   if (isProcessing) return;
   const ready = uploadQueue.filter(i => i.status === 'ready');
@@ -548,35 +622,57 @@ async function startBatch() {
   isProcessing = true;
   cancelRequested = false;
   updateQueueUI();
-  let success = 0, failed = 0;
+  let success = 0, failed = 0, duplicates = 0;
   for (const item of ready) {
     if (cancelRequested) break;
     item.status = 'processing';
     updateQueueUI();
     try {
+      // Base64 is cached on the queue item, so a retry does not re-read the file.
       let base64 = item.base64;
       let mime = item.mimeType;
       if (!base64) {
-        const compressed = await compressImage(item.file);
-        base64 = compressed.base64;
-        mime = compressed.mimeType;
+        if (item.isPdf) {
+          // A PDF is sent as-is; it must never go through the image compressor.
+          base64 = await fileToBase64(item.file);
+          mime = 'application/pdf';
+        } else {
+          const compressed = await compressImage(item.file);
+          base64 = compressed.base64;
+          mime = compressed.mimeType;
+        }
         item.base64 = base64;
         item.mimeType = mime;
       }
-      const res = await apiFetch(`${API}/process`, {
+      const plan = buildImportRequest(item, name, base64, mime);
+      const res = await apiFetch(`${API}${plan.path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ imageBase64: base64, mimeType: mime, addedBy: name }),
+        body: JSON.stringify(plan.body),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      item.status = 'done';
-      item.recipeId = data.id;
-      item.title = data.title || 'Saved';
-      item.file = null;
-      item.base64 = null;
-      success++;
+      let data = null;
+      try { data = await res.json(); } catch (e) { data = null; }
+      const outcome = importOutcome(res.status, data);
+      if (outcome.state === 'done') {
+        item.status = 'done';
+        item.recipeId = outcome.recipeId;
+        item.title = outcome.title || 'Saved';
+        item.file = null;
+        item.base64 = null;
+        item.skipDuplicateCheck = false;
+        success++;
+      } else if (outcome.state === 'duplicate') {
+        // Not a failure: we already have this recipe. Keep the cached base64 so
+        // "Save a copy" can re-send it without reading the file again.
+        item.status = 'duplicate';
+        item.recipeId = outcome.recipeId;
+        item.title = outcome.title;
+        item.error = null;
+        duplicates++;
+      } else {
+        throw new Error(outcome.message);
+      }
     } catch (err) {
       item.status = 'failed';
       item.error = err.message;
@@ -591,9 +687,12 @@ async function startBatch() {
   cancelRequested = false;
   updateQueueUI();
   await loadRecipes();
-  if (success > 0 && failed === 0) toast(`All ${success} recipe${success > 1 ? 's' : ''} saved!`);
-  else if (success > 0 && failed > 0) toast(`${success} saved, ${failed} failed. Click Retry on failures.`);
-  else if (failed > 0) toast(`All ${failed} failed. Check the errors.`);
+  const parts = [];
+  if (success) parts.push(`${success} saved`);
+  if (duplicates) parts.push(`${duplicates} already in your chest`);
+  if (failed) parts.push(`${failed} failed`);
+  if (!parts.length) return;
+  toast(parts.join(', ') + (failed ? '. Click Retry on failures.' : '!'));
 }
 
 function openImport() {
