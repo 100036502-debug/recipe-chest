@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, findDuplicate, getRecipesByIds } from '../lib/recipes.js';
+import { TRASH_TTL_SECONDS, buildTrashEntry, trashKey } from '../lib/trash.js';
 import { sendServerError } from '../lib/http.js';
 
 const kv = new Redis({
@@ -125,15 +126,23 @@ export default async function handler(req, res) {
     }
   }
 
-  // ---- DELETE: remove one recipe by id ----
+  // ---- DELETE: remove one recipe by id, keeping a short-lived copy for undo ----
   if (req.method === 'DELETE') {
     const id = String(req.query.id || '');
     if (!ID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid or missing id' });
     try {
-      await kv.del(`recipe:${id}`);
-      await kv.del(`photo:${id}`, `photothumb:${id}`);
+      const [recipe, photo, photothumb] = await kv.mget(`recipe:${id}`, `photo:${id}`, `photothumb:${id}`);
+      // Copy first, delete second: if keeping the copy fails we have not
+      // destroyed anything, so a failed delete is safe to retry.
+      const entry = buildTrashEntry(recipe, photo, photothumb);
+      if (entry) await kv.set(trashKey(id), entry, { ex: TRASH_TTL_SECONDS });
+      await kv.del(`recipe:${id}`, `photo:${id}`, `photothumb:${id}`);
       await kv.lrem('recipe_ids', 0, id);
-      return res.status(200).json({ success: true });
+      return res.status(200).json({
+        success: true,
+        undoable: Boolean(entry),
+        undoWindowSeconds: entry ? TRASH_TTL_SECONDS : 0,
+      });
     } catch (e) {
       return sendServerError(res, e);
     }
