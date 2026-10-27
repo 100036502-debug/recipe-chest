@@ -267,7 +267,7 @@ async function exportBackup(withPhotos) {
 }
 
 // ---- Restore backup: pick the exported JSON file(s), recipes first ----
-const BACKUP_FILE_MAX_BYTES = 3.5 * 1024 * 1024; // Vercel request cap is ~4.5 MB
+const BACKUP_FILE_MAX_BYTES = 3.75 * 1024 * 1024; // below the 4 MB bodyParser limit and Vercel's ~4.5 MB cap
 function pickBackupFiles() {
   closeAppMenu();
   const input = document.createElement('input');

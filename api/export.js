@@ -19,7 +19,7 @@ const kv = new Redis({
 
 export const config = { maxDuration: 60 };
 
-const MAX_RESPONSE_BYTES = 3.5 * 1024 * 1024;
+const MAX_RESPONSE_BYTES = 3 * 1024 * 1024;
 
 function isId(id) {
   return typeof id === 'string' && ID_PATTERN.test(id);

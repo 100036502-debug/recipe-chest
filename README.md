@@ -59,7 +59,7 @@ Use the `⋯` menu next to your name in the header.
   `recipe-chest-photos-<date>-part<N>.json` file per photo slice, so no single
   response hits Vercel's ~4.5 MB limit. Keep the parts.
 - **Restore backup** opens a file picker (multiple files allowed, each under
-  3.5 MB). Select your backup files — recipes first, photo parts after;
+  3.5 MB). Select your backup files — recipes first, photo parts after (each file may be up to 3.75 MB);
   order in the picker does not matter. Recipes whose ids already exist are
   skipped, never overwritten; restoring the same files twice reports
   everything as skipped.
