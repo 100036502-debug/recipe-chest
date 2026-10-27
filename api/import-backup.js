@@ -67,6 +67,7 @@ export default async function handler(req, res) {
       // Rebuild the recipe from known-clean fields only; reject on failure.
       const clean = sanitizeStoredRecipe(recipe);
       if (!clean) { skipped++; continue; }
+      if (!clean.createdAt) clean.createdAt = Date.now();
 
       if (existingIds.has(clean.id)) { skipped++; continue; }
 

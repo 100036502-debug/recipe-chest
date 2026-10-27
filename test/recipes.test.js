@@ -69,3 +69,14 @@ test("sanitizeStoredRecipe cleans untrusted backup data", () => {
   assert.equal(sanitizeStoredRecipe({ id: "bad id!", title: "T" }), null);
   assert.equal(sanitizeStoredRecipe({ id: "r_5", title: " " }), null);
 });
+
+test('sanitizeStoredRecipe never emits a 0 (1970) date', () => {
+  const restored = sanitizeStoredRecipe({ id: 'r_1', title: 'X', createdAt: null });
+  // No createdAt of 0; the restore path assigns a real timestamp when absent
+  assert.notEqual(restored.createdAt, 0);
+  assert.ok(!('createdAt' in restored)); // dropped, so import-backup sets Date.now()
+  assert.ok(!('updatedAt' in restored)); // undefined date dropped too
+  const real = sanitizeStoredRecipe({ id: 'r_2', title: 'X', createdAt: 1729000000000, updatedAt: 1729000000001 });
+  assert.equal(real.createdAt, 1729000000000);
+  assert.equal(real.updatedAt, 1729000000001);
+});
