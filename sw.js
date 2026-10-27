@@ -64,23 +64,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. Google Fonts: stale-while-revalidate
-  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    event.respondWith(
-      caches.open(CACHE_NAME).then((cache) =>
-        cache.match(request).then((cached) => {
-          const fetchPromise = fetch(request).then((res) => {
-            if (res && res.status === 200) cache.put(request, res.clone());
-            return res;
-          }).catch(() => cached);
-          return cached || fetchPromise;
-        })
-      )
-    );
-    return;
-  }
-
-  // 3b. App code (CSS/JS): network-first so a new deploy is used immediately.
+  // 3. App code (CSS/JS): network-first so a new deploy is used immediately.
   //     The cache is only the offline fallback.
   if (url.origin === self.location.origin &&
       (url.pathname.startsWith('/css/') || url.pathname.startsWith('/js/'))) {
