@@ -219,23 +219,104 @@ document.addEventListener('click', e => {
   const menu = document.getElementById('app-menu');
   if (menu && menu.classList.contains('on') && !e.target.closest('.menu-wrap')) closeAppMenu();
 });
+function downloadBlobAs(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 async function exportBackup(withPhotos) {
   closeAppMenu();
+  const date = new Date().toISOString().slice(0, 10);
   try {
-    const res = await apiFetch(`${API}/export${withPhotos ? '?photos=1' : ''}`, { credentials: 'same-origin' });
+    // 1. Recipes-only file, exactly as before.
+    const res = await apiFetch(`${API}/export`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error('Export failed');
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `recipe-chest-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    toast('Backup downloaded');
+    downloadBlobAs(await res.blob(), `recipe-chest-backup-${date}.json`);
+    if (!withPhotos) { toast('Backup downloaded'); return; }
+
+    // 2. Photos, one slice per file so no response hits the size limit.
+    let offset = 0;
+    let part = 0;
+    for (;;) {
+      const res = await apiFetch(`${API}/export?photos=1&offset=${offset}`, { credentials: 'same-origin' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast('Could not export photos: ' + (data.error || 'Export failed') + '. Try "Export backup" (without photos).');
+        return;
+      }
+      const slice = await res.json();
+      const ids = Object.keys(slice.photos || {});
+      if (ids.length || slice.done) {
+        part++;
+        downloadBlobAs(new Blob([JSON.stringify(slice)], { type: 'application/json' }),
+          `recipe-chest-photos-${date}-part${part}.json`);
+      }
+      if (slice.done) break;
+      offset = slice.nextOffset;
+      toast(`Exporting photos... part ${part + 1}`);
+    }
+    toast(`Backup downloaded${part > 1 ? ` (${part} photo parts)` : ' (with photos)'}`);
   } catch (e) {
-    toast('Could not export: ' + e.message);
+    toast('Could not export: ' + e.message + '. Try "Export backup" (without photos).');
   }
+}
+
+// ---- Restore backup: pick the exported JSON file(s), recipes first ----
+const BACKUP_FILE_MAX_BYTES = 3.5 * 1024 * 1024; // Vercel request cap is ~4.5 MB
+function pickBackupFiles() {
+  closeAppMenu();
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/json,.json';
+  input.multiple = true;
+  input.onchange = () => restoreBackupFiles(input.files && [...input.files]);
+  input.click();
+}
+async function restoreBackupFiles(files) {
+  if (!files || !files.length) return;
+  const tooBig = files.find((f) => f.size > BACKUP_FILE_MAX_BYTES);
+  if (tooBig) { toast(`"${tooBig.name}" is too large (${(tooBig.size / 1048576).toFixed(1)} MB). Export smaller parts.`); return; }
+
+  // Recipes files first, then photo slices.
+  const parsed = [];
+  for (const f of files) {
+    try {
+      parsed.push(await f.text().then(JSON.parse));
+    } catch (e) {
+      toast(`"${f.name}" is not a valid backup file.`);
+      return;
+    }
+  }
+  const recipesFiles = parsed.filter((p) => Array.isArray(p.recipes) && p.recipes.length);
+  const photoFiles = parsed.filter((p) => !Array.isArray(p.recipes) && p.photos);
+  const ordered = [...recipesFiles, ...photoFiles];
+
+  let imported = 0, skipped = 0, photosRestored = 0;
+  for (const payload of ordered) {
+    try {
+      const res = await apiFetch(`${API}/import-backup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error((data && data.error) || 'Restore failed');
+      imported += data.imported || 0;
+      skipped += data.skipped || 0;
+      photosRestored += data.photosRestored || 0;
+    } catch (e) {
+      toast('Restore failed: ' + e.message);
+      return;
+    }
+  }
+  toast(`Restored ${imported} recipe${imported === 1 ? '' : 's'}, skipped ${skipped}${photosRestored ? `, ${photosRestored} photo${photosRestored === 1 ? '' : 's'}` : ''}`);
+  await loadRecipes();
 }
 async function lockApp() {
   try { await apiFetch(`${API}/verify-code`, { method: 'DELETE' }); } catch (e) { /* already locked */ }

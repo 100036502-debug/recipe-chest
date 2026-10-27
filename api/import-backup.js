@@ -52,9 +52,13 @@ export default async function handler(req, res) {
     if (incoming.length > MAX_RECIPES_PER_REQUEST) {
       return res.status(400).json({ error: `Too many recipes in one request (max ${MAX_RECIPES_PER_REQUEST}).` });
     }
+    const hasPhotos = body.photos && typeof body.photos === 'object';
+    if (!incoming.length && !hasPhotos) {
+      return res.status(400).json({ error: 'No recipes or photos in that backup' });
+    }
 
     const existingIds = new Set((await kv.lrange('recipe_ids', 0, -1)) || []);
-    const photos = (body.photos && typeof body.photos === 'object') ? body.photos : {};
+    const photos = hasPhotos ? body.photos : {};
 
     let imported = 0;
     let skipped = 0;
@@ -83,7 +87,25 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ imported, skipped });
+    // Photos-only payload (a photo slice from the export): restore the
+    // photo pair and set userPhoto on the recipe that already exists.
+    let photosRestored = 0;
+    if (!incoming.length) {
+      for (const [id, data] of Object.entries(photos)) {
+        if (!existingIds.has(id)) continue; // nothing to attach it to
+        const pair = validPhotoPair(data);
+        if (!pair) continue;
+        const recipe = await kv.get(`recipe:${id}`);
+        if (!recipe) continue;
+        recipe.userPhoto = { updatedAt: Date.now() };
+        await kv.set(`recipe:${id}`, recipe);
+        await kv.set(`photo:${id}`, pair.main);
+        await kv.set(`photothumb:${id}`, pair.photothumb);
+        photosRestored++;
+      }
+    }
+
+    return res.status(200).json({ imported, skipped, photosRestored });
   } catch (e) {
     return sendServerError(res, e, 'Could not restore that backup');
   }

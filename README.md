@@ -50,6 +50,20 @@ All variables are listed with empty values in [`.env.example`](.env.example).
 - The login code is throttled to 10 attempts per 15 minutes per IP; the import
   endpoints are rate-limited per IP per hour.
 
+## Backup and restore
+
+Use the `⋯` menu next to your name in the header.
+
+- **Export backup** downloads one JSON file with every recipe (no photos).
+- **Export with photos** downloads the recipes file first, then one
+  `recipe-chest-photos-<date>-part<N>.json` file per photo slice, so no single
+  response hits Vercel's ~4.5 MB limit. Keep the parts.
+- **Restore backup** opens a file picker (multiple files allowed, each under
+  3.5 MB). Select your backup files — recipes first, photo parts after;
+  order in the picker does not matter. Recipes whose ids already exist are
+  skipped, never overwritten; restoring the same files twice reports
+  everything as skipped.
+
 ## Apps Script (Gmail import) setup
 
 1. Create a Google Apps Script project (script.google.com) and paste

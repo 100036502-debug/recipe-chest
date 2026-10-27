@@ -1,5 +1,12 @@
-// GET /api/export — downloads every recipe as a JSON backup file.
-// Pass ?photos=1 to include user dish photos (base64) in the file.
+// GET /api/export — backup download.
+//   /api/export                       -> all recipes (no photos), one file.
+//   /api/export?photos=1              -> SAME recipes-only file (unchanged behaviour).
+//   /api/export?photos=1&offset=N&limit=M -> a photo SLICE for big chests:
+//        { app, exportedAt, offset, nextOffset, done,
+//          photos: { <id>: { photo, photothumb } } }
+//      Photos are 100-300 KB per pair, so a single response could exceed
+//      Vercel's ~4.5 MB limit; slices keep every response under ~3.5 MB
+//      (the limit shrinks automatically if the data is large).
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { ID_PATTERN, getRecipesByIds } from '../lib/recipes.js';
@@ -12,19 +19,48 @@ const kv = new Redis({
 
 export const config = { maxDuration: 60 };
 
-async function collectPhotos(ids) {
+const MAX_RESPONSE_BYTES = 3.5 * 1024 * 1024;
+
+function isId(id) {
+  return typeof id === 'string' && ID_PATTERN.test(id);
+}
+
+// Fetches the photo pair for one recipe id, or null when none is stored.
+async function readPhotoPair(id) {
+  const [photo, photothumb] = await kv.mget(`photo:${id}`, `photothumb:${id}`);
+  if (!photo || !photothumb) return null;
+  return { photo, photothumb };
+}
+
+/**
+ * Collects photos for ids[offset..] until the limit count or the byte
+ * budget would be exceeded. Returns { photos, nextOffset, done }.
+ */
+async function collectPhotoSlice(ids, offset, limit) {
   const photos = {};
-  for (let i = 0; i < ids.length; i += 50) {
-    const batch = ids.slice(i, i + 50);
-    const keys = batch.flatMap((id) => [`photo:${id}`, `photothumb:${id}`]);
-    const vals = await kv.mget(...keys);
-    for (let j = 0; j < batch.length; j++) {
-      const main = vals[j * 2];
-      const thumb = vals[j * 2 + 1];
-      if (main || thumb) photos[batch[j]] = { photo: main || null, photothumb: thumb || null };
+  let bytes = 0;
+  let i = offset;
+  let served = 0;
+
+  for (; i < ids.length; i++) {
+    if (served >= limit) break;
+    const pair = await readPhotoPair(ids[i]);
+    if (!pair) continue; // recipe has no photo; does not consume budget
+    const pairBytes = (pair.photo ? String(pair.photo).length : 0) +
+      (pair.photothumb ? String(pair.photothumb).length : 0);
+    if (served > 0 && bytes + pairBytes > MAX_RESPONSE_BYTES) {
+      break; // would blow the budget; keep this pair for the next slice
     }
+    photos[ids[i]] = pair;
+    bytes += pairBytes;
+    served++;
   }
-  return photos;
+
+  return {
+    photos,
+    nextOffset: i >= ids.length ? null : i,
+    done: i >= ids.length,
+  };
 }
 
 export default async function handler(req, res) {
@@ -32,19 +68,33 @@ export default async function handler(req, res) {
   if (!requireAuth(req, res)) return;
 
   try {
-    const ids = (await kv.lrange('recipe_ids', 0, -1)) || [];
-    const recipes = await getRecipesByIds(kv, ids);
+    const ids = (await kv.lrange('recipe_ids', 0, -1)).filter(isId);
 
+    // ---- Photo slices (?photos=1&offset=N[&limit=M]) ----
+    // Only sliced responses include photos, so no response can exceed
+    // the serverless body limit. offset defaults to 0, limit to 10.
+    if (req.query.photos === '1' && ('offset' in req.query)) {
+      const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+      const { photos, nextOffset, done } = await collectPhotoSlice(ids, offset, limit);
+      return res.status(200).json({
+        app: 'recipe-chest',
+        exportedAt: new Date().toISOString(),
+        offset,
+        nextOffset,
+        done,
+        photos,
+      });
+    }
+
+    // ---- Recipes-only backup (exactly the historical shape) ----
+    const recipes = await getRecipesByIds(kv, ids);
     const payload = {
       app: 'recipe-chest',
       exportedAt: new Date().toISOString(),
       count: recipes.length,
       recipes,
     };
-
-    if (req.query.photos === '1') {
-      payload.photos = await collectPhotos(ids.filter(ID_PATTERN.test.bind(ID_PATTERN)));
-    }
 
     const date = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/json');
