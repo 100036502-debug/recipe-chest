@@ -23,7 +23,10 @@ self.addEventListener('install', (event) => {
           })
         )
       );
-      return self.skipWaiting();
+      // No skipWaiting() here: activating silently would reload the page
+      // under the user (the app reloads on controllerchange) and could
+      // wipe an in-progress upload queue. The new worker takes over only
+      // when the user taps the update toast, which posts SKIP_WAITING.
     })
   );
 });

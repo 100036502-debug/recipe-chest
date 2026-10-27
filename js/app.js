@@ -207,8 +207,16 @@ document.getElementById('lock-input').addEventListener('keypress', e => { if (e.
 })();
 
 let toastActionHandler = null;
+function clearToastAction() {
+  const t = document.getElementById('toast');
+  t.onclick = null;
+  t.style.pointerEvents = '';
+  t.style.cursor = '';
+}
+
 function toast(msg) {
   const t = document.getElementById('toast');
+  clearToastAction();
   t.textContent = msg;
   toastActionHandler = null;
   t.classList.add('on');
@@ -219,6 +227,7 @@ function toast(msg) {
 // soon as the toast goes away, so a stale tap cannot act on something else.
 function toastWithUndo(message, label, onUndo, ms = 10000) {
   const t = document.getElementById('toast');
+  clearToastAction();
   t.innerHTML = `${escapeHtml(message)} <button type="button" class="toast-action" id="toast-action">${escapeHtml(label)}</button>`;
   t.classList.add('on');
   clearTimeout(t._timeout);
@@ -1782,10 +1791,12 @@ if ('serviceWorker' in navigator) {
       })
       .catch(err => console.error('SW registration failed:', err));
   });
-  let reloading = false;
+  // Reload only when the user tapped the update toast. A controller
+  // swap by itself must never reload the page mid-use (upload queue!).
+  window.updateRequested = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloading) return;
-    reloading = true;
+    if (!window.updateRequested) return;
+    window.updateRequested = false;
     window.location.reload();
   });
 }
@@ -1795,7 +1806,11 @@ function showUpdateToast() {
   t.classList.add('on');
   t.style.pointerEvents = 'auto';
   t.style.cursor = 'pointer';
+  // One-shot handler: it nulls itself so later toasts (incl. Undo)
+  // can never inherit the reload behaviour.
   t.onclick = () => {
+    t.onclick = null;
+    window.updateRequested = true;
     navigator.serviceWorker.getRegistration().then(reg => {
       if (reg && reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
       else window.location.reload();
