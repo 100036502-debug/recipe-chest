@@ -203,7 +203,10 @@ export default async function handler(req, res) {
     }
 
     if (savedRecipes.length === 0) {
-      return res.status(500).json({
+      // 422, not 500: this email simply has no recipe in it. Code.gs treats
+      // 5xx as transient and would retry (3 extra AI calls) before telling
+      // the sender; a 422 fails fast and cleanly.
+      return res.status(422).json({
         error: 'No recipes could be extracted from this email',
       });
     }
