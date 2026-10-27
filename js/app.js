@@ -1484,13 +1484,16 @@ async function clearShoppingList() {
   if (!confirm('Clear the entire shopping list?')) return;
   if (!shoppingListReady()) return;
   try {
-    await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, {
+    const res = await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, {
       method: 'DELETE',
       credentials: 'same-origin',
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     shoppingList = { items: [] };
     renderShoppingList();
   } catch (e) {
+    // Keep the local list as-is: showing an empty list while the server
+    // still has the items would silently lose the user's sync.
     toast('Could not clear: ' + e.message);
   }
 }
