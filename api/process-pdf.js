@@ -35,7 +35,7 @@ export default async function handler(req, res) {
 
   if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Groq API key not configured' });
 
-  const { pdfBase64, addedBy } = req.body || {};
+  const { pdfBase64, addedBy, skipDuplicateCheck } = req.body || {};
   if (!pdfBase64) return res.status(400).json({ error: 'No PDF provided' });
 
   const buffer = Buffer.from(String(pdfBase64), 'base64');
@@ -59,9 +59,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No recipe detected in that PDF.' });
     }
 
-    // Duplicate check and photo lookup run at the same time to keep imports fast
+    // Duplicate check and photo lookup run at the same time to keep imports fast.
+    // skipDuplicateCheck: true saves a new copy even when a match exists
+    // (the client's "Save a copy" on an already-in-your-chest queue row).
+    const skipDup = skipDuplicateCheck === true;
     const [dup, image] = await Promise.all([
-      findDuplicate(kv, { title: recipe.title }),
+      skipDup ? null : findDuplicate(kv, { title: recipe.title }),
       findDishImage(recipe.title),
     ]);
 

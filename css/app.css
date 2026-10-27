@@ -114,6 +114,7 @@ body.offline .add-btn,body.offline .import-btn,body.offline .action-btn,body.off
 .queue-item.done{border-color:#c8e2c8;background:#f5fbf5}
 .queue-item.failed{border-color:#e8c8c0;background:#fdf5f3}
 .queue-item.processing{border-color:var(--primary);background:#fff9ee}
+.queue-item.duplicate{border-color:#d8d2c4;background:#faf7f0}
 .queue-thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#f0ebe3}
 .queue-info{flex:1;min-width:0;overflow:hidden}
 .queue-name{font-size:.8rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -124,6 +125,9 @@ body.offline .add-btn,body.offline .import-btn,body.offline .action-btn,body.off
 .queue-pdf{display:flex;align-items:center;justify-content:center;font-size:1.8rem;background:var(--bg)}
 .queue-retry{padding:6px 12px;font-size:.72rem;font-family:inherit;background:var(--card);border:1px solid var(--primary);color:var(--primary);border-radius:12px;cursor:pointer;flex-shrink:0}
 .queue-retry:hover{background:var(--primary);color:#fff}
+.queue-retry:disabled{opacity:.5;cursor:default}
+.queue-open{background:var(--primary);color:#fff;border-color:var(--primary)}
+.queue-open:hover{background:var(--primary-d)}
 .btn-primary{background:var(--primary);color:#fff;border:none;padding:12px 28px;border-radius:24px;font-family:inherit;font-size:.95rem;font-weight:600;cursor:pointer;transition:.2s;margin:0 4px}
 .btn-primary:hover{background:var(--primary-d);transform:translateY(-1px);box-shadow:var(--shadow-h)}
 .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
