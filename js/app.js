@@ -35,6 +35,8 @@ function overlayOpened(id) {
   openOverlayStack.push(id);
   try { history.pushState({ overlay: id }, ''); } catch (e) { /* no History API */ }
   // Accessibility: move focus into the dialog, remember where to return.
+  const el = document.getElementById(id);
+  if (!el) return;
   const dialog = el.querySelector('.modal, .cook-mode') || el;
   overlayFocusStack.push(document.activeElement);
   const focusables = dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])');
@@ -119,7 +121,7 @@ function scaleIngredientLine(ing, factor) {
     const value = (whole ? parseInt(whole, 10) : 0) + FRACTION_CHARS[frac];
     return String(value);
   });
-  const m = s.match(/^([\d\/\.\s]+)\s+(.*)$/);
+  const m = s.match(/^([\d/.\s]+)\s+(.*)$/);
   if (!m) return escapeHtml(ing);
   const scaled = scaleAmount(m[1].trim(), factor);
   return `${escapeHtml(scaled)} ${escapeHtml(m[2])}`;

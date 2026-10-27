@@ -2,7 +2,7 @@ import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { groqChat, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
-import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
+import { findDuplicate, isUsableRecipe } from '../lib/recipes.js';
 import { parseAiOutput } from '../lib/parse.js';
 import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';

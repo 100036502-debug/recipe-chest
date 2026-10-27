@@ -82,6 +82,7 @@ The app is a single page: `index.html` (markup) plus `css/app.css` (all styles) 
 ```bash
 npm install
 npm test        # unit tests (node --test, no extra dependencies)
+npm run lint    # ESLint: run before every deploy (catches undefined variables)
 ```
 
 Tests cover the tag/meal-type/title normalizers, the private-IP guard used by

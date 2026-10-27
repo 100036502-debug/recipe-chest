@@ -3,7 +3,7 @@ import { requireAuth } from '../lib/auth.js';
 import { groqChat } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { safeFetchText } from '../lib/safe-fetch.js';
-import { normalizeMealType, cleanTags, findDuplicate } from '../lib/recipes.js';
+import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { extractRecipeFromJsonLd } from '../lib/jsonld-recipe.js';
 import { rateLimited } from '../lib/rate-limit.js';
@@ -118,8 +118,13 @@ ${pageText}`;
     if (recipe.error) return res.status(400).json({ error: recipe.error });
   }
 
+  // Never save an empty shell; the JSON-LD path already guarantees both.
+  if (!isUsableRecipe(recipe)) {
+    return res.status(400).json({ error: 'Could not find a recipe on that page.' });
+  }
+
   try {
-    const title = String(recipe.title || 'Untitled Recipe').slice(0, 200);
+    const title = String(recipe.title).slice(0, 200);
 
     // Duplicate check and photo lookup run at the same time to keep imports fast
     const [dup, image] = await Promise.all([
