@@ -451,11 +451,12 @@ function openUpload() {
   updateQueueUI();
 }
 function cancelUpload() {
-  overlayClosed('upload-overlay');
   if (isProcessing) {
-    if (!confirm('Stop processing the remaining images? Already-saved recipes will stay.')) return;
+    if (!confirm('Stop processing the remaining images? Already-saved recipes will stay.')) return; // keep going: overlay stays open, history entry intact
     cancelRequested = true;
   }
+  // Only pop the history entry / restore focus once the overlay really closes.
+  overlayClosed('upload-overlay');
   document.getElementById('upload-overlay').classList.remove('on');
   for (const item of uploadQueue) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
   uploadQueue = [];
