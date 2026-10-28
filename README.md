@@ -93,6 +93,13 @@ Do not rename these keys casually; the app relies on them:
   with the same id. 10-minute TTL, after which it expires on its own; there is
   no trash screen and no other endpoint reads it
 
+## Requirements
+
+Node **24.x** (set in `package.json` engines). URL imports use the npm
+`undici` package for its connection-level DNS guard, which requires Node 22.19
+or newer; the repo targets 24.x. On Vercel, confirm
+Project Settings > General > Node.js Version is set to 24.x.
+
 ## Development
 
 The app is a single page: `index.html` (markup) plus `css/app.css` (all styles) and `js/app.js` (the whole app script, a classic non-module script so the inline `onclick` handlers keep working).
