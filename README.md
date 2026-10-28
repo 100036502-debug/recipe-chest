@@ -95,10 +95,10 @@ Do not rename these keys casually; the app relies on them:
 
 ## Requirements
 
-Node **22.x** (set in `package.json` engines). URL imports use the npm
-`undici` package for its connection-level DNS guard, and undici 8 requires
-Node 22.19 or newer — Node 20 will not install or run it. On Vercel, confirm
-Project Settings > General > Node.js Version is set to 22.x.
+Node **24.x** (set in `package.json` engines). URL imports use the npm
+`undici` package for its connection-level DNS guard, which requires Node 22.19
+or newer; the repo targets 24.x. On Vercel, confirm
+Project Settings > General > Node.js Version is set to 24.x.
 
 ## Development
 
