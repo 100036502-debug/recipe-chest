@@ -50,5 +50,14 @@
       "url": "/?action=import",
       "description": "Import a recipe from a website"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }
