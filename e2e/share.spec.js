@@ -15,7 +15,7 @@ const SHARED = {
   notes: '',
   hasUserPhoto: false,
   image: {
-    url: 'https://img.example/x.jpg',
+    url: 'https://images.unsplash.com/x.jpg',
     alt: 'x',
     photographer: 'Ana',
     photographerUrl: 'https://u.example/ana',
