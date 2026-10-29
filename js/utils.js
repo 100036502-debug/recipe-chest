@@ -600,6 +600,46 @@
     };
   }
 
+
+  // ---- share target -----------------------------------------------------
+  // Reads what Android handed us. Never trusted: the caller puts url and text
+  // into inputs with .value, and only an http(s) URL is ever accepted.
+  // A tiny query parser. URLSearchParams is not available in a bare vm context,
+  // and this file has to run there unchanged for the tests to mean anything.
+  function parseQuery(search) {
+    var q = String(search || '').replace(/^\?/, '');
+    var out = {};
+    if (!q) return out;
+    q.split('&').forEach(function (pair) {
+      if (!pair) return;
+      var at = pair.indexOf('=');
+      var key = at === -1 ? pair : pair.slice(0, at);
+      var value = at === -1 ? '' : pair.slice(at + 1);
+      try { key = decodeURIComponent(key); } catch (e) { /* keep raw */ }
+      try { value = decodeURIComponent(value.replace(/\+/g, ' ')); } catch (e) { /* keep raw */ }
+      if (!(key in out)) out[key] = value;
+    });
+    return out;
+  }
+
+  function parseShareTarget(search) {
+    var params = parseQuery(search);
+
+    var url = String(params.url || '').trim();
+    var text = String(params.text || '').trim();
+
+    if (!url) {
+      var found = text.match(/https?:\/\/[^\s<>"']+/i);
+      if (found) url = found[0];
+    }
+    if (!/^https?:\/\//i.test(url)) url = '';
+
+    return {
+      url: url.slice(0, 2000),
+      text: (url && text === url) ? '' : text.slice(0, 12000),
+    };
+  }
+
   root.RCUtils = {
     parseIngredientLine: parseIngredientLine,
     formatQty: formatQty,
@@ -618,5 +658,6 @@
     matchRecipesToPantry: matchRecipesToPantry,
     cookStats: cookStats,
     buildMultiImageRequest: buildMultiImageRequest,
+    parseShareTarget: parseShareTarget,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

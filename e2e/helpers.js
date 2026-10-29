@@ -211,6 +211,10 @@ export const test = base.extend({
         const recipe = addRecipe('Imported Photo Recipe');
         return json(route, 200, { id: recipe.id, title: recipe.title });
       }
+      if (path === '/api/import-text' && method === 'POST') {
+        const recipe = addRecipe('Pasted Text Recipe');
+        return json(route, 200, { ...recipe, ingredients: ['stock'], instructions: ['simmer'] });
+      }
       if (path === '/api/import-url' && method === 'POST') {
         const recipe = addRecipe('Imported Web Recipe');
         return json(route, 200, { id: recipe.id, title: recipe.title });
