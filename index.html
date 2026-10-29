@@ -116,7 +116,12 @@
   <div class="modal" style="padding:28px 32px;max-width:600px" role="dialog" aria-modal="true" aria-labelledby="shopping-title">
     <button class="modal-close" onclick="closeShoppingList()" aria-label="Close shopping list">✕</button>
     <h2 id="shopping-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Shopping List</h2>
-    <p style="color:var(--dim);font-size:.82rem;margin-bottom:20px">Saved for this device.</p>
+    <p id="sl-note" style="color:var(--dim);font-size:.82rem;margin-bottom:12px">Saved for this device.</p>
+    <div class="sl-controls">
+      <label class="sl-toggle"><input type="checkbox" id="sl-group" onchange="setGroupByAisle(this.checked)"> Group by aisle</label>
+      <label class="sl-toggle"><input type="checkbox" id="sl-shared" onchange="setSharedMode(this.checked)"> Share with everyone</label>
+      <button class="btn-secondary sl-merge-btn" onclick="mergeShoppingList()">Merge duplicates</button>
+    </div>
     <div class="sl-add">
       <input type="text" id="sl-input" placeholder="Add an item..." maxlength="200" onkeypress="if(event.key==='Enter')addShoppingItem()">
       <button class="btn-primary" style="margin:0" onclick="addShoppingItem()">Add</button>
@@ -132,7 +137,10 @@
   <div class="modal" style="padding:28px 32px;max-width:680px" role="dialog" aria-modal="true" aria-labelledby="plan-title">
     <button class="modal-close" onclick="closeMealPlan()" aria-label="Close meal plan">✕</button>
     <h2 id="plan-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Meal Plan</h2>
-    <p style="color:var(--dim);font-size:.82rem;margin-bottom:20px">Saved for this device. Tap a day to add recipes.</p>
+    <p id="mp-note" style="color:var(--dim);font-size:.82rem;margin-bottom:12px">Saved for this device. Tap a day to add recipes.</p>
+    <div class="sl-controls" style="margin-bottom:16px">
+      <label class="sl-toggle"><input type="checkbox" id="mp-shared" onchange="setSharedMode(this.checked)"> Share with everyone</label>
+    </div>
     <div class="mp-week-nav">
       <button class="btn-secondary mp-nav-btn" onclick="changePlanWeek(-1)">← Previous</button>
       <span class="mp-week-label" id="mp-week-label">This week</span>

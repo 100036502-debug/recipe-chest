@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { sendServerError } from '../lib/http.js';
+import { cleanItems, decideWrite } from '../lib/shopping-list.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -45,18 +46,18 @@ export default async function handler(req, res) {
     if (!Array.isArray(body.items)) {
       return res.status(400).json({ error: 'Body must include an items array' });
     }
-    const clean = body.items
-      .map((it) => ({
-        text: String(it.text || '').trim().slice(0, 200),
-        checked: !!it.checked,
-        recipeId: it.recipeId ? String(it.recipeId).slice(0, 40) : null,
-      }))
-      .filter((it) => it.text.length > 0)
-      .slice(0, 200);
-
-    const payload = { items: clean, updatedAt: Date.now() };
+    const clean = cleanItems(body.items);
+    if (!clean) return res.status(400).json({ error: 'Body must include an items array' });
 
     try {
+      // Two people sharing one list must not silently overwrite each other.
+      const stored = await kv.get(key);
+      const verdict = decideWrite({ stored, baseUpdatedAt: body.baseUpdatedAt });
+      if (!verdict.write) {
+        return res.status(409).json({ error: 'conflict', current: verdict.current });
+      }
+
+      const payload = { items: clean, updatedAt: Date.now() };
       await kv.set(key, payload);
       return res.status(200).json(payload);
     } catch (e) {
