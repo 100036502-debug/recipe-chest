@@ -10,7 +10,7 @@ const METRIC = {
 async function openTools(page) {
   await unlock(page);
   await page.locator('#grid .card').first().click();
-  await page.getByRole('button', { name: /AI tools/ }).click();
+  await page.locator('#detail-overlay').getByRole('button', { name: /AI tools/ }).click();
   await expect(page.locator('#ai-overlay')).toBeVisible();
 }
 
