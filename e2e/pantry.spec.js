@@ -7,7 +7,7 @@ async function openPantry(page) {
 
 async function addPantry(page, text) {
   await page.fill('#pantry-input', text);
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.locator('#pantry-overlay').getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.locator('#pantry-chips')).toContainText(text);
 }
 

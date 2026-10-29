@@ -7,7 +7,7 @@ async function openList(page) {
 
 async function addItem(page, text) {
   await page.fill('#sl-input', text);
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.locator('#shopping-overlay').getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.locator('#sl-list')).toContainText(text);
 }
 
