@@ -1970,6 +1970,7 @@ function openDetail(id) {
         <button class="action-btn" onclick="pickRecipePhoto('${r.id}')">📷 ${r.userPhoto ? 'Replace my photo' : 'Add my photo'}</button>
         ${r.userPhoto ? `<button class="action-btn" onclick="removeRecipePhoto('${r.id}')">🗑 Remove my photo</button>` : ''}
         <button class="action-btn" onclick="printRecipe()">🖨️ Print</button>
+        <button class="action-btn" onclick="printCard()">🗂️ Print card</button>
       </div>
       ${r.ingredients && r.ingredients.length ? `
         <h3 class="section-h">Ingredients</h3>
@@ -1993,6 +1994,14 @@ function openDetail(id) {
 }
 function closeDetail() { document.getElementById('detail-overlay').classList.remove('on'); overlayClosed('detail-overlay'); currentScaling = null; }
 function printRecipe() { window.print(); }
+
+// A 4x6 index card instead of the whole page. The class is on <body> only while
+// the dialog is open, and afterprint covers the cancel path too.
+function printCard() {
+  document.body.classList.add('print-card');
+  window.print();
+}
+window.addEventListener('afterprint', () => document.body.classList.remove('print-card'));
 
 // ---- User photos of the finished dish ----
 let pendingPhotoUpload = null;

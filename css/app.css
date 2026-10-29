@@ -506,3 +506,32 @@ body.guest .write-only{display:none !important}
 .ios-hint{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:10px 14px;margin:0 0 14px;border-radius:10px;background:var(--surface-warm);border:1px solid var(--tag-border);color:var(--text);font-size:.85rem}
 .ios-hint[hidden]{display:none}
 .ios-hint-close{background:none;border:none;cursor:pointer;color:var(--dim);font-size:1rem;line-height:1}
+
+/* ---- Printable index card (task 23) ----
+  6x4in landscape via a named page. Browsers without named pages ignore it and
+  print on the normal paper, which still reads fine. */
+@media print{
+  @page card{size:6in 4in;margin:.25in}
+  body.print-card{background:#fff !important;color:#000 !important}
+  body.print-card .overlay{position:static !important;display:block !important;background:none !important;padding:0 !important}
+  body.print-card #detail-modal{page:card;max-width:none !important;width:auto !important;max-height:none !important;overflow:visible !important;padding:0 !important;border:0 !important;box-shadow:none !important;background:#fff !important;color:#000 !important}
+  body.print-card .modal-close,
+  body.print-card .recipe-hero,
+  body.print-card .actions,
+  body.print-card .recipe-desc,
+  body.print-card .delete-btn{display:none !important}
+  body.print-card #detail-content{display:grid;grid-template-columns:1fr 1fr;column-gap:.22in;row-gap:.04in;font-size:9pt;line-height:1.25;color:#000 !important}
+  body.print-card .recipe-title{grid-column:1/-1;font-size:12pt !important;margin:0 0 .04in !important;color:#000 !important}
+  body.print-card .meta{grid-column:1/-1;font-size:8pt !important;margin:0 0 .06in !important;gap:4px !important}
+  body.print-card .meta-pill{background:none !important;border:0 !important;padding:0 6px 0 0 !important;color:#333 !important;font-size:8pt !important}
+  body.print-card .section-h{font-size:9pt !important;margin:.05in 0 .02in !important;border-color:#000 !important;color:#000 !important;text-transform:uppercase;letter-spacing:.04em}
+  body.print-card #detail-content > h3:nth-of-type(1){grid-column:1}
+  body.print-card #detail-content > h3:nth-of-type(2){grid-column:2}
+  body.print-card .ing-list{grid-column:1}
+  body.print-card .step-list{grid-column:2}
+  body.print-card .ing-list li,
+  body.print-card .step-list li{background:none !important;border:0 !important;padding:0 0 .02in !important;margin:0 !important;font-size:9pt !important;color:#000 !important;break-inside:avoid}
+  body.print-card .step-list li::before{background:none !important;color:#000 !important;font-weight:700;width:auto !important;height:auto !important}
+  body.print-card .notes-box{grid-column:1/-1;background:none !important;border-left:2px solid #999 !important;color:#333 !important;font-size:8pt !important;padding:2px 6px !important;margin-top:.04in}
+  body.print-card .recipe-footer{grid-column:1/-1;border-top:1px solid #ccc !important;color:#666 !important;font-size:7.5pt !important;margin-top:.06in !important;padding-top:2px !important}
+}
