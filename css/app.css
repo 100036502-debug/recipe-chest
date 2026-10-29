@@ -535,3 +535,8 @@ body.guest .write-only{display:none !important}
   body.print-card .notes-box{grid-column:1/-1;background:none !important;border-left:2px solid #999 !important;color:#333 !important;font-size:8pt !important;padding:2px 6px !important;margin-top:.04in}
   body.print-card .recipe-footer{grid-column:1/-1;border-top:1px solid #ccc !important;color:#666 !important;font-size:7.5pt !important;margin-top:.06in !important;padding-top:2px !important}
 }
+
+/* The card title is a real button (keyboard reachable, names itself) but must
+   still look exactly like the text it replaced. */
+.card-title-btn{display:block;width:100%;background:none;border:0;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.card-title-btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}

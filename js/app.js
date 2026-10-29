@@ -1181,11 +1181,11 @@ function renderGrid() {
   grid.innerHTML = sorted.map(r => {
     const ms = mealStyle(r.mealType);
     return `
-      <div class="card" onclick="openDetail('${r.id}')" tabindex="0" role="button" aria-label="${escapeHtml(r.title)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDetail('${r.id}')}">
+      <div class="card" onclick="openDetail('${r.id}')">
         <div class="card-meal" style="background:${ms.bg}">
           <button class="fav-btn ${r.favorite === true ? 'on' : ''}" onclick="event.stopPropagation(); toggleFavorite('${r.id}')" aria-label="${r.favorite === true ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥' : '♡'}</button>${r.userPhoto || (r.image && (r.image.thumb || r.image.url)) ? `<img class="card-img" src="${escapeHtml(cardPhotoSrc(r))}" alt="${escapeHtml(r.title)}" loading="lazy" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` : `<span>${ms.emoji}</span>`}${r.image && r.image.url && !r.userPhoto ? `<div class="card-credit">Photo: ${escapeHtml(r.image.photographer || 'Unknown')} on Unsplash</div>` : ''}</div>
         <div class="card-body">
-          <div class="card-title">${escapeHtml(r.title)}</div>
+          <button class="card-title card-title-btn" onclick="event.stopPropagation(); openDetail('${r.id}')">${escapeHtml(r.title)}</button>
           <div class="card-desc">${escapeHtml(r.description || '')}</div>
           <div class="card-meta">
             <span>${ms.label}${r.prepTime ? ' • ⏱ ' + escapeHtml(r.prepTime) : ''}</span>
