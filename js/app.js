@@ -8,7 +8,9 @@ const sessionState = { role: 'member' };
 function canWrite() { return sessionState.role !== 'guest'; }
 function applyRole(role) {
   sessionState.role = role === 'guest' ? 'guest' : 'member';
-  document.body.classList.toggle('guest', sessionState.role === 'guest');
+  // The session check can run before <body> exists, so paint defensively and
+  // repaint on DOMContentLoaded.
+  if (document.body) document.body.classList.toggle('guest', sessionState.role === 'guest');
   let pill = document.getElementById('role-pill');
   if (sessionState.role === 'guest') {
     if (!pill) {
@@ -34,6 +36,9 @@ function markWriteOnly() {
     if (WRITE_HANDLERS.test(code)) el.classList.add('write-only');
   });
 }
+document.addEventListener('DOMContentLoaded', () => {
+  if (sessionState.role === 'guest') applyRole('guest');
+});
 function requireWrite() {
   if (canWrite()) return true;
   toast('View-only access');
