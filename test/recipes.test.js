@@ -80,3 +80,122 @@ test('sanitizeStoredRecipe never emits a 0 (1970) date', () => {
   assert.equal(real.createdAt, 1729000000000);
   assert.equal(real.updatedAt, 1729000000001);
 });
+
+// ---- collections and cookLog (task 6) ----
+import { cleanCollections, cleanCookLog, ID_PATTERN } from '../lib/recipes.js';
+
+test('cleanCollections trims, caps, dedupes case-insensitively and strips markup', () => {
+  const out = cleanCollections(['  Weeknight ', 'weeknight', 'WEEKNIGHT', 'Baking', '<b>fast</b>', '', '   ']);
+  assert.deepStrictEqual(out, ['Weeknight', 'Baking', 'fast']);
+
+  // 40 characters each
+  const long = cleanCollections(['x'.repeat(80)]);
+  assert.equal(long[0].length, 40);
+
+  // at most 10
+  const many = cleanCollections(Array.from({ length: 25 }, (_, i) => 'c' + i));
+  assert.equal(many.length, 10);
+
+  // a comma-separated string works, and junk yields []
+  assert.deepStrictEqual(cleanCollections('a, b , a'), ['a', 'b']);
+  assert.deepStrictEqual(cleanCollections(null), []);
+  assert.deepStrictEqual(cleanCollections({}), []);
+});
+
+test('cleanCookLog keeps good entries and drops impossible ones', () => {
+  const out = cleanCookLog([
+    { id: 'c_1', date: '2025-03-01', rating: 4, note: 'Lovely', by: 'Sam' },
+    { date: '2025-02-30' },          // not a real date
+    { date: '2025-13-01' },          // month 13
+    { date: '01/02/2025' },          // wrong format
+    { date: '' },
+    null,
+    'nope',
+  ]);
+  assert.equal(out.length, 1);
+  assert.deepStrictEqual(out[0], { id: 'c_1', date: '2025-03-01', rating: 4, note: 'Lovely', by: 'Sam' });
+});
+
+test('cleanCookLog clamps ratings to 1-5 or null', () => {
+  const out = cleanCookLog([
+    { date: '2025-01-01', rating: 0 },
+    { date: '2025-01-02', rating: 6 },
+    { date: '2025-01-03', rating: 2.5 },
+    { date: '2025-01-04', rating: '3' },
+    { date: '2025-01-05', rating: 5 },
+  ]);
+  assert.deepStrictEqual(out.map((e) => e.rating), [null, null, null, 3, 5]);
+});
+
+test('cleanCookLog generates a usable id when one is missing or bad', () => {
+  const out = cleanCookLog([{ date: '2025-01-01' }, { id: 'has spaces!', date: '2025-01-02' }]);
+  assert.equal(out.length, 2);
+  for (const entry of out) assert.match(entry.id, ID_PATTERN);
+  assert.notEqual(out[0].id, out[1].id);
+});
+
+test('cleanCookLog trims note and by, strips markup and caps length', () => {
+  const [entry] = cleanCookLog([{
+    date: '2025-01-01',
+    note: '<b>Great</b> with ' + 'x'.repeat(400),
+    by: 'y'.repeat(80),
+  }]);
+  assert.equal(entry.note.length, 300);
+  assert.ok(entry.note.startsWith('Great with'));
+  assert.ok(!entry.note.includes('<'));
+  assert.equal(entry.by.length, 40);
+  assert.deepStrictEqual(cleanCookLog('nope'), []);
+});
+
+test('cleanCookLog keeps the newest 50 in their original order', () => {
+  const many = Array.from({ length: 55 }, (_, i) => {
+    const d = new Date(Date.UTC(2024, 0, 1 + i));
+    return { date: d.toISOString().slice(0, 10), note: 'n' + i };
+  });
+  const kept = cleanCookLog(many);
+  assert.equal(kept.length, 50);
+  assert.ok(!kept.some((e) => e.date === '2024-01-01'), 'oldest dropped');
+  assert.ok(kept.some((e) => e.date === '2024-02-24'), 'newest kept');
+  const dates = kept.map((e) => e.date);
+  assert.deepStrictEqual(dates, [...dates].sort(), 'order preserved');
+});
+
+test('sanitizeStoredRecipe carries collections and cookLog through a round trip', () => {
+  const input = {
+    id: 'r_9', title: 'Soup',
+    collections: ['Weeknight', 'weeknight'],
+    cookLog: [{ id: 'c_9', date: '2025-05-05', rating: 5, note: 'again', by: 'Sam' }],
+  };
+  const clean = sanitizeStoredRecipe(input);
+  assert.deepStrictEqual(clean.collections, ['Weeknight']);
+  assert.equal(clean.cookLog.length, 1);
+  assert.equal(clean.cookLog[0].rating, 5);
+
+  // a backup from before these fields existed still restores
+  const old = sanitizeStoredRecipe({ id: 'r_10', title: 'Older', tags: ['soup'] });
+  assert.deepStrictEqual(old.collections, []);
+  assert.deepStrictEqual(old.cookLog, []);
+});
+
+test('applyEditableFields accepts collections but never cookLog', async () => {
+  // Dummy env so importing the route does not warn about a missing token.
+  process.env.UPSTASH_REDIS_REST_URL = 'https://example.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  const { applyEditableFields } = await import('../api/recipes.js');
+
+  const existing = {
+    id: 'r_11', title: 'Stew',
+    collections: ['Old'],
+    cookLog: [{ id: 'c_11', date: '2025-01-01', rating: 4, note: '', by: '' }],
+  };
+  const patched = applyEditableFields({ ...existing }, {
+    collections: ['New', 'new', '<i>x</i>'],
+    cookLog: [{ id: 'c_evil', date: '2030-01-01', rating: 1, note: 'injected', by: 'x' }],
+    title: 'Stew 2',
+  });
+
+  assert.deepStrictEqual(patched.collections, ['New', 'x']);
+  assert.equal(patched.title, 'Stew 2');
+  // The injected history is ignored and the stored one survives untouched.
+  assert.deepStrictEqual(patched.cookLog, existing.cookLog);
+});

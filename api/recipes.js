@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
-import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, findDuplicate, getRecipesByIds } from '../lib/recipes.js';
+import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, cleanCollections, findDuplicate, getRecipesByIds } from '../lib/recipes.js';
 import { TRASH_TTL_SECONDS, buildTrashEntry, trashKey } from '../lib/trash.js';
 import { sendServerError } from '../lib/http.js';
 
@@ -12,18 +12,23 @@ const kv = new Redis({
 // Fields the client is allowed to set or edit
 const EDITABLE_FIELDS = [
   'title', 'description', 'prepTime', 'cookTime', 'servings',
-  'mealType', 'tags', 'ingredients', 'instructions', 'notes', 'favorite',
+  'mealType', 'tags', 'collections', 'ingredients', 'instructions', 'notes', 'favorite',
+  // cookLog is intentionally absent: it is written only by the "cooked"
+  // action (task 11), so PATCH and POST must never set it.
 ];
 
 const MEAL_TYPES_WITH_DEFAULT = [...VALID_MEAL_TYPES, 'default'];
 
-function applyEditableFields(target, body) {
+export function applyEditableFields(target, body) {
   for (const field of EDITABLE_FIELDS) {
     if (!(field in body)) continue;
 
     if (field === 'tags') {
       if (!Array.isArray(body.tags)) continue;
       target.tags = cleanTags(body.tags, 20);
+    } else if (field === 'collections') {
+      if (!Array.isArray(body.collections)) continue;
+      target.collections = cleanCollections(body.collections);
     } else if (field === 'ingredients' || field === 'instructions') {
       if (!Array.isArray(body[field])) continue;
       target[field] = body[field]
@@ -90,6 +95,7 @@ export default async function handler(req, res) {
         ingredients: [],
         instructions: [],
         tags: [],
+        collections: [],
         mealType: 'default',
         sourceUrl,
         addedBy: String(body.addedBy || 'Anonymous').slice(0, 40),
