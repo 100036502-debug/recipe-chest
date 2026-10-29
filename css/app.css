@@ -370,3 +370,18 @@ body.offline .add-btn,body.offline .import-btn,body.offline .action-btn,body.off
 .pantry-bar-fill{display:block;height:100%;background:#3f9d63;border-radius:999px}
 .pantry-card-missing{font-size:.78rem;color:var(--dim)}
 .pantry-add-missing{margin:10px 0 0;font-size:.78rem;padding:8px 12px;min-height:44px}
+
+/* ---- collections (task 10) ---- */
+.coll-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;padding:10px 0 2px;margin-top:6px;scrollbar-width:thin}
+.coll-row-label{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);white-space:nowrap;flex:none}
+.coll-row .filter-chip{flex:none}
+.coll-count{display:inline-block;margin-left:6px;font-size:.7rem;opacity:.65}
+.coll-manage{flex:none;background:none;border:none;color:var(--primary);font-size:.78rem;cursor:pointer;padding:8px;min-height:36px}
+.coll-detail-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.coll-label{font-size:.78rem;color:var(--dim)}
+.coll-chip{display:inline-flex;align-items:center;gap:6px}
+.coll-input{border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:.85rem;min-height:38px;font-family:inherit;background:var(--card);color:var(--ink)}
+.coll-manage-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.coll-manage-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.coll-manage-row .btn-secondary{padding:8px 12px;min-height:38px;font-size:.8rem;margin:0}
+.coll-empty{color:var(--dim);font-size:.9rem}

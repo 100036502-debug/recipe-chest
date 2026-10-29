@@ -92,6 +92,10 @@
     {
       "source": "/api/client-error",
       "destination": "/api/extras?action=client-error"
+    },
+    {
+      "source": "/api/collections",
+      "destination": "/api/extras?action=collections"
     }
   ]
 }
