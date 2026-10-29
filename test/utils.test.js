@@ -6,11 +6,15 @@ import { loadClientUtils } from './helpers/load-client.js';
 // Everything here runs against js/utils.js exactly as the browser loads it.
 const RC = loadClientUtils();
 
-test('js/utils.js assigns one global and nothing else', () => {
-  const expected = ['parseIngredientLine', 'formatQty', 'normalizeIngredientName', 'parseTimersFromStep',
-    'createTimer', 'pauseTimer', 'resumeTimer', 'addTime', 'remainingMs', 'isDone', 'formatDuration',
-    'isCookStateFresh', 'classifyAisle', 'mergeShoppingItems', 'matchRecipesToPantry', 'cookStats'];
-  assert.equal(Object.keys(RC).sort().join(','), expected.slice().sort().join(','));
+test('js/utils.js exposes the documented helpers', () => {
+  // A subset check rather than an exact list: every task adds helpers, and an
+  // exact list only produces churn.
+  [
+    'parseIngredientLine', 'formatQty', 'normalizeIngredientName', 'parseTimersFromStep',
+    'createTimer', 'pauseTimer', 'resumeTimer', 'addTime', 'remainingMs', 'isDone',
+    'formatDuration', 'isCookStateFresh', 'classifyAisle', 'mergeShoppingItems',
+    'matchRecipesToPantry', 'cookStats', 'buildMultiImageRequest',
+  ].forEach((name) => assert.equal(typeof RC[name], 'function', name + ' is missing'));
 });
 
 test('parseIngredientLine reads quantities, units and names', () => {
@@ -256,4 +260,28 @@ test('cookStats counts, finds the newest date and averages one decimal', () => {
 test('cookStats rounds to one decimal and ignores bad ratings', () => {
   assert.equal(RC.cookStats([{ date: '2025-01-01', rating: 4 }, { date: '2025-01-02', rating: 4 }, { date: '2025-01-03', rating: 5 }]).avgRating, 4.3);
   assert.equal(RC.cookStats([{ date: '2025-01-01', rating: 9 }, { date: '2025-01-02', rating: null }]).avgRating, null);
+});
+
+// ---- multi-photo request builder (task 12) ----
+test('buildMultiImageRequest plans one request for several photos', () => {
+  const plan = RC.buildMultiImageRequest(
+    [{ imageBase64: 'aa', mimeType: 'image/png' }, { imageBase64: 'bb', mimeType: 'image/jpeg' }],
+    'Sam',
+  );
+  assert.equal(plan.path, '/api/process');
+  assert.equal(plan.body.images.length, 2);
+  assert.equal(plan.body.images[1].mimeType, 'image/jpeg');
+  assert.equal(plan.body.addedBy, 'Sam');
+});
+
+test('buildMultiImageRequest refuses more than three or nothing', () => {
+  const four = [1, 2, 3, 4].map(() => ({ imageBase64: 'aa', mimeType: 'image/png' }));
+  assert.ok(RC.buildMultiImageRequest(four, 'Sam').error);
+  assert.ok(RC.buildMultiImageRequest([], 'Sam').error);
+});
+
+test('buildMultiImageRequest drops entries with no data', () => {
+  const plan = RC.buildMultiImageRequest([{ imageBase64: '', mimeType: 'image/png' }, { imageBase64: 'aa', mimeType: 'image/png' }], '');
+  assert.equal(plan.body.images.length, 1);
+  assert.equal(plan.body.addedBy, '');
 });

@@ -1,5 +1,5 @@
 // Recipe Chest — service worker
-const CACHE_NAME = 'recipe-chest-v9';
+const CACHE_NAME = 'recipe-chest-v10';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_ASSETS = [

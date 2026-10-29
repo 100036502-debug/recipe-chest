@@ -670,6 +670,7 @@ function updateQueueUI() {
   const dupes = uploadQueue.filter(i => i.status === 'duplicate').length;
   const ready = uploadQueue.filter(i => i.status === 'ready').length;
   count.textContent = queueCountLabel(uploadQueue);
+  updateOneRecipeControl();
   if (isProcessing) {
     progress.textContent = `${done + failed + dupes} / ${total} processed`;
     btn.disabled = true;
@@ -727,9 +728,77 @@ function saveCopyAnyway(queueItemId) {
   updateQueueUI();
   startBatch();
 }
+// ---- multi-photo import: photos of one recipe sent as one request ----
+function oneRecipeChecked() {
+  const cb = document.getElementById('one-recipe');
+  return !!(cb && cb.checked);
+}
+function updateOneRecipeControl() {
+  const wrap = document.getElementById('one-recipe-wrap');
+  const note = document.getElementById('one-recipe-note');
+  const btn = document.getElementById('process-btn');
+  if (!wrap) return;
+  const countable = uploadQueue.filter(i => !i.isPdf && i.status !== 'removed');
+  const ready = countable.filter(i => i.status === 'ready' || i.status === 'failed');
+  wrap.style.display = countable.length >= 2 ? 'flex' : 'none';
+  const over = oneRecipeChecked() && countable.length > 3;
+  if (note) {
+    note.style.display = over ? 'block' : 'none';
+    note.textContent = over ? 'Only 3 photos can be combined into one recipe. Remove some first.' : '';
+  }
+  if (btn && over) btn.disabled = true;
+  if (btn && !over && ready.length) btn.disabled = false;
+}
+async function processAsOneRecipe(items, name) {
+  const group = items.slice(0, 3);
+  group.forEach(i => { i.status = 'processing'; i.error = null; });
+  updateQueueUI();
+  try {
+    const prepared = [];
+    for (const item of group) {
+      let base64 = item.base64, mime = item.mimeType;
+      if (!base64) {
+        const compressed = await compressImage(item.file, 1000, 0.8);
+        base64 = compressed.base64; mime = compressed.mimeType;
+        item.base64 = base64; item.mimeType = mime;
+      }
+      prepared.push({ imageBase64: base64, mimeType: mime });
+    }
+    const plan = RCUtils.buildMultiImageRequest(prepared, name);
+    if (plan.error) throw new Error(plan.error);
+    const res = await apiFetch(plan.path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(plan.body),
+    });
+    let data = null;
+    try { data = await res.json(); } catch (e) { data = null; }
+    if (res.status === 409) {
+      group.forEach(i => { i.status = 'duplicate'; i.error = null; });
+      updateQueueUI();
+      return;
+    }
+    if (!res.ok) throw new Error((data && data.error) || 'Import failed');
+    const saved = (data && data.recipe) || data || {};
+    group.forEach(i => {
+      i.status = 'done';
+      i.recipeId = saved.id;
+      i.title = saved.title || 'Saved';
+      i.base64 = null;
+      i.file = null;
+    });
+    if (saved.id && !recipes.some(r => r.id === saved.id)) recipes.push(saved);
+    renderGrid();
+  } catch (e) {
+    group.forEach(i => { i.status = 'failed'; i.error = e.message; });
+  }
+  updateQueueUI();
+}
+
 async function startBatch() {
   if (isProcessing) return;
-  const ready = uploadQueue.filter(i => i.status === 'ready');
+  let ready = uploadQueue.filter(i => i.status === 'ready');
   if (!ready.length) return;
   const name = document.getElementById('uploader-name').value.trim() || 'Anonymous';
   setUser(name);
@@ -737,6 +806,12 @@ async function startBatch() {
   cancelRequested = false;
   updateQueueUI();
   let success = 0, failed = 0, duplicates = 0;
+  // Grouped import: up to 3 photos of one recipe go out as a single request.
+  if (oneRecipeChecked() && ready.filter(i => !i.isPdf).length >= 2) {
+    await processAsOneRecipe(ready.filter(i => !i.isPdf), name);
+    ready = uploadQueue.filter(i => i.status === 'ready');
+    if (!ready.length) { isProcessing = false; updateQueueUI(); return; }
+  }
   for (const item of ready) {
     if (cancelRequested) break;
     item.status = 'processing';

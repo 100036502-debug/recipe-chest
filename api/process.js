@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import { validateImageBody } from '../lib/image-input.js';
 import { requireAuth } from '../lib/auth.js';
 import { groqChat, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
@@ -27,8 +28,12 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: 'Too many imports this hour. Try again later.' });
   }
 
-  const { imageBase64, mimeType, addedBy, skipDuplicateCheck } = req.body || {};
-  if (!imageBase64) return res.status(400).json({ error: 'No image provided' });
+  const body = req.body || {};
+  // One body shape for a single photo and for up to three pages of one recipe.
+  const checked = validateImageBody(body);
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const images = checked.images;
+  const { addedBy, skipDuplicateCheck } = body;
 
   if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Groq API key not configured' });
 
@@ -72,13 +77,17 @@ IMPORTANT RULES:
 
 If there is no recipe in the image, output exactly: NO_RECIPE`;
 
+  const multiNote = images.length > 1
+    ? '\n\nThe images are consecutive parts (pages or sides) of ONE recipe. Combine them into a single recipe in the correct order; never repeat ingredients or steps.'
+    : '';
+
   try {
     const raw = await groqChat({
       messages: [{
         role: 'user',
         content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+          { type: 'text', text: prompt + multiNote },
+          ...images.map((img) => ({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.imageBase64}` } })),
         ],
       }],
       temperature: 0.1,

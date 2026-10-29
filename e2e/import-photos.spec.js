@@ -48,4 +48,30 @@ test.describe('Add Photos import', () => {
 
     await expect(page.locator('#queue-list')).toContainText('Imported PDF Recipe');
   });
+
+  test('two photos of one recipe go out as a single request', async ({ page, api }) => {
+    await unlock(page);
+
+    await page.getByRole('button', { name: /Add Photos/ }).click();
+    await page.setInputFiles('#file-input', [
+      { name: 'front.jpg', mimeType: 'image/jpeg', buffer: TINY_JPEG },
+      { name: 'back.jpg', mimeType: 'image/jpeg', buffer: TINY_JPEG },
+    ]);
+
+    // The checkbox only appears once there is more than one photo.
+    await expect(page.locator('#one-recipe-wrap')).toBeVisible();
+    await page.locator('#one-recipe').check();
+    await page.locator('#process-btn').click();
+
+    await expect.poll(() => callsTo(api, '/api/process').length, {
+      message: 'both photos belong to one recipe, so exactly one request',
+    }).toBe(1);
+
+    const post = api.requests.filter((r) => r.path === '/api/process' && r.method === 'POST').pop();
+    const body = JSON.parse(post.body || '{}');
+    expect(body.images.length, 'both photos in the one body').toBe(2);
+    expect(body.imageBase64, 'the legacy single field is not sent').toBeUndefined();
+
+    await expect(page.locator('#queue-list')).toContainText('Imported Photo Recipe');
+  });
 });
