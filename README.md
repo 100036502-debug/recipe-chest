@@ -113,6 +113,47 @@ npm run lint    # ESLint: run before every deploy (catches undefined variables)
 Tests cover the tag/meal-type/title normalizers, the private-IP guard used by
 URL imports, the tolerant AI-output parser and the JSON-LD recipe mapper.
 
+## Adding an endpoint
+
+Vercel's Hobby plan allows **12 functions** and `api/` already has 12, so new
+endpoints must not add files there. They are added as actions instead:
+
+1. Create `lib/actions/<name>.js` exporting both forms:
+
+   ```js
+   export function createHandler({ kv }) {
+     return async function handler(req, res) { /* auth, method check, work */ };
+   }
+   export default function handler(req, res) {
+     return createHandler({ kv: getKv() })(req, res);
+   }
+   ```
+
+   The action does its own `requireAuth` and method checks. Taking `kv` as an
+   argument is what makes it testable against `test/helpers/fake-kv.js`.
+
+2. Register it in the `ACTIONS` map in `api/extras.js`, with a **literal**
+   `import()` path so Vercel bundles the file:
+
+   ```js
+   'health': () => import('../lib/actions/health.js'),
+   ```
+
+3. Keep the public URL clean with a rewrite in `vercel.json`:
+
+   ```json
+   { "source": "/api/health", "destination": "/api/extras?action=health" }
+   ```
+
+   Query strings from the browser pass through rewrites unchanged.
+
+4. Give it a no-store header: the rule in `vercel.json` is
+   `/api/((?!photo|share-photo).*)`, so anything cacheable has to be added to
+   that exclusion list.
+
+Run `ls api/*.js | wc -l` before committing; it must stay at 12. `api/extras.js`
+is the single shared slot every new endpoint uses.
+
 ## Continuous integration
 
 Every push to `main` and every pull request runs the **CI** workflow in
