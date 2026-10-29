@@ -1194,6 +1194,130 @@ function applyPendingShare() {
   }
 }
 
+// ---- Read-only share links (task 14) ----
+let shareRecipeId = null;
+
+function openShareModal(id) {
+  shareRecipeId = id;
+  document.getElementById('share-overlay').classList.add('on');
+  overlayOpened('share-overlay');
+  document.getElementById('share-expiry').value = '30';
+  document.getElementById('share-result').innerHTML = '';
+  loadShareLinks();
+}
+
+function closeShareModal() {
+  document.getElementById('share-overlay').classList.remove('on');
+  overlayClosed('share-overlay');
+  shareRecipeId = null;
+}
+
+function shareLinkUrl(token) {
+  return location.origin + '/s/' + token;
+}
+
+function shareExpiryLabel(ms) {
+  if (!ms) return '';
+  try {
+    return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch (e) {
+    return '';
+  }
+}
+
+async function loadShareLinks() {
+  const list = document.getElementById('share-links');
+  if (!list || !shareRecipeId) return;
+  list.innerHTML = '<p class="share-hint">Loading…</p>';
+  try {
+    const res = await apiFetch(`${API}/share?id=${encodeURIComponent(shareRecipeId)}`, { credentials: 'same-origin' });
+    const links = res.ok ? await res.json() : [];
+    if (!Array.isArray(links) || !links.length) {
+      list.innerHTML = '<p class="share-hint">No links yet.</p>';
+      return;
+    }
+    list.innerHTML = links.map((link) => `
+      <div class="share-link-row">
+        <div class="share-link-info">
+          <span class="share-link-url">${escapeHtml(link.url)}</span>
+          <span class="share-link-expiry">Expires ${escapeHtml(shareExpiryLabel(link.expiresAt))}</span>
+        </div>
+        <button class="btn-secondary" data-token="${escapeHtml(link.token)}" onclick="copyShareLink(this.dataset.token)">Copy</button>
+        <button class="btn-secondary" data-token="${escapeHtml(link.token)}" onclick="revokeShareLink(this.dataset.token)">Revoke</button>
+      </div>`).join('');
+  } catch (e) {
+    list.innerHTML = '<p class="share-hint">Could not load links.</p>';
+  }
+}
+
+async function createShareLink() {
+  if (!shareRecipeId) return;
+  const days = document.getElementById('share-expiry').value;
+  const btn = document.getElementById('share-create');
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+  try {
+    const res = await apiFetch(`${API}/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ id: shareRecipeId, days: Number(days) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Could not create a link');
+    document.getElementById('share-result').innerHTML = `
+      <div class="share-result">
+        <input class="share-result-input" id="share-result-input" readonly value="${escapeHtml(data.url)}" onclick="this.select()">
+        <button class="btn-secondary" onclick="copyShareLink(this.dataset.token)" data-token="${escapeHtml(data.token)}">Copy</button>
+      </div>`;
+    loadShareLinks();
+    toast('Link created');
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Create link'; }
+  }
+}
+
+async function copyShareLink(token) {
+  const url = shareLinkUrl(token);
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      toast('Link copied');
+      return;
+    }
+  } catch (e) {
+    // fall through to the input fallback
+  }
+  const input = document.getElementById('share-result-input');
+  if (input) { input.value = url; input.select(); }
+  toast('Press Ctrl+C to copy');
+}
+
+async function revokeShareLink(token) {
+  if (!confirm('Revoke this link? Anyone holding it will stop seeing the recipe.')) return;
+  try {
+    const res = await apiFetch(`${API}/share?token=${encodeURIComponent(token)}`, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+    if (!res.ok) throw new Error('Could not revoke that link');
+    loadShareLinks();
+    toast('Link revoked');
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function shareNative(token) {
+  const url = shareLinkUrl(token);
+  try {
+    await navigator.share({ title: 'Recipe', url: url });
+  } catch (e) {
+    // the user dismissed the sheet
+  }
+}
+
 // ---- Cooking log (task 11) ----
 let cookedRecipeId = null;
 
@@ -1521,6 +1645,7 @@ function openDetail(id) {
       ${cookedSectionHtml(r)}
       <div class="recipe-actions">
         <button class="action-btn primary" onclick="openCookMode('${r.id}')">👨‍🍳 Cook mode</button>
+        <button class="action-btn" onclick="openShareModal('${r.id}')">🔗 Share link</button>
         <button class="action-btn ${r.favorite === true ? 'primary' : ''}" onclick="toggleFavorite('${r.id}')" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥ Favorited' : '♡ Favorite'}</button>
         <button class="action-btn" onclick="addRecipeToShoppingList('${r.id}')">🛒 Add to list</button>
         <button class="action-btn" onclick="openEditMode('${r.id}')">✎ Edit</button>

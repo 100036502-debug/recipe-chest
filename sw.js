@@ -1,5 +1,5 @@
 // Recipe Chest — service worker
-const CACHE_NAME = 'recipe-chest-v11';
+const CACHE_NAME = 'recipe-chest-v12';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_ASSETS = [
@@ -50,8 +50,9 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET') return;
 
-  // 1. Never cache API requests
-  if (url.pathname.startsWith('/api/')) {
+  // 1. Never cache API requests, and never cache anything share related: the
+  // links are revocable and must not survive in a cache.
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/s/') || url.pathname === '/share.html') {
     return;
   }
 
