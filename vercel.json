@@ -84,6 +84,14 @@
     {
       "source": "/api/undo-delete",
       "destination": "/api/extras?action=undo-delete"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/extras?action=health"
+    },
+    {
+      "source": "/api/client-error",
+      "destination": "/api/extras?action=client-error"
     }
   ]
 }

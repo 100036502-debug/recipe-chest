@@ -10,6 +10,8 @@ export const config = { api: { bodyParser: { sizeLimit: '4mb' } }, maxDuration: 
 
 const ACTIONS = {
   'undo-delete': () => import('../lib/actions/undo-delete.js'),
+  'health': () => import('../lib/actions/health.js'),
+  'client-error': () => import('../lib/actions/client-error.js'),
   // Later tasks add entries here, always as literal import() paths.
 };
 
