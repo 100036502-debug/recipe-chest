@@ -653,7 +653,30 @@
     return /^https?:\/\//i.test(raw) ? raw : '';
   }
 
+  // A small line diff (longest common subsequence) for before/after views.
+  function diffLines(before, after) {
+    const a = Array.isArray(before) ? before.map(String) : [];
+    const b = Array.isArray(after) ? after.map(String) : [];
+    const rows = [];
+    const table = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+    for (let i = a.length - 1; i >= 0; i -= 1) {
+      for (let j = b.length - 1; j >= 0; j -= 1) {
+        table[i][j] = a[i] === b[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+      }
+    }
+    let i = 0; let j = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { rows.push({ type: 'same', text: a[i] }); i += 1; j += 1; }
+      else if (table[i + 1][j] >= table[i][j + 1]) { rows.push({ type: 'del', text: a[i] }); i += 1; }
+      else { rows.push({ type: 'add', text: b[j] }); j += 1; }
+    }
+    while (i < a.length) { rows.push({ type: 'del', text: a[i] }); i += 1; }
+    while (j < b.length) { rows.push({ type: 'add', text: b[j] }); j += 1; }
+    return rows;
+  }
+
   root.RCUtils = {
+    diffLines,
     parseIngredientLine: parseIngredientLine,
     formatQty: formatQty,
     classifyAisle: classifyAisle,

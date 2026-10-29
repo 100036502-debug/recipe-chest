@@ -309,3 +309,16 @@ test('parseShareTarget ignores nothing and non-http urls', () => {
   assert.equal(none.text, '');
   assert.equal(RC.parseShareTarget('?url=javascript%3Aalert(1)').url, '');
 });
+
+test('diffLines marks additions, removals and unchanged lines', () => {
+  const rows = RC.diffLines(['2 cups flour', '1 cup milk'], ['240 g flour', '1 cup milk']);
+  assert.deepEqual(rows, [
+    { type: 'del', text: '2 cups flour' },
+    { type: 'add', text: '240 g flour' },
+    { type: 'same', text: '1 cup milk' },
+  ]);
+  assert.deepEqual(RC.diffLines([], ['a']), [{ type: 'add', text: 'a' }]);
+  assert.deepEqual(RC.diffLines(['a'], []), [{ type: 'del', text: 'a' }]);
+  assert.deepEqual(RC.diffLines(['a'], ['a']), [{ type: 'same', text: 'a' }]);
+  assert.deepEqual(RC.diffLines(null, undefined), []);
+});
