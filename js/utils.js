@@ -350,9 +350,149 @@
     return age >= 0 && age < limit;
   }
 
+
+  // ---- aisles ----------------------------------------------------------
+  // Stored items stay a flat list; the aisle is worked out for display only, so
+  // changing this table never rewrites anyone's saved data.
+  var AISLE_KEYWORDS = {
+    'Produce': ['bell pepper', 'sweet potato', 'spring onion', 'onion', 'garlic', 'tomato', 'lettuce', 'spinach',
+      'apple', 'lemon', 'lime', 'potato', 'carrot', 'basil', 'cilantro', 'parsley', 'cucumber', 'mushroom',
+      'celery', 'broccoli', 'zucchini', 'avocado', 'banana', 'berry', 'orange', 'ginger', 'corn', 'cabbage',
+      'kale', 'thyme', 'rosemary', 'scallion', 'shallot', 'pear', 'peach', 'grape', 'melon', 'beet', 'radish',
+      'leek', 'cauliflower', 'squash', 'mint', 'dill', 'chive'],
+    'Meat & seafood': ['ground beef', 'ground turkey', 'chicken breast', 'chicken thigh', 'chicken', 'beef',
+      'pork', 'bacon', 'salmon', 'shrimp', 'sausage', 'turkey', 'lamb', 'ham', 'tuna', 'cod', 'prawn', 'steak',
+      'mince', 'chorizo', 'prosciutto', 'anchovy', 'crab', 'fish', 'lobster', 'salami', 'pepperoni'],
+    'Dairy & eggs': ['sour cream', 'cream cheese', 'milk', 'butter', 'cheese', 'egg', 'yogurt',
+      'cream', 'mozzarella', 'parmesan', 'cheddar', 'feta', 'ricotta', 'buttermilk', 'margarine', 'ghee'],
+    'Bakery': ['bread', 'bun', 'baguette', 'tortilla', 'pita', 'roll', 'bagel', 'croissant', 'naan',
+      'sourdough', 'crouton', 'brioche', 'focaccia', 'wrap'],
+    'Frozen': ['frozen', 'frozen pea', 'frozen corn', 'ice cream', 'popsicle', 'frozen pizza', 'frozen berry'],
+    'Pantry': ['tomato paste', 'peanut butter', 'soy sauce', 'olive oil', 'flour', 'sugar', 'rice', 'pasta',
+      'oil', 'vinegar', 'bean', 'broth', 'stock', 'canned', 'noodle', 'oat', 'lentil', 'quinoa', 'honey',
+      'cereal', 'cracker', 'chickpea', 'coconut milk', 'tahini', 'mustard', 'ketchup', 'mayonnaise', 'walnut',
+      'almond', 'cashew', 'raisin', 'cornstarch'],
+    'Spices & baking': ['baking powder', 'baking soda', 'chili powder', 'black pepper', 'cayenne', 'paprika',
+      'cinnamon', 'cumin', 'oregano', 'vanilla', 'yeast', 'nutmeg', 'turmeric', 'cardamom', 'saffron',
+      'allspice', 'salt', 'pepper', 'coriander', 'fennel seed', 'bay leaf', 'clove', 'extract', 'sprinkle'],
+    'Drinks': ['sparkling water', 'orange juice', 'apple juice', 'lemonade', 'coffee', 'tea', 'wine', 'beer',
+      'soda', 'cola', 'cider', 'water', 'juice', 'whisky', 'vodka', 'rum', 'seltzer', 'prosecco'],
+  };
+  var AISLE_OF = {};
+  var AISLE_KEYS = [];
+  Object.keys(AISLE_KEYWORDS).forEach(function (aisle) {
+    AISLE_KEYWORDS[aisle].forEach(function (kw) {
+      if (!AISLE_OF[kw]) AISLE_OF[kw] = aisle;
+      AISLE_KEYS.push(kw);
+    });
+  });
+  // Longest phrase first, so "black pepper" beats "pepper" and "ice cream"
+  // beats "cream".
+  AISLE_KEYS.sort(function (a, b) {
+    var aw = a.split(' ').length;
+    var bw = b.split(' ').length;
+    return bw - aw || b.length - a.length;
+  });
+
+  function classifyAisle(text) {
+    var name = normalizeIngredientName(String(text == null ? '' : text));
+    if (!name) return 'Other';
+    for (var i = 0; i < AISLE_KEYS.length; i++) {
+      var kw = AISLE_KEYS[i];
+      if (new RegExp('\\b' + kw.replace(/ /g, '\\s+') + '\\b').test(name)) {
+        return AISLE_OF[kw];
+      }
+    }
+    return 'Other';
+  }
+
+  // ---- merging shopping list lines -------------------------------------
+  // Volume units convert among themselves (tsp/tbsp/cup), and so do the two
+  // weight systems (oz/lb and g/kg). Volume is never added to weight, and
+  // imperial is never added to metric: a wrong sum is worse than two lines.
+  var VOLUME_IN_TSP = { tsp: 1, tbsp: 3, cup: 48 };
+  var WEIGHT_IN_OZ = { oz: 1, lb: 16 };
+  var WEIGHT_IN_G = { g: 1, kg: 1000 };
+
+  function unitFamily(unit, qty) {
+    if (VOLUME_IN_TSP[unit]) return 'volume';
+    if (WEIGHT_IN_OZ[unit]) return 'imperial-weight';
+    if (WEIGHT_IN_G[unit]) return 'metric-weight';
+    if (unit) return 'unit:' + unit;
+    return qty == null ? 'none' : 'count';
+  }
+
+  function toBase(qty, unit) {
+    if (VOLUME_IN_TSP[unit]) return qty * VOLUME_IN_TSP[unit];
+    if (WEIGHT_IN_OZ[unit]) return qty * WEIGHT_IN_OZ[unit];
+    if (WEIGHT_IN_G[unit]) return qty * WEIGHT_IN_G[unit];
+    return qty;
+  }
+
+  function fromBase(total, family, unit) {
+    if (family === 'volume') {
+      if (total < 3) return { qty: total, unit: 'tsp' };
+      if (total < 12) return { qty: total / 3, unit: 'tbsp' };
+      return { qty: total / 48, unit: 'cup' };
+    }
+    if (family === 'imperial-weight') {
+      return total < 16 ? { qty: total, unit: 'oz' } : { qty: total / 16, unit: 'lb' };
+    }
+    if (family === 'metric-weight') {
+      return total < 1000 ? { qty: total, unit: 'g' } : { qty: total / 1000, unit: 'kg' };
+    }
+    return { qty: total, unit: unit };
+  }
+
+  function mergeShoppingItems(items) {
+    var list = Array.isArray(items) ? items : [];
+    var groups = [];
+    var index = {};
+
+    list.forEach(function (item) {
+      var text = String((item && item.text) || '');
+      var parsed = parseIngredientLine(text);
+      var key = normalizeIngredientName(parsed.name || text);
+      var family = unitFamily(parsed.unit, parsed.qty);
+      var slot = key + '|' + family;
+
+      // === undefined, not falsy: index 0 is a valid slot and !0 is true.
+      if (index[slot] === undefined) {
+        index[slot] = groups.length;
+        groups.push({
+          key: key, family: family, displayName: parsed.name || text, unit: parsed.unit,
+          hasQty: false, total: 0,
+          allChecked: true, any: false, recipeId: (item && item.recipeId) || null, raw: text,
+        });
+      }
+      var g = groups[index[slot]];
+      if (parsed.qty != null) {
+        g.total += toBase(parsed.qty, parsed.unit);
+        g.hasQty = true;
+        if (!g.unit) g.unit = parsed.unit;
+      }
+      if (item && item.checked) g.any = true; else g.allChecked = false;
+    });
+
+    return groups.map(function (g) {
+      var out = { text: g.raw, checked: g.allChecked, recipeId: g.recipeId };
+      if (!g.hasQty) {
+        out.text = g.displayName || g.raw;
+        return out;
+      }
+      var converted = fromBase(g.total, g.family, g.unit);
+      var qtyText = formatQty(converted.qty);
+      var unitText = converted.unit ? ' ' + converted.unit : '';
+      out.text = ((qtyText + unitText).trim() + ' ' + g.displayName).trim();
+      return out;
+    });
+  }
+
   root.RCUtils = {
     parseIngredientLine: parseIngredientLine,
     formatQty: formatQty,
+    classifyAisle: classifyAisle,
+    mergeShoppingItems: mergeShoppingItems,
     normalizeIngredientName: normalizeIngredientName,
     parseTimersFromStep: parseTimersFromStep,
     createTimer: createTimer,

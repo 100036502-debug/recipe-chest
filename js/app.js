@@ -1788,8 +1788,9 @@ async function openShoppingList() {
   overlayOpened('shopping-overlay');
   await loadShoppingList();
   renderShoppingList();
+  if (sharedMode()) startListPolling();
 }
-function closeShoppingList() { document.getElementById('shopping-overlay').classList.remove('on'); overlayClosed('shopping-overlay'); }
+function closeShoppingList() { stopListPolling(); document.getElementById('shopping-overlay').classList.remove('on'); overlayClosed('shopping-overlay'); }
 // ---- Load state: a failed load is not an empty list ----
 // What a load actually told us. Only a 2xx says what the server holds; any
 // other outcome means "unknown", and writing after it would replace the real
@@ -1816,7 +1817,7 @@ async function loadShoppingList() {
   let ok;
   let data = null;
   try {
-    const res = await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, { credentials: 'same-origin' });
+    const res = await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(listDeviceId())}`, { credentials: 'same-origin' });
     ok = res.ok;
     if (ok) data = await res.json();
   } catch (e) {
@@ -1838,10 +1839,67 @@ async function retryShoppingList() {
   await loadShoppingList();
   renderShoppingList();
 }
+// ---- Shared household list, aisles and merging (task 8) ----
+const SHARED_MODE_KEY = 'rc_shared_mode';
+const SL_GROUP_KEY = 'rc_sl_group';
+const AISLE_ORDER = ['Produce', 'Meat & seafood', 'Dairy & eggs', 'Bakery', 'Frozen', 'Pantry', 'Spices & baking', 'Drinks', 'Other'];
+
+// Shared mode is one switch for both the list and the plan: when it is on we
+// send the literal device id "shared", so everyone with the access code reads
+// and writes the same list instead of their own.
+function sharedMode() {
+  try { return localStorage.getItem(SHARED_MODE_KEY) === '1'; } catch (e) { return false; }
+}
+function listDeviceId() { return sharedMode() ? 'shared' : getDeviceId(); }
+function setSharedMode(on) {
+  try { localStorage.setItem(SHARED_MODE_KEY, on ? '1' : '0'); } catch (e) { /* private mode */ }
+  ['sl-shared', 'mp-shared'].forEach((id) => {
+    const box = document.getElementById(id);
+    if (box) box.checked = !!on;
+  });
+  updateSharedNotes();
+  if (on) startListPolling();
+  else stopListPolling();
+  toast(on ? 'Sharing with everyone' : 'Back to your own list');
+}
+function updateSharedNotes() {
+  const on = sharedMode();
+  const slNote = document.getElementById('sl-note');
+  const mpNote = document.getElementById('mp-note');
+  if (slNote) slNote.textContent = on ? 'Shared with everyone using the access code. Updates every 20 seconds.' : 'Saved for this device.';
+  if (mpNote) mpNote.textContent = on ? 'Shared with everyone using the access code.' : 'Saved for this device. Tap a day to add recipes.';
+  const slBox = document.getElementById('sl-shared');
+  const mpBox = document.getElementById('mp-shared');
+  if (slBox) slBox.checked = on;
+  if (mpBox) mpBox.checked = on;
+}
+function groupByAisleOn() {
+  try { const v = localStorage.getItem(SL_GROUP_KEY); return v === null ? true : v === '1'; } catch (e) { return true; }
+}
+function setGroupByAisle(on) {
+  try { localStorage.setItem(SL_GROUP_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+  renderShoppingList();
+}
+
+function shoppingRowHtml(entry) {
+  const it = entry.it;
+  return `
+    <div class="sl-item ${it.checked ? 'checked' : ''}">
+      <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="toggleShoppingItem(${entry.i})">
+      <span class="sl-text">${escapeHtml(it.text)}</span>
+      <button class="sl-del" onclick="removeShoppingItem(${entry.i})" title="Remove" aria-label="Remove item">✕</button>
+    </div>`;
+}
+
 function renderShoppingList() {
   const el = document.getElementById('sl-list');
   const items = shoppingList.items || [];
   const blocked = listWriteBlocked(shoppingListState);
+  const groupBox = document.getElementById('sl-group');
+  const groupOn = groupByAisleOn();
+  if (groupBox) groupBox.checked = groupOn;
+  updateSharedNotes();
+
   const banner = blocked
     ? `<div class="sl-error" role="alert">
         <span>Your list didn't load, so it can't be changed right now. Nothing on the server has been overwritten.</span>
@@ -1852,14 +1910,30 @@ function renderShoppingList() {
     el.innerHTML = banner + '<div class="sl-empty">No items yet. Add one above or open a recipe and tap "Add to list".</div>';
     return;
   }
-  el.innerHTML = banner + items.map((it, i) => `
-    <div class="sl-item ${it.checked ? 'checked' : ''}">
-      <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="toggleShoppingItem(${i})">
-      <span class="sl-text">${escapeHtml(it.text)}</span>
-      <button class="sl-del" onclick="removeShoppingItem(${i})" title="Remove" aria-label="Remove item">✕</button>
-    </div>
-  `).join('');
+
+  const entries = items.map((it, i) => ({ it: it, i: i }));
+  if (!groupOn) {
+    el.innerHTML = banner + entries.map(shoppingRowHtml).join('');
+    return;
+  }
+
+  // Grouped view: a fixed walking order, and ticked items sink within their group.
+  const byAisle = {};
+  entries.forEach((e) => {
+    const aisle = RCUtils.classifyAisle(e.it.text);
+    if (!byAisle[aisle]) byAisle[aisle] = [];
+    byAisle[aisle].push(e);
+  });
+  let html = '';
+  AISLE_ORDER.forEach((aisle) => {
+    const group = byAisle[aisle];
+    if (!group || !group.length) return;
+    group.sort((a, b) => (a.it.checked ? 1 : 0) - (b.it.checked ? 1 : 0) || a.i - b.i);
+    html += `<div class="sl-aisle"><h3 class="sl-aisle-h">${escapeHtml(aisle)}</h3>${group.map(shoppingRowHtml).join('')}</div>`;
+  });
+  el.innerHTML = banner + html;
 }
+
 // Blocks a shopping-list write while the load is failed, with a message that
 // says what to do, instead of saving an empty-looking list over the real one.
 function shoppingListReady() {
@@ -1867,15 +1941,40 @@ function shoppingListReady() {
   toast('Your list didn\'t load — open Shopping List and tap Retry first.');
   return false;
 }
-async function saveShoppingList() {
+
+// The last change, as something that can be replayed onto a newer list.
+let lastListOp = null;
+
+async function saveShoppingList(op, retried) {
   if (!shoppingListReady()) return;
+  if (typeof op === 'function') lastListOp = op;
   try {
+    const body = { deviceId: listDeviceId(), items: shoppingList.items };
+    if (shoppingList.updatedAt != null) body.baseUpdatedAt = shoppingList.updatedAt;
     const res = await apiFetch(`${API}/shopping-list`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ deviceId: getDeviceId(), items: shoppingList.items }),
+      body: JSON.stringify(body),
     });
+
+    if (res.status === 409) {
+      const data = await res.json().catch(() => ({}));
+      if (!retried && data && data.current) {
+        // Someone else got there first. Take their list, re-apply our change on
+        // top of it, and try once more.
+        shoppingList = { items: [], ...data.current };
+        if (!Array.isArray(shoppingList.items)) shoppingList.items = [];
+        toast('List updated by someone else');
+        if (lastListOp) lastListOp(shoppingList.items);
+        return saveShoppingList(lastListOp, true);
+      }
+      toast('The list kept changing — pull to refresh and try again.');
+      await loadShoppingList();
+      renderShoppingList();
+      return;
+    }
+
     if (!res.ok) throw new Error('Save failed');
     shoppingList = await res.json();
     renderShoppingList();
@@ -1883,6 +1982,7 @@ async function saveShoppingList() {
     toast('Could not save list: ' + e.message);
   }
 }
+
 function addShoppingItem() {
   const input = document.getElementById('sl-input');
   const text = input.value.trim();
@@ -1890,24 +1990,73 @@ function addShoppingItem() {
   if (!shoppingListReady()) return;
   shoppingList.items.push({ text, checked: false });
   input.value = '';
-  saveShoppingList();
+  saveShoppingList((items) => { items.push({ text: text, checked: false }); });
 }
+
 function toggleShoppingItem(i) {
-  if (!shoppingList.items[i]) return;
+  const item = shoppingList.items[i];
+  if (!item) return;
   if (!shoppingListReady()) return;
-  shoppingList.items[i].checked = !shoppingList.items[i].checked;
-  saveShoppingList();
+  const next = !item.checked;
+  const text = item.text;
+  item.checked = next;
+  saveShoppingList((items) => {
+    const match = items.find((x) => x.text === text);
+    if (match) match.checked = next;
+  });
 }
+
 function removeShoppingItem(i) {
+  const item = shoppingList.items[i];
+  if (!item) return;
   if (!shoppingListReady()) return;
+  const text = item.text;
   shoppingList.items.splice(i, 1);
-  saveShoppingList();
+  saveShoppingList((items) => {
+    const at = items.findIndex((x) => x.text === text);
+    if (at >= 0) items.splice(at, 1);
+  });
 }
+
+function mergeShoppingList() {
+  if (!shoppingListReady()) return;
+  const before = shoppingList.items.length;
+  const merged = RCUtils.mergeShoppingItems(shoppingList.items);
+  if (merged.length === before) { toast('Nothing to merge'); return; }
+  shoppingList.items = merged;
+  renderShoppingList();
+  saveShoppingList((items) => {
+    const m = RCUtils.mergeShoppingItems(items);
+    items.length = 0;
+    m.forEach((x) => items.push(x));
+  });
+  const saved = before - merged.length;
+  toast(`Merged ${saved} duplicate${saved === 1 ? '' : 's'}`);
+}
+
+// While the list is open in shared mode it refreshes itself, so two phones
+// converge without anyone pressing anything.
+let listPollTimer = null;
+function startListPolling() {
+  stopListPolling();
+  if (!sharedMode()) return;
+  listPollTimer = setInterval(async () => {
+    if (document.hidden || !sharedMode()) return;
+    const overlay = document.getElementById('shopping-overlay');
+    if (!overlay || !overlay.classList.contains('on')) { stopListPolling(); return; }
+    await loadShoppingList();
+    renderShoppingList();
+  }, 20000);
+}
+function stopListPolling() {
+  if (listPollTimer) { clearInterval(listPollTimer); listPollTimer = null; }
+}
+
 async function clearShoppingList() {
   if (!confirm('Clear the entire shopping list?')) return;
   if (!shoppingListReady()) return;
   try {
-    const res = await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(getDeviceId())}`, {
+    const res = await apiFetch(`${API}/shopping-list?deviceId=${encodeURIComponent(listDeviceId())}`, {
       method: 'DELETE',
       credentials: 'same-origin',
     });
@@ -1925,17 +2074,27 @@ async function addRecipeToShoppingList(id) {
   if (!r || !r.ingredients) return;
   await loadShoppingList();
   if (!shoppingListReady()) return;
-  const existing = new Set((shoppingList.items || []).map(it => it.text.toLowerCase()));
-  let added = 0;
-  for (const ing of r.ingredients) {
-    if (existing.has(String(ing).toLowerCase())) continue;
-    shoppingList.items.push({ text: String(ing), checked: false, recipeId: id });
-    added++;
-  }
-  await saveShoppingList();
-  if (added) toast(`Added ${added} ingredient${added > 1 ? 's' : ''} from ${r.title}`);
-  else toast('All ingredients already on the list');
+
+  const additions = r.ingredients.map((ing) => ({ text: String(ing), checked: false, recipeId: id }));
+  const nameOf = (text) => RCUtils.normalizeIngredientName(RCUtils.parseIngredientLine(text).name);
+  const priorNames = new Set((shoppingList.items || []).map((it) => nameOf(it.text)));
+  let mergedCount = 0;
+  additions.forEach((a) => { if (priorNames.has(nameOf(a.text))) mergedCount++; });
+  const addedCount = additions.length - mergedCount;
+
+  // Merging the whole list (not just the additions) is what turns "2 cups
+  // flour" already on the list plus "1 cup flour" from the recipe into three.
+  const apply = (items) => {
+    const combined = RCUtils.mergeShoppingItems(items.concat(additions.map((a) => ({ ...a }))));
+    items.length = 0;
+    combined.forEach((x) => items.push(x));
+  };
+  apply(shoppingList.items);
+  await saveShoppingList(apply);
+  renderShoppingList();
+  toast(`${addedCount} added, ${mergedCount} merged`);
 }
+
 
 // ---- Meal plan ----
 async function openMealPlan() {
@@ -1950,7 +2109,7 @@ async function loadMealPlan() {
   let ok;
   let data = null;
   try {
-    const res = await apiFetch(`${API}/meal-plan?deviceId=${encodeURIComponent(getDeviceId())}`, { credentials: 'same-origin' });
+    const res = await apiFetch(`${API}/meal-plan?deviceId=${encodeURIComponent(listDeviceId())}`, { credentials: 'same-origin' });
     ok = res.ok;
     if (ok) data = await res.json();
   } catch (e) {
@@ -2047,7 +2206,7 @@ async function addToPlan(date, recipeId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ deviceId: getDeviceId(), date, recipeIds: updated }),
+      body: JSON.stringify({ deviceId: listDeviceId(), date, recipeIds: updated }),
     });
     if (!res.ok) throw new Error('Save failed');
     mealPlan = await res.json();

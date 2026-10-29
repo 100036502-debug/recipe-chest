@@ -166,6 +166,34 @@ export const test = base.extend({
         return json(route, 200, { ok: true, userPhoto: { updatedAt: Date.now(), credit: '' } });
       }
 
+      // Shopping list and meal plan, per device id (or the shared one)
+      if (path === '/api/shopping-list' || path === '/api/meal-plan') {
+        state.lists = state.lists || {};
+        let body;
+        try { body = JSON.parse(request.postData() || '{}') || {}; } catch { body = {}; }
+        if (!state.unlocked) return json(route, 401, { error: 'Unauthorized' });
+        const url = new URL(request.url());
+        const deviceId = url.searchParams.get('deviceId') || body.deviceId || '';
+        const key = path + ':' + deviceId;
+
+        if (method === 'DELETE') {
+          delete state.lists[key];
+          return json(route, 200, { success: true });
+        }
+        if (method === 'POST') {
+          const stored = state.lists[key];
+          if (body.baseUpdatedAt != null && stored && stored.updatedAt > body.baseUpdatedAt) {
+            return json(route, 409, { error: 'conflict', current: stored });
+          }
+          const payload = path === '/api/meal-plan'
+            ? { ...body, updatedAt: Date.now() }
+            : { items: Array.isArray(body.items) ? body.items : [], updatedAt: Date.now() };
+          state.lists[key] = payload;
+          return json(route, 200, payload);
+        }
+        return json(route, 200, state.lists[key] || (path === '/api/meal-plan' ? {} : { items: [], updatedAt: null }));
+      }
+
       return json(route, 404, { error: 'No mock for ' + method + ' ' + path });
     });
 
