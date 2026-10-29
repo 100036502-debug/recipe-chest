@@ -1,4 +1,4 @@
-import { test, expect, unlock, callsTo, TINY_JPEG } from './helpers.js';
+import { test, expect, unlock, callsTo, postsTo, TINY_JPEG } from './helpers.js';
 
 test.describe('my photo of the dish', () => {
   test('choosing a file posts it to /api/photo', async ({ page, api }) => {
@@ -23,8 +23,9 @@ test.describe('my photo of the dish', () => {
     await expect(page.locator('#credit-overlay')).toHaveClass(/on/);
     await page.locator('#credit-upload-btn').click();
 
-    await expect.poll(() => callsTo(api, '/api/photo').length, {
-      message: 'the photo should be posted to /api/photo',
+    // GET /api/photo is also used for thumbnails, so count POSTs only.
+    await expect.poll(() => postsTo(api, '/api/photo').length, {
+      message: 'the photo should be posted once to /api/photo',
     }).toBe(1);
     expect(callsTo(api, '/api/api/photo')).toHaveLength(0);
   });
@@ -42,9 +43,10 @@ test.describe('my photo of the dish', () => {
     await chooser.setFiles({ name: 'my-dish.jpg', mimeType: 'image/jpeg', buffer: TINY_JPEG });
 
     await expect(page.locator('#credit-overlay')).toHaveClass(/on/);
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    // "Cancel" also exists in other dialogs, so scope it to the credit step.
+    await page.locator('#credit-overlay').getByRole('button', { name: 'Cancel', exact: true }).click();
 
     await expect(page.locator('#credit-overlay')).not.toHaveClass(/on/);
-    expect(callsTo(api, '/api/photo'), 'cancel must not upload').toHaveLength(0);
+    expect(postsTo(api, '/api/photo'), 'cancel must not upload').toHaveLength(0);
   });
 });

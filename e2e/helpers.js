@@ -176,3 +176,9 @@ export async function unlock(page) {
 export function callsTo(state, path) {
   return state.requests.filter((r) => r.path === path);
 }
+
+// Calls to one path with a specific method. Needed because /api/photo is also
+// fetched by GET for thumbnails, so counting the path alone over-counts.
+export function postsTo(state, path) {
+  return state.requests.filter((r) => r.path === path && r.method === 'POST');
+}
