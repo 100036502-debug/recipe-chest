@@ -1,3 +1,4 @@
+/* eslint-disable no-undef -- the callbacks below run in the browser, not in Node. */
 import { test, expect, unlock } from './helpers.js';
 
 // Fires the event Chrome would fire when the app becomes installable. The plain
