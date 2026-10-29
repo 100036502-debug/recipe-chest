@@ -32,6 +32,7 @@
     <input type="text" id="search-input" placeholder="Search recipes, ingredients, tags...">
   </div>
   <div class="header-btns">
+    <button class="pantry-btn" onclick="openPantry()">🥕 What can I make?</button>
     <button class="list-btn" onclick="openShoppingList()">🛒 List</button>
     <button class="plan-btn" onclick="openMealPlan()">📅 Plan</button>
     <button class="import-btn" onclick="openImport()">🔗 Import URL</button>
@@ -110,6 +111,31 @@
 
 <div class="overlay" id="cook-overlay">
   <div class="cook-mode" id="cook-content" role="dialog" aria-modal="true" aria-label="Cook mode"></div>
+</div>
+
+<div class="overlay" id="pantry-overlay">
+  <div class="modal" style="padding:28px 32px;max-width:640px" role="dialog" aria-modal="true" aria-labelledby="pantry-title">
+    <button class="modal-close" onclick="closePantry()" aria-label="Close pantry">✕</button>
+    <h2 id="pantry-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">What can I make?</h2>
+    <p style="color:var(--dim);font-size:.82rem;margin-bottom:16px">Tell me what you have. I'll rank your recipes by how much of each you can already cook.</p>
+
+    <label class="pantry-label" for="pantry-input">Add something you have</label>
+    <div class="sl-add">
+      <input type="text" id="pantry-input" list="pantry-suggestions" placeholder="e.g. eggs, rice, cheddar" maxlength="60"
+             onkeypress="if(event.key==='Enter')addPantryItem()">
+      <button class="btn-primary" style="margin:0" onclick="addPantryItem()">Add</button>
+    </div>
+    <datalist id="pantry-suggestions"></datalist>
+
+    <div id="pantry-chips" class="pantry-chips" aria-live="polite"></div>
+
+    <div class="pantry-controls">
+      <label class="sl-toggle"><input type="checkbox" id="pantry-basics" onchange="setPantryBasics(this.checked)"> Assume I have salt, pepper, water and oil</label>
+      <button class="btn-secondary" onclick="clearPantry()">Clear pantry</button>
+    </div>
+
+    <div id="pantry-results" class="pantry-results"></div>
+  </div>
 </div>
 
 <div class="overlay" id="shopping-overlay">

@@ -9,7 +9,7 @@ const RC = loadClientUtils();
 test('js/utils.js assigns one global and nothing else', () => {
   const expected = ['parseIngredientLine', 'formatQty', 'normalizeIngredientName', 'parseTimersFromStep',
     'createTimer', 'pauseTimer', 'resumeTimer', 'addTime', 'remainingMs', 'isDone', 'formatDuration',
-    'isCookStateFresh', 'classifyAisle', 'mergeShoppingItems'];
+    'isCookStateFresh', 'classifyAisle', 'mergeShoppingItems', 'matchRecipesToPantry'];
   assert.equal(Object.keys(RC).sort().join(','), expected.slice().sort().join(','));
 });
 
