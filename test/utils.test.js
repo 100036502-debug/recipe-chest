@@ -285,3 +285,27 @@ test('buildMultiImageRequest drops entries with no data', () => {
   assert.equal(plan.body.images.length, 1);
   assert.equal(plan.body.addedBy, '');
 });
+
+// ---- share target (task 13) ----
+test('parseShareTarget takes a plain url parameter', () => {
+  assert.deepEqual({ ...RC.parseShareTarget('?url=https%3A%2F%2Fexample.com%2Fr') }, { url: 'https://example.com/r', text: '' });
+});
+
+test('parseShareTarget digs a url out of shared text', () => {
+  const out = RC.parseShareTarget('?text=Great%20recipe%20https%3A%2F%2Fexample.com%2Fr%20enjoy');
+  assert.equal(out.url, 'https://example.com/r');
+  assert.match(out.text, /Great recipe/);
+});
+
+test('parseShareTarget keeps long text with no url', () => {
+  const out = RC.parseShareTarget('?text=' + encodeURIComponent('x'.repeat(120)));
+  assert.equal(out.url, '');
+  assert.equal(out.text.length, 120);
+});
+
+test('parseShareTarget ignores nothing and non-http urls', () => {
+  const none = RC.parseShareTarget('');
+  assert.equal(none.url, '');
+  assert.equal(none.text, '');
+  assert.equal(RC.parseShareTarget('?url=javascript%3Aalert(1)').url, '');
+});

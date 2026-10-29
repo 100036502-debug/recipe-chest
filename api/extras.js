@@ -13,6 +13,7 @@ const ACTIONS = {
   'health': () => import('../lib/actions/health.js'),
   'collections': () => import('../lib/actions/collections.js'),
   'cooked': () => import('../lib/actions/cooked.js'),
+  'import-text': () => import('../lib/actions/import-text.js'),
   'client-error': () => import('../lib/actions/client-error.js'),
   // Later tasks add entries here, always as literal import() paths.
 };

@@ -136,6 +136,7 @@ function closeOverlayById(id) {
     case 'cook-overlay': closeCookMode(); break;
     case 'shopping-overlay': closeShoppingList(); break;
     case 'pantry-overlay': closePantry(); break;
+    case 'paste-overlay': closePasteImport(); break;
     case 'coll-overlay': closeCollectionsManager(); break;
     case 'cooked-overlay': closeCookedModal(); break;
     case 'plan-overlay': closeMealPlan(); break;
@@ -270,6 +271,7 @@ function unlockApp() {
   getDeviceId();
   loadRecipes();
   handleAppShortcut();
+  document.dispatchEvent(new Event('recipe-chest:unlocked'));
 }
 document.getElementById('lock-input').addEventListener('keypress', e => { if (e.key === 'Enter') tryUnlock(); });
 (async function checkSession() {
@@ -281,6 +283,10 @@ document.getElementById('lock-input').addEventListener('keypress', e => { if (e.
   const input = document.getElementById('lock-input');
   if (input) input.focus();
 })();
+
+// unlockApp can be reached from the session check and from the unlock form, so
+// hook it once rather than patching both call sites.
+document.addEventListener('recipe-chest:unlocked', () => setTimeout(applyPendingShare, 0));
 
 let toastActionHandler = null;
 function clearToastAction() {
@@ -1111,6 +1117,83 @@ let currentCollection = 'all';
 function collectionNames() {
   return [...new Set(recipes.flatMap((r) => r.collections || []))].sort((a, b) => a.localeCompare(b));
 }
+// ---- paste-text import and Android share target (task 13) ----
+let pendingShare = null;
+try { pendingShare = RCUtils.parseShareTarget(location.search); } catch (e) { pendingShare = null; }
+
+function openPasteImport() {
+  const overlay = document.getElementById('paste-overlay');
+  if (!overlay) return;
+  overlay.classList.add('on');
+  overlayOpened('paste-overlay');
+  updatePasteCount();
+  setTimeout(() => { const ta = document.getElementById('paste-text'); if (ta) ta.focus(); }, 50);
+}
+function closePasteImport() {
+  document.getElementById('paste-overlay').classList.remove('on');
+  overlayClosed('paste-overlay');
+}
+function updatePasteCount() {
+  const ta = document.getElementById('paste-text');
+  const count = document.getElementById('paste-count');
+  if (ta && count) count.textContent = `${ta.value.length} / 12000`;
+}
+async function savePastedRecipe(force) {
+  const ta = document.getElementById('paste-text');
+  const text = ta ? ta.value.trim() : '';
+  if (text.length < 30) { toast('Paste a bit more text than that'); return; }
+  const nameInput = document.getElementById('paste-name');
+  const name = (nameInput && nameInput.value.trim()) || 'Anonymous';
+  setUser(name);
+  const btn = document.getElementById('paste-save');
+  if (btn) { btn.disabled = true; btn.textContent = 'Reading...'; }
+  try {
+    const res = await apiFetch(`${API}/import-text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ text: text, addedBy: name, skipDuplicateCheck: force === true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409) {
+      toastWithUndo(data.error || 'Already in your chest', 'Save a copy', () => savePastedRecipe(true));
+      return;
+    }
+    if (!res.ok) throw new Error(data.error || 'Could not import that text');
+    recipes.push(data);
+    renderGrid();
+    closePasteImport();
+    if (ta) ta.value = '';
+    updatePasteCount();
+    toast('Saved: ' + data.title);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save to chest'; }
+  }
+}
+// What Android handed us through the share target. Applied once the user is
+// unlocked, then wiped from the address bar.
+function applyPendingShare() {
+  if (!pendingShare) return;
+  const shared = pendingShare;
+  pendingShare = null;
+  if (!shared.url && !shared.text) return;
+  try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
+  if (shared.url) {
+    openImport();
+    const input = document.getElementById('import-url-input')
+      || document.querySelector('#import-overlay input[type="url"], #import-overlay input[type="text"]');
+    if (input) { input.value = shared.url; input.focus(); }
+    return;
+  }
+  if (shared.text && shared.text.length >= 80) {
+    openPasteImport();
+    const ta = document.getElementById('paste-text');
+    if (ta) { ta.value = shared.text; updatePasteCount(); ta.focus(); }
+  }
+}
+
 // ---- Cooking log (task 11) ----
 let cookedRecipeId = null;
 
