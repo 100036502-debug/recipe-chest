@@ -1,5 +1,5 @@
 // Recipe Chest — service worker
-const CACHE_NAME = 'recipe-chest-v3';
+const CACHE_NAME = 'recipe-chest-v4';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_ASSETS = [
@@ -9,6 +9,7 @@ const PRECACHE_ASSETS = [
   '/offline.html',
   '/css/app.css',
   '/js/app.js',
+  '/js/utils.js',
 ];
 
 // Install: pre-cache the app shell. Each asset is added independently

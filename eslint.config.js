@@ -20,11 +20,26 @@ export default [
     },
   },
   {
-    files: ['js/app.js'],
+    files: ['js/utils.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'script',
       globals: { ...globals.browser },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      'no-undef': 'error',
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-unused-vars': ['warn', { args: 'none' }],
+    },
+  },
+  {
+    files: ['js/app.js'],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: 'script',
+      // RCUtils comes from js/utils.js, which index.html loads first.
+      globals: { ...globals.browser, RCUtils: 'readonly' },
     },
     rules: {
       ...js.configs.recommended.rules,
