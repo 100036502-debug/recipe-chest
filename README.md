@@ -247,3 +247,12 @@ Measuring photo bytes means one command per photo and per thumbnail, so the
 result is cached for ten minutes. **Measure again** bypasses the cache. At 80% a
 banner appears above the grid suggesting you export a backup and delete photos
 you no longer need; dismissing it keeps it away for seven days.
+
+## Printing and PDF
+
+**Print** prints the recipe as it looks on screen. **Print card** prints a compact
+4 x 6 inch index card: title and times at the top, ingredients and steps in two
+columns, no photos and no buttons.
+
+To keep a recipe, choose *Save as PDF* as the destination in the browser's print
+dialog. That works for both buttons, on desktop and on iOS and Android.
