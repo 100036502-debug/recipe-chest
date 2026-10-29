@@ -63,10 +63,15 @@ const server = http.createServer((req, res) => {
 
   const urlPath = req.url || '/';
 
-  // TODO(task 14): serve share.html for /s/<anything> once read-only share
-  // links exist. Until then these paths are not part of the app.
+  // Read-only share links: /s/<token> is served by share.html, exactly like the
+  // rewrite in vercel.json does in production.
   if (urlPath.startsWith('/s/')) {
-    return send(res, 404, 'Share pages do not exist yet', 'text/plain; charset=utf-8');
+    const sharePath = resolve('/share.html');
+    if (!sharePath) return send(res, 404, 'Not found', 'text/plain; charset=utf-8');
+    return fs.readFile(sharePath, (err, data) => {
+      if (err) return send(res, 404, 'Not found', 'text/plain; charset=utf-8');
+      return send(res, 200, data, 'text/html; charset=utf-8');
+    });
   }
 
   const file = resolve(urlPath);

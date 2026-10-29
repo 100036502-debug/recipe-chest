@@ -78,6 +78,40 @@
           "value": "public, max-age=0, must-revalidate"
         }
       ]
+    },
+    {
+      "source": "/s/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        }
+      ]
+    },
+    {
+      "source": "/share.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        }
+      ]
     }
   ],
   "rewrites": [
@@ -104,6 +138,22 @@
     {
       "source": "/api/import-text",
       "destination": "/api/extras?action=import-text"
+    },
+    {
+      "source": "/api/share",
+      "destination": "/api/extras?action=share"
+    },
+    {
+      "source": "/api/share-view",
+      "destination": "/api/extras?action=share-view"
+    },
+    {
+      "source": "/api/share-photo",
+      "destination": "/api/extras?action=share-photo"
+    },
+    {
+      "source": "/s/:token",
+      "destination": "/share.html"
     }
   ]
 }

@@ -410,3 +410,32 @@ body.offline .add-btn,body.offline .import-btn,body.offline .action-btn,body.off
 .cooked-actions{display:flex;gap:10px;margin-top:18px}
 .cooked-actions button{margin:0}
 @media (prefers-reduced-motion: reduce){.star-picker label{transition:none}}
+
+/* ---- read-only share page + share modal (task 14) ---- */
+.share-page{background:var(--bg);color:var(--brown);margin:0}
+.share-root{max-width:720px;margin:0 auto;padding:24px 20px 40px}
+.share-loading,.share-hint{color:var(--dim);font-size:.9rem}
+.share-hero img{width:100%;height:auto;border-radius:14px;display:block}
+.share-credit{color:var(--dim);font-size:.75rem;margin-top:6px}
+.share-title{font-family:Georgia,serif;font-size:2rem;font-weight:normal;margin:18px 0 6px}
+.share-desc{color:var(--dim);margin-bottom:14px}
+.share-meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.share-h{font-family:Georgia,serif;font-size:1.2rem;margin:26px 0 10px}
+.share-ing li,.share-steps li{font-size:1rem;line-height:1.6;margin-bottom:8px}
+.share-steps{padding-left:22px}
+.share-notes{font-size:.95rem;line-height:1.6}
+.share-source a{color:var(--primary)}
+.share-actions{margin-top:24px}
+.share-error{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;text-align:center;font-size:1rem}
+.share-footer{text-align:center;color:var(--dim);font-size:.78rem;padding:18px 0 32px}
+.share-create-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.share-expiry-label{font-size:.85rem;color:var(--dim)}
+.share-select{min-height:44px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--brown);font-size:.9rem}
+.share-select:focus-visible{outline:none;box-shadow:0 0 0 2px var(--primary)}
+.share-result{display:flex;gap:8px;align-items:center;margin:12px 0}
+.share-result-input{flex:1;min-height:44px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-size:.82rem;background:var(--card);color:var(--brown)}
+.share-link-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)}
+.share-link-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.share-link-url{font-size:.78rem;word-break:break-all}
+.share-link-expiry{font-size:.72rem;color:var(--dim)}
+@media print{.share-actions,.share-footer{display:none}}

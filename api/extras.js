@@ -14,6 +14,9 @@ const ACTIONS = {
   'collections': () => import('../lib/actions/collections.js'),
   'cooked': () => import('../lib/actions/cooked.js'),
   'import-text': () => import('../lib/actions/import-text.js'),
+  'share': () => import('../lib/actions/share.js'),
+  'share-view': () => import('../lib/actions/share-view.js'),
+  'share-photo': () => import('../lib/actions/share-photo.js'),
   'client-error': () => import('../lib/actions/client-error.js'),
   // Later tasks add entries here, always as literal import() paths.
 };

@@ -640,12 +640,27 @@
     };
   }
 
+  // ---- escaping, shared with the public share page ----------------------
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
+
+  // Only http(s) ever survives: a javascript: or data: URL becomes ''.
+  function safeHref(value) {
+    var raw = String(value == null ? '' : value).trim();
+    return /^https?:\/\//i.test(raw) ? raw : '';
+  }
+
   root.RCUtils = {
     parseIngredientLine: parseIngredientLine,
     formatQty: formatQty,
     classifyAisle: classifyAisle,
     mergeShoppingItems: mergeShoppingItems,
     normalizeIngredientName: normalizeIngredientName,
+    escapeHtml: escapeHtml,
+    safeHref: safeHref,
     parseTimersFromStep: parseTimersFromStep,
     createTimer: createTimer,
     pauseTimer: pauseTimer,
