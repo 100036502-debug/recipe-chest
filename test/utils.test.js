@@ -7,10 +7,10 @@ import { loadClientUtils } from './helpers/load-client.js';
 const RC = loadClientUtils();
 
 test('js/utils.js assigns one global and nothing else', () => {
-  assert.deepStrictEqual(
-    Object.keys(RC).sort(),
-    ['formatQty', 'normalizeIngredientName', 'parseIngredientLine'],
-  );
+  const expected = ['parseIngredientLine', 'formatQty', 'normalizeIngredientName', 'parseTimersFromStep',
+    'createTimer', 'pauseTimer', 'resumeTimer', 'addTime', 'remainingMs', 'isDone', 'formatDuration',
+    'isCookStateFresh'];
+  assert.equal(Object.keys(RC).sort().join(','), expected.slice().sort().join(','));
 });
 
 test('parseIngredientLine reads quantities, units and names', () => {
@@ -118,4 +118,117 @@ test('loading the client utils does not need a DOM', () => {
   // The loader uses a bare vm context; if utils.js touched document or window
   // at load, this whole file would already have thrown.
   assert.strictEqual(typeof RC.parseIngredientLine, 'function');
+});
+
+// ---- timers (task 7) ----
+test('parseTimersFromStep reads the durations a recipe actually writes', () => {
+  const cases = [
+    ['Simmer for 25 minutes.', 1, '25 min', 1500],
+    ['Bake 25 min.', 1, '25 min', 1500],
+    ['Rest 25 mins.', 1, '25 min', 1500],
+    ['Roast for 1 hour.', 1, '1 hr', 3600],
+    ['Chill 2 hrs.', 1, '2 hr', 7200],
+    ['Blanch 30 seconds.', 1, '30 sec', 30],
+    ['Cook 10-12 minutes.', 1, '10-12 min', 600],
+    ['Cook 10 to 12 minutes.', 1, '10-12 min', 600],
+    ['Braise 1 1/2 hours.', 1, '1 1/2 hr', 5400],
+    ['Braise 1½ hours.', 1, '1½ hr', 5400],
+    ['Wait an hour.', 1, '1 hr', 3600],
+    ['Rest half an hour.', 1, '30 min', 1800],
+    ['Steep a minute.', 1, '1 min', 60],
+  ];
+  for (const [text, count, label, seconds] of cases) {
+    const found = RC.parseTimersFromStep(text);
+    assert.equal(found.length, count, text);
+    assert.equal(found[0].label, label, text);
+    assert.equal(found[0].seconds, seconds, text);
+  }
+});
+
+test('parseTimersFromStep ignores things that only look like durations', () => {
+  const negatives = [
+    'Heat the oven to 350 degrees.',
+    'Add 2 cups of flour.',
+    'Stir in 3 eggs.',
+    'Stand for 25 hours.',
+    'Serves 4 people.',
+    '',
+  ];
+  for (const text of negatives) {
+    assert.deepEqual(RC.parseTimersFromStep(text), [], text);
+  }
+  assert.deepEqual(RC.parseTimersFromStep(null), []);
+  assert.deepEqual(RC.parseTimersFromStep(undefined), []);
+});
+
+test('parseTimersFromStep finds several timers in one step', () => {
+  const found = RC.parseTimersFromStep('Bake 10 minutes, then rest 5 minutes and cool 2 hrs.');
+  assert.equal(found.length, 3);
+  assert.deepEqual(found.map((t) => t.seconds), [600, 300, 7200]);
+});
+
+test('a timer counts down, pauses, resumes and gains time', () => {
+  const now = 1_000_000;
+  const t = RC.createTimer({ id: 'x', label: '25 min', seconds: 1500, now });
+  assert.equal(t.totalMs, 1_500_000);
+  assert.equal(t.endsAt, now + 1_500_000);
+  assert.equal(t.pausedRemainingMs, null);
+  assert.equal(RC.remainingMs(t, now), 1_500_000);
+  assert.equal(RC.isDone(t, now), false);
+
+  const later = now + 600_000;
+  assert.equal(RC.remainingMs(t, later), 900_000);
+
+  const paused = RC.pauseTimer(t, later);
+  assert.equal(paused.pausedRemainingMs, 900_000);
+  // A paused timer does not lose time while the phone sits in a pocket.
+  assert.equal(RC.remainingMs(paused, later + 60_000_000), 900_000);
+
+  const resumed = RC.resumeTimer(paused, later + 60_000_000);
+  assert.equal(resumed.pausedRemainingMs, null);
+  assert.equal(resumed.endsAt, later + 60_000_000 + 900_000);
+
+  // Resumed at later+60M, so measure from that moment, not from "later".
+  const atResume = later + 60_000_000;
+  const longer = RC.addTime(resumed, 60_000, atResume);
+  assert.equal(RC.remainingMs(longer, atResume), 960_000);
+
+  // Adding time to a paused timer extends the pause, not the end time.
+  const pausedLonger = RC.addTime(RC.pauseTimer(t, later), 60_000, later);
+  assert.equal(pausedLonger.pausedRemainingMs, 960_000);
+});
+
+test('a timer clamps at zero and reports done', () => {
+  const t = RC.createTimer({ id: 'x', label: '1 min', seconds: 60, now: 0 });
+  assert.equal(RC.isDone(t, 59_999), false);
+  assert.equal(RC.isDone(t, 60_000), true);
+  assert.equal(RC.remainingMs(t, 999_999), 0);
+});
+
+test('addTime restarts a finished timer from now', () => {
+  const t = RC.createTimer({ id: 'x', label: '1 min', seconds: 60, now: 0 });
+  const now = 500_000;
+  assert.equal(RC.isDone(t, now), true);
+  const restarted = RC.addTime(t, 60_000, now);
+  assert.equal(RC.isDone(restarted, now), false);
+  assert.equal(RC.remainingMs(restarted, now), 60_000);
+});
+
+test('formatDuration reads like a clock', () => {
+  assert.equal(RC.formatDuration(0), '0:00');
+  assert.equal(RC.formatDuration(59_000), '0:59');
+  assert.equal(RC.formatDuration(65_000), '1:05');
+  assert.equal(RC.formatDuration(3_600_000), '1:00:00');
+  assert.equal(RC.formatDuration(90_061_000), '25:01:01');
+  assert.equal(RC.formatDuration(-1), '0:00');
+});
+
+test('cook state expires after a day', () => {
+  const now = 1_000_000_000;
+  assert.equal(RC.isCookStateFresh({ ts: now - 1000 }, now), true);
+  assert.equal(RC.isCookStateFresh({ ts: now - 86_400_000 }, now), false);
+  assert.equal(RC.isCookStateFresh({ ts: now - 86_399_000 }, now), true);
+  assert.equal(RC.isCookStateFresh({}, now), false);
+  assert.equal(RC.isCookStateFresh(null, now), false);
+  assert.equal(RC.isCookStateFresh({ ts: now + 5_000 }, now), false);
 });
