@@ -46,6 +46,7 @@
       <button class="menu-item" role="menuitem" onclick="exportBackup(false)">⬇️ Export backup</button>
       <button class="menu-item" role="menuitem" onclick="exportBackup(true)">⬇️ Export with photos</button>
       <button class="menu-item" role="menuitem" onclick="pickBackupFiles()">⬆️ Restore backup</button>
+      <button class="menu-item" role="menuitem" onclick="openStorage()">📦 Storage</button>
     </div>
   </div>
   <button class="lock-btn" onclick="lockApp()" title="Lock Recipe Chest">🔒</button>
@@ -168,6 +169,14 @@
         <button class="btn-secondary" onclick="closeCookedModal()">Cancel</button>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="overlay" id="storage-overlay">
+  <div class="modal" style="padding:28px 32px;max-width:520px" role="dialog" aria-modal="true" aria-labelledby="storage-title">
+    <button class="modal-close" onclick="closeStorage()" aria-label="Close storage">✕</button>
+    <h2 id="storage-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:14px">Storage</h2>
+    <div id="storage-body"></div>
   </div>
 </div>
 

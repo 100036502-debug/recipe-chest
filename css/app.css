@@ -462,3 +462,12 @@ body.guest .write-only{display:none !important}
 .ai-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px}
 .ai-undo{margin-top:14px;font-size:.82rem;color:var(--dim)}
 .ai-options{padding-left:18px;font-size:.9rem;line-height:1.6}
+
+/* ---- Storage usage (task 18) ---- */
+.storage-line{font-size:.95rem;margin:0 0 12px}
+.storage-bar{height:10px;border-radius:99px;background:rgba(120,90,60,.14);overflow:hidden;margin-bottom:6px}
+.storage-fill{height:100%;background:var(--brown,#7a5c3c);border-radius:99px;transition:width .3s}
+.storage-fill-warn{background:#a4483c}
+.storage-banner{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:10px 14px;margin:0 0 14px;border-radius:10px;background:rgba(164,72,60,.10);border:1px solid rgba(164,72,60,.25);font-size:.85rem}
+.storage-banner[hidden]{display:none}
+.storage-banner-close{background:none;border:none;cursor:pointer;color:var(--dim);font-size:1rem;line-height:1}

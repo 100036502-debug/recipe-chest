@@ -1000,6 +1000,7 @@ async function loadRecipes() {
     const res = await apiFetch(`${API}/recipes`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error('Failed to load');
     recipes = await res.json();
+    setTimeout(checkStorageBanner, 1500);
     offlineMode = false;
     try { localStorage.setItem('rc_recipes_cache', JSON.stringify(recipes)); } catch (e) { /* storage full */ }
     renderGrid();
@@ -3434,4 +3435,72 @@ function showUpdateToast() {
       else window.location.reload();
     });
   };
+}
+
+// ---- Storage usage (task 18) ----
+const STORAGE_BANNER_KEY = 'rc_storage_banner_dismissed';
+
+function formatMb(bytes) {
+  return (Number(bytes || 0) / 1048576).toFixed(1) + ' MB';
+}
+
+async function openStorage() {
+  const overlay = document.getElementById('storage-overlay');
+  overlay.classList.add('on');
+  overlayOpened('storage-overlay');
+  setStorageBody('<p class="share-hint">Measuring…</p>');
+  try {
+    const res = await apiFetch(`${API}/storage-stats`);
+    const stats = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(stats.error || 'Could not measure storage');
+    renderStorageBody(stats);
+  } catch (e) {
+    setStorageBody(`<p class="ai-error">${escapeHtml(e.message)}</p>`);
+  }
+}
+
+function setStorageBody(html) {
+  const slot = document.getElementById('storage-body');
+  if (slot) slot.innerHTML = html;
+}
+
+function closeStorage() {
+  document.getElementById('storage-overlay').classList.remove('on');
+  overlayClosed('storage-overlay');
+}
+
+function renderStorageBody(stats) {
+  const photos = `${stats.userPhotos} photo${stats.userPhotos === 1 ? '' : 's'}`;
+  const count = `${stats.recipes} recipe${stats.recipes === 1 ? '' : 's'}`;
+  const bar = stats.capBytes
+    ? `<div class="storage-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${stats.percent}"><div class="storage-fill${stats.percent >= 80 ? ' storage-fill-warn' : ''}" style="width:${Math.max(1, stats.percent)}%"></div></div>
+       <p class="share-hint">${stats.percent}% of ${formatMb(stats.capBytes)}</p>`
+    : '<p class="share-hint">No cap configured. Set STORAGE_CAP_MB to see a percentage.</p>';
+  setStorageBody(`
+    <p class="storage-line">${formatMb(stats.totalBytes)} used, ${photos}, ${count}</p>
+    ${bar}
+    <p class="share-hint">Photos ${formatMb(stats.photoBytes)} · recipe text ${formatMb(stats.recipeBytes)}</p>
+    <button class="btn-secondary" onclick="openStorage()">Measure again</button>`);
+}
+
+async function checkStorageBanner() {
+  try {
+    const dismissed = Number(localStorage.getItem(STORAGE_BANNER_KEY) || 0);
+    if (dismissed && Date.now() - dismissed < 7 * 24 * 60 * 60 * 1000) return;
+    const res = await apiFetch(`${API}/storage-stats`);
+    if (!res.ok) return;
+    const stats = await res.json();
+    if (stats.percent === null || stats.percent === undefined || stats.percent < 80) return;
+    const banner = document.getElementById('storage-banner');
+    const text = document.getElementById('storage-banner-text');
+    if (!banner || !text) return;
+    text.textContent = `Storage is almost full (${stats.percent}% used). Export a backup and remove photos you no longer need.`;
+    banner.hidden = false;
+  } catch (e) { /* a banner is never worth an error */ }
+}
+
+function dismissStorageBanner() {
+  localStorage.setItem(STORAGE_BANNER_KEY, String(Date.now()));
+  const banner = document.getElementById('storage-banner');
+  if (banner) banner.hidden = true;
 }
