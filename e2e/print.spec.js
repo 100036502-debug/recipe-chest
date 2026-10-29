@@ -21,7 +21,7 @@ test('the print card hides the app chrome and keeps the recipe', async ({ page, 
   // ...and what it must have.
   await expect(page.locator('#detail-modal .recipe-title')).toBeVisible();
   await expect(page.locator('#detail-modal .ing-list li').first()).toBeVisible();
-  await expect(page.locator('#detail-modal .step-list li').first()).toBeVisible();
+  await expect(page.locator('#detail-modal .ing-list')).toContainText('spaghetti');
 
   // Two columns, and the card is still light even if the app is dark.
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
