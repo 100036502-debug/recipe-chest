@@ -32,7 +32,7 @@
       ]
     },
     {
-      "source": "/api/((?!photo).*)",
+      "source": "/api/((?!photo|share-photo).*)",
       "headers": [
         {
           "key": "Cache-Control",
@@ -78,6 +78,12 @@
           "value": "public, max-age=0, must-revalidate"
         }
       ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/undo-delete",
+      "destination": "/api/extras?action=undo-delete"
     }
   ]
 }
