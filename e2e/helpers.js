@@ -63,21 +63,33 @@ function json(route, status, body) {
 }
 
 export const test = base.extend({
+  // Lets a spec opt into throwing on purpose (the client-error reporter test)
+  // without disabling the console guard for anything else.
+  // eslint-disable-next-line no-empty-pattern -- Playwright's fixture signature
+  allowErrors: async ({}, use) => {
+    const allowed = { patterns: [] };
+    await use(allowed);
+  },
+
   // Auto-applied: collects CSP violations and uncaught exceptions, and fails
-  // the test if any turned up.
+  // the test if any turned up. A CSP violation always fails; a page error fails
+  // unless the spec explicitly allowed that message via allowErrors.
   consoleGuard: [
-    async ({ page }, use) => {
+    async ({ page, allowErrors }, use) => {
       const problems = [];
       page.on('console', (msg) => {
         if (msg.type() !== 'error') return;
         const text = msg.text();
         if (/content security policy|refused to (load|execute|apply|connect)/i.test(text)) {
-          problems.push('CSP: ' + text);
+          problems.push({ fatal: true, text: 'CSP: ' + text });
         }
       });
-      page.on('pageerror', (err) => problems.push('Uncaught: ' + err.message));
+      page.on('pageerror', (err) => problems.push({ fatal: false, text: 'Uncaught: ' + err.message }));
       await use(problems);
-      expect(problems, 'the browser console must be clean').toEqual([]);
+      const unexpected = problems.filter(
+        (p) => p.fatal || !allowErrors.patterns.some((re) => re.test(p.text))
+      );
+      expect(unexpected.map((p) => p.text), 'the browser console must be clean').toEqual([]);
     },
     { auto: true },
   ],

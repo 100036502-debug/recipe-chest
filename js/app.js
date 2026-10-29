@@ -21,6 +21,76 @@ function showLockScreen(message) {
   if (input) input.value = '';
 }
 
+// ---- client error reporting ------------------------------------------------
+// A crash in this file is invisible on the server: the user sees a broken
+// screen and the logs stay quiet. These listeners send a short report to
+// /api/client-error so real failures show up in the function logs.
+//
+// Deliberately narrow: at most 5 per page load, nothing while the lock screen
+// is up, nothing from browser-extension sources, and no known-noisy message
+// (ResizeObserver fires on ordinary layout work). The reporter itself must
+// never throw, or it would cause the very loop it is trying to report.
+const CLIENT_ERROR_LIMIT = 5;
+let clientErrorReports = 0;
+
+function ignoreClientError(source, url) {
+  return /^(chrome|moz|safari-web)-extension:\/\//i.test(String(source || '') + String(url || ''));
+}
+
+function reportClientError(payload) {
+  try {
+    if (clientErrorReports >= CLIENT_ERROR_LIMIT) return;
+    if (/ResizeObserver loop/i.test(String(payload.message || ''))) return;
+    if (ignoreClientError(payload.source, payload.url)) return;
+    // Nothing to report yet if the user has not unlocked the app.
+    if (document.body.classList.contains('locked')) return;
+
+    clientErrorReports += 1;
+    const body = JSON.stringify(payload);
+    if (navigator.sendBeacon) {
+      // sendBeacon keeps working while the page is being torn down.
+      const sent = navigator.sendBeacon('/api/client-error', new Blob([body], { type: 'application/json' }));
+      if (sent) return;
+    }
+    fetch('/api/client-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      credentials: 'same-origin',
+      keepalive: true,
+    }).catch(() => { /* nothing useful to do if the report itself fails */ });
+  } catch (e) {
+    /* reporting must never throw */
+  }
+}
+
+window.addEventListener('error', (event) => {
+  try {
+    reportClientError({
+      message: event.message || (event.error && event.error.message) || 'Unknown error',
+      source: event.filename || '',
+      line: event.lineno || 0,
+      col: event.colno || 0,
+      stack: (event.error && event.error.stack) || '',
+      url: location.href,
+    });
+  } catch (e) { /* ignore */ }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  try {
+    const reason = event.reason;
+    reportClientError({
+      message: (reason && reason.message) || String(reason || 'Unhandled promise rejection'),
+      source: '',
+      line: 0,
+      col: 0,
+      stack: (reason && reason.stack) || '',
+      url: location.href,
+    });
+  } catch (e) { /* ignore */ }
+});
+
 // ---- History-backed overlays: the phone Back button closes the topmost
 // modal instead of leaving the app. Each open overlay gets a history
 // entry; closing it with its own X button pops that entry again.
