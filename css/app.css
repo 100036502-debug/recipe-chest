@@ -439,3 +439,7 @@ body.offline .add-btn,body.offline .import-btn,body.offline .action-btn,body.off
 .share-link-url{font-size:.78rem;word-break:break-all}
 .share-link-expiry{font-size:.72rem;color:var(--dim)}
 @media print{.share-actions,.share-footer{display:none}}
+
+/* ---- guest (view-only) access (task 15) ---- */
+body.guest .write-only{display:none !important}
+.role-pill{display:inline-block;padding:3px 9px;border-radius:999px;border:1px solid var(--border);color:var(--dim);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;margin-left:8px;vertical-align:middle}

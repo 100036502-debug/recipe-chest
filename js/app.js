@@ -4,11 +4,73 @@ const DEVICE_KEY = 'rc_device_id';
 
 // Every API call goes through here: if the session cookie has expired,
 // show the lock screen again instead of a cryptic "Failed to load".
+const sessionState = { role: 'member' };
+function canWrite() { return sessionState.role !== 'guest'; }
+function applyRole(role) {
+  sessionState.role = role === 'guest' ? 'guest' : 'member';
+  // The session check can run before <body> exists, so paint defensively and
+  // repaint on DOMContentLoaded.
+  if (document.body) document.body.classList.toggle('guest', sessionState.role === 'guest');
+  let pill = document.getElementById('role-pill');
+  if (sessionState.role === 'guest') {
+    if (!pill) {
+      pill = document.createElement('span');
+      pill.id = 'role-pill';
+      pill.className = 'role-pill';
+      pill.textContent = 'View only';
+      const header = document.querySelector('header') || document.body;
+      header.appendChild(pill);
+    }
+  } else if (pill) {
+    pill.remove();
+  }
+  markWriteOnly();
+  return sessionState.role;
+}
+// Anything that opens a write flow is hidden for a guest, without having to
+// remember to annotate every button by hand.
+const WRITE_HANDLERS = /(openImport|openPasteImport|openUpload|openEdit|deleteRecipe|toggleFav|startCookLog|openShareModal|restoreRecipe|savePastedRecipe|createShareLink|revokeShareLink|addMissingToShoppingList|saveEdited)/;
+function markWriteOnly() {
+  document.querySelectorAll('[onclick]').forEach((el) => {
+    const code = el.getAttribute('onclick') || '';
+    if (WRITE_HANDLERS.test(code)) el.classList.add('write-only');
+  });
+}
+document.addEventListener('DOMContentLoaded', () => {
+  if (sessionState.role === 'guest') applyRole('guest');
+});
+// The grid and the detail view both render markup after login, so re-mark
+// whenever the tree changes (childList only, so class changes cannot loop).
+let markQueued = false;
+function scheduleMarkWriteOnly() {
+  if (sessionState.role !== 'guest' || markQueued) return;
+  markQueued = true;
+  setTimeout(() => { markQueued = false; markWriteOnly(); }, 0);
+}
+if (document.documentElement && typeof MutationObserver === 'function') {
+  new MutationObserver(scheduleMarkWriteOnly).observe(document.documentElement, { childList: true, subtree: true });
+}
+function requireWrite() {
+  if (canWrite()) return true;
+  toast('View-only access');
+  return false;
+}
+
 async function apiFetch(url, opts = {}) {
   const res = await fetch(url, { credentials: 'same-origin', ...opts });
   if (res.status === 401 && !String(url).includes('/verify-code')) {
     showLockScreen('Session expired. Enter the access code.');
     throw new Error('Session expired');
+  }
+  if (res.status === 403) {
+    // The server decides what a guest may do; mirror its answer in the UI.
+    try {
+      const body = await res.clone().json();
+      if (body && body.error === 'View-only access') {
+        applyRole('guest');
+        toast('View-only access');
+      }
+    } catch (e) { /* not JSON, let the caller deal with it */ }
   }
   return res;
 }
@@ -245,7 +307,7 @@ async function tryUnlock() {
       credentials: 'same-origin',
     });
     const data = await res.json();
-    if (data && data.unlocked) unlockApp();
+    if (data && data.unlocked) { applyRole(data.role); unlockApp(); }
         else { err.textContent = (data && data.error) || 'Incorrect access code.'; document.getElementById('lock-input').value = ''; }
   } catch (e) { err.textContent = 'Could not verify. Try again.'; }
 }
@@ -278,7 +340,7 @@ document.getElementById('lock-input').addEventListener('keypress', e => { if (e.
   try {
     const res = await fetch(`${API}/verify-code`, { credentials: 'same-origin' });
     const data = await res.json();
-    if (data && data.unlocked) { unlockApp(); return; }
+    if (data && data.unlocked) { applyRole(data.role); unlockApp(); applyPendingShareSafe(); return; }
   } catch (e) {}
   const input = document.getElementById('lock-input');
   if (input) input.focus();
@@ -286,7 +348,8 @@ document.getElementById('lock-input').addEventListener('keypress', e => { if (e.
 
 // unlockApp can be reached from the session check and from the unlock form, so
 // hook it once rather than patching both call sites.
-document.addEventListener('recipe-chest:unlocked', () => setTimeout(applyPendingShare, 0));
+function applyPendingShareSafe() { setTimeout(applyPendingShare, 0); }
+document.addEventListener('recipe-chest:unlocked', () => { applyPendingShareSafe(); loadShareLinks(); });
 
 let toastActionHandler = null;
 function clearToastAction() {
@@ -1122,6 +1185,7 @@ let pendingShare = null;
 try { pendingShare = RCUtils.parseShareTarget(location.search); } catch (e) { pendingShare = null; }
 
 function openPasteImport() {
+  if (!requireWrite()) return;
   const overlay = document.getElementById('paste-overlay');
   if (!overlay) return;
   overlay.classList.add('on');
@@ -1251,6 +1315,7 @@ async function loadShareLinks() {
 }
 
 async function createShareLink() {
+  if (!requireWrite()) return;
   if (!shareRecipeId) return;
   const days = document.getElementById('share-expiry').value;
   const btn = document.getElementById('share-create');

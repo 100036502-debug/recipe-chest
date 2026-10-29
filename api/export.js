@@ -65,7 +65,7 @@ async function collectPhotoSlice(ids, offset, limit) {
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-  if (!requireAuth(req, res)) return;
+  if (!requireAuth(req, res, { memberOnly: true })) return;
 
   try {
     const ids = (await kv.lrange('recipe_ids', 0, -1)).filter(isId);
