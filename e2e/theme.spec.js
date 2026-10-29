@@ -1,3 +1,4 @@
+/* eslint-disable no-undef -- the callbacks below run in the browser, not in Node. */
 import { test, expect, unlock } from './helpers.js';
 
 async function pickDark(page) {
