@@ -44,7 +44,18 @@ async function scan(page, label) {
 }
 
 async function setTheme(page, theme) {
-  await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+  // Every colour has a 0.25s transition, and axe reads rendered colours: without
+  // this it measures the fade halfway through and reports false failures.
+  await page.evaluate((value) => {
+    document.documentElement.dataset.theme = value;
+    if (!document.getElementById('a11y-no-motion')) {
+      const style = document.createElement('style');
+      style.id = 'a11y-no-motion';
+      style.textContent = '*,*::before,*::after{transition:none!important;animation:none!important}';
+      document.head.appendChild(style);
+    }
+  }, theme);
+  await page.waitForTimeout(120);
 }
 
 for (const theme of ['light', 'dark']) {
