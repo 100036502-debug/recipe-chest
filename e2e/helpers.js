@@ -161,6 +161,33 @@ export const test = base.extend({
 
       if (!state.unlocked) return json(route, 401, { error: 'Unauthorized' });
 
+      // Cooking log
+      if (path === '/api/cooked') {
+        let cb;
+        try { cb = JSON.parse(request.postData() || '{}') || {}; } catch { cb = {}; }
+        const q = new URL(request.url());
+        const rid = q.searchParams.get('id') || cb.id;
+        const idx = state.recipes.findIndex((r) => r.id === rid);
+        if (idx === -1) return json(route, 404, { error: 'Recipe not found' });
+        const rec = state.recipes[idx];
+        if (!Array.isArray(rec.cookLog)) rec.cookLog = [];
+        if (method === 'POST') {
+          rec.cookLog.push({
+            id: 'e' + (rec.cookLog.length + 1),
+            date: cb.date || new Date().toISOString().slice(0, 10),
+            rating: cb.rating == null ? null : cb.rating,
+            note: cb.note || '',
+            by: cb.by || '',
+          });
+          return json(route, 200, rec);
+        }
+        if (method === 'DELETE') {
+          const eid = q.searchParams.get('entry');
+          rec.cookLog = rec.cookLog.filter((e) => e.id !== eid);
+          return json(route, 200, rec);
+        }
+      }
+
       // Collections rename/delete across the mock recipes.
       if (path === '/api/collections' && method === 'POST') {
         let body = {};

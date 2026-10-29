@@ -138,6 +138,33 @@
   </div>
 </div>
 
+<div class="overlay" id="cooked-overlay">
+  <div class="modal" style="padding:28px 32px;max-width:480px" role="dialog" aria-modal="true" aria-labelledby="cooked-title">
+    <button class="modal-close" onclick="closeCookedModal()" aria-label="Close cooking log">✕</button>
+    <h2 id="cooked-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.4rem;font-weight:normal;margin-bottom:16px">I cooked this</h2>
+    <div class="cooked-form">
+      <label class="cooked-label" for="cooked-date">Date</label>
+      <input type="date" id="cooked-date" class="coll-input" style="width:100%">
+      <fieldset class="cooked-stars-field">
+        <legend class="cooked-label">Rating (optional)</legend>
+        <div class="star-picker" role="radiogroup" aria-label="Rating out of five">
+          <input type="radio" name="cooked-rating" id="cr1" value="1"><label for="cr1" aria-label="1 star">★</label>
+          <input type="radio" name="cooked-rating" id="cr2" value="2"><label for="cr2" aria-label="2 stars">★</label>
+          <input type="radio" name="cooked-rating" id="cr3" value="3"><label for="cr3" aria-label="3 stars">★</label>
+          <input type="radio" name="cooked-rating" id="cr4" value="4"><label for="cr4" aria-label="4 stars">★</label>
+          <input type="radio" name="cooked-rating" id="cr5" value="5"><label for="cr5" aria-label="5 stars">★</label>
+        </div>
+      </fieldset>
+      <label class="cooked-label" for="cooked-note">Note (optional)</label>
+      <textarea id="cooked-note" class="coll-input" rows="3" maxlength="300" placeholder="How did it turn out?" style="width:100%;resize:vertical"></textarea>
+      <div class="cooked-actions">
+        <button class="btn-primary" onclick="saveCookedEntry()">Save</button>
+        <button class="btn-secondary" onclick="closeCookedModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="coll-overlay">
   <div class="modal" style="padding:28px 32px;max-width:520px" role="dialog" aria-modal="true" aria-labelledby="coll-title">
     <button class="modal-close" onclick="closeCollectionsManager()" aria-label="Close manage collections">✕</button>

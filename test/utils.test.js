@@ -9,7 +9,7 @@ const RC = loadClientUtils();
 test('js/utils.js assigns one global and nothing else', () => {
   const expected = ['parseIngredientLine', 'formatQty', 'normalizeIngredientName', 'parseTimersFromStep',
     'createTimer', 'pauseTimer', 'resumeTimer', 'addTime', 'remainingMs', 'isDone', 'formatDuration',
-    'isCookStateFresh', 'classifyAisle', 'mergeShoppingItems', 'matchRecipesToPantry'];
+    'isCookStateFresh', 'classifyAisle', 'mergeShoppingItems', 'matchRecipesToPantry', 'cookStats'];
   assert.equal(Object.keys(RC).sort().join(','), expected.slice().sort().join(','));
 });
 
@@ -231,4 +231,29 @@ test('cook state expires after a day', () => {
   assert.equal(RC.isCookStateFresh({}, now), false);
   assert.equal(RC.isCookStateFresh(null, now), false);
   assert.equal(RC.isCookStateFresh({ ts: now + 5_000 }, now), false);
+});
+
+// ---- cooking log stats (task 11) ----
+test('cookStats of an empty or missing log', () => {
+  const empty = RC.cookStats([]);
+  assert.equal(empty.count, 0);
+  assert.equal(empty.lastDate, null);
+  assert.equal(empty.avgRating, null);
+  assert.equal(RC.cookStats(undefined).count, 0);
+});
+
+test('cookStats counts, finds the newest date and averages one decimal', () => {
+  const stats = RC.cookStats([
+    { id: 'a', date: '2025-10-02', rating: 4 },
+    { id: 'b', date: '2025-10-12', rating: 5 },
+    { id: 'c', date: '2025-09-01', rating: null },
+  ]);
+  assert.equal(stats.count, 3);
+  assert.equal(stats.lastDate, '2025-10-12');
+  assert.equal(stats.avgRating, 4.5);
+});
+
+test('cookStats rounds to one decimal and ignores bad ratings', () => {
+  assert.equal(RC.cookStats([{ date: '2025-01-01', rating: 4 }, { date: '2025-01-02', rating: 4 }, { date: '2025-01-03', rating: 5 }]).avgRating, 4.3);
+  assert.equal(RC.cookStats([{ date: '2025-01-01', rating: 9 }, { date: '2025-01-02', rating: null }]).avgRating, null);
 });
