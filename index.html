@@ -79,6 +79,11 @@
       </div>
       <div class="queue-list" id="queue-list"></div>
     </div>
+    <label class="one-recipe" id="one-recipe-wrap" style="display:none">
+      <input type="checkbox" id="one-recipe" onchange="updateOneRecipeControl()">
+      These photos are all ONE recipe
+    </label>
+    <div class="one-recipe-note" id="one-recipe-note" style="display:none"></div>
     <input type="text" class="name-input" id="uploader-name" placeholder="Your name (optional)" maxlength="40">
     <div class="status" id="upload-status"></div>
     <div>

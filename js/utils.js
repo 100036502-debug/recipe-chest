@@ -579,6 +579,27 @@
     return { count: list.length, lastDate: lastDate, avgRating: avgRating };
   }
 
+
+  // ---- multi-photo import -----------------------------------------------
+  // Builds the ONE request that sends several photos of the same recipe, or an
+  // error the caller can show without touching the network.
+  function buildMultiImageRequest(items, addedBy) {
+    var list = (Array.isArray(items) ? items : []).filter(function (it) {
+      return it && typeof it.imageBase64 === 'string' && it.imageBase64 && it.mimeType;
+    });
+    if (!list.length) return { error: 'No photos to send' };
+    if (list.length > 3) return { error: 'At most 3 photos can be combined into one recipe' };
+    var total = list.reduce(function (n, it) { return n + it.imageBase64.length; }, 0);
+    if (total > 3500000) return { error: 'Those photos are too large together' };
+    return {
+      path: '/api/process',
+      body: {
+        images: list.map(function (it) { return { imageBase64: it.imageBase64, mimeType: it.mimeType }; }),
+        addedBy: addedBy || '',
+      },
+    };
+  }
+
   root.RCUtils = {
     parseIngredientLine: parseIngredientLine,
     formatQty: formatQty,
@@ -596,5 +617,6 @@
     isCookStateFresh: isCookStateFresh,
     matchRecipesToPantry: matchRecipesToPantry,
     cookStats: cookStats,
+    buildMultiImageRequest: buildMultiImageRequest,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
