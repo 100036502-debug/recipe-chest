@@ -1,4 +1,4 @@
-import { test, expect } from './helpers.js';
+import { test, expect, unlock } from './helpers.js';
 
 const GUEST_SESSION = {
   status: 200,
@@ -8,9 +8,10 @@ const GUEST_SESSION = {
 
 test.describe('guest access', () => {
   test('a guest sees the recipe chest but none of the write buttons', async ({ page, api }) => {
+    await unlock(page);
+    // Same cookie, but the session check now answers "guest".
     await page.route('**/api/verify-code**', (route) => route.fulfill(GUEST_SESSION));
-
-    await page.goto('/');
+    await page.reload();
     await expect(page.locator('#app-content')).toBeVisible();
 
     await expect(page.locator('body')).toHaveClass(/guest/);
@@ -26,8 +27,7 @@ test.describe('guest access', () => {
   });
 
   test('a member still gets the full set of buttons', async ({ page, api }) => {
-    await page.goto('/');
-    await expect(page.locator('#app-content')).toBeVisible();
+    await unlock(page);
 
     await expect(page.locator('body')).not.toHaveClass(/guest/);
     await expect(page.locator('#role-pill')).toHaveCount(0);
