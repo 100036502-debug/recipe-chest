@@ -285,3 +285,60 @@ body.offline .add-btn,body.offline .import-btn,body.offline .action-btn,body.off
   .notes-box{background:#f7f7f7 !important;border-left:4px solid #999 !important;color:#333 !important;font-size:.85rem !important}
   .recipe-footer{color:#666 !important;border-top-color:#ccc !important;margin-top:20px !important;padding-top:12px !important;font-size:.72rem !important}
 }
+
+/* ---- cook mode: text size, timers, checklists (task 7) ---- */
+/* One custom property drives every size inside cook mode, so A-/A+ scales the
+   whole screen body text and keeps the existing hierarchy intact. Sizes are in
+   em so they follow the scaled base. */
+.cook-mode{--cook-scale:1;font-size:calc(1rem * var(--cook-scale))}
+.cook-mode .cook-title{font-size:2em}
+.cook-mode .cook-section-h{font-size:1.3em}
+.cook-mode .cook-ing li{font-size:1.1em}
+.cook-mode .cook-steps li{font-size:1.1em}
+@media(max-width:600px){.cook-mode .cook-title{font-size:1.5em}}
+
+.cook-scale-bar{position:absolute;top:16px;right:64px;display:flex;align-items:center;gap:6px;z-index:11}
+.cook-scale-label{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin-right:2px}
+.cook-scale-btn{min-width:44px;min-height:44px;padding:0 10px;border-radius:22px;border:1px solid var(--border);background:var(--bg);color:var(--brown);font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer}
+.cook-scale-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+.cook-timers{position:sticky;top:-56px;z-index:20;display:flex;flex-direction:column;gap:10px;background:var(--card);padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border)}
+.cook-timers[hidden]{display:none}
+.cook-timer{display:grid;grid-template-columns:1fr auto;grid-template-areas:"head time" "btns btns";gap:6px 14px;align-items:center;padding:12px 16px;border:1px solid var(--border);border-left:4px solid var(--primary);border-radius:12px;background:var(--bg);cursor:pointer}
+.cook-timer-head{grid-area:head;display:flex;flex-direction:column;gap:2px;min-width:0}
+.cook-timer-where{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.cook-timer-label{font-weight:600;color:var(--brown);font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cook-timer-time{grid-area:time;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:2rem;font-weight:600;color:var(--brown);font-variant-numeric:tabular-nums;line-height:1}
+.cook-timer-btns{grid-area:btns;display:flex;gap:8px;flex-wrap:wrap}
+.cook-timer-btn{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:.85rem;cursor:pointer}
+.cook-timer-btn:hover{border-color:var(--primary);color:var(--primary)}
+.cook-timer.paused{border-left-color:#c9a227}
+.cook-timer.paused .cook-timer-time{color:#8a6d1f}
+.cook-timer.done{border-left-color:#c0392b;background:#fff3ef}
+.cook-timer.done .cook-timer-time{color:#b3261e}
+@keyframes cook-flash{0%,100%{background:#fff3ef}50%{background:#ffd9cf}}
+.cook-timer.done{animation:cook-flash 1s ease-in-out 3}
+@media(prefers-reduced-motion:reduce){.cook-timer.done{animation:none;outline:2px solid #c0392b;outline-offset:1px}}
+
+.cook-step-item{align-items:flex-start}
+.cook-step-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+.cook-step{min-height:44px;padding:8px 10px;margin:-8px -10px;border-radius:10px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.cook-step:hover{background:var(--bg)}
+.cook-step.done{opacity:.55}
+.cook-step.done .cook-step-text,.cook-step.done{text-decoration:line-through}
+.cook-step:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.cook-step-timers{display:flex;gap:8px;flex-wrap:wrap}
+.cook-timer-chip{min-height:44px;padding:0 16px;border-radius:22px;border:1px solid var(--primary);background:transparent;color:var(--primary);font-family:inherit;font-size:.9rem;font-weight:600;cursor:pointer}
+.cook-timer-chip:hover{background:var(--primary);color:#fff}
+
+.cook-ing-row{display:flex;align-items:flex-start;gap:12px;min-height:44px;cursor:pointer;width:100%}
+.cook-ing-check{width:22px;height:22px;margin-top:3px;flex:0 0 auto;accent-color:var(--primary);cursor:pointer}
+.cook-ing-row.checked .cook-ing-text{opacity:.5;text-decoration:line-through}
+.cook-ing-row.checked{opacity:.85}
+
+.cook-steps-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:32px 0 16px}
+.cook-steps-head .cook-section-h{margin:0}
+.cook-steps-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.cook-progress{font-size:.85rem;color:var(--dim);font-variant-numeric:tabular-nums}
+.cook-reset{min-height:44px;padding:0 16px;border-radius:22px;border:1px solid var(--border);background:var(--bg);color:var(--brown);font-family:inherit;font-size:.85rem;cursor:pointer}
+.cook-reset:hover{border-color:var(--primary);color:var(--primary)}

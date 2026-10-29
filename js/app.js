@@ -1334,6 +1334,301 @@ async function saveEdit(id) {
 // ---- Cook mode (fullscreen) ----
 let wakeLock = null;
 
+// Everything the cook screen remembers lives in localStorage: timers as
+// absolute end times (so a locked phone cannot drift them), the ticked
+// ingredients and steps per recipe, and the text size.
+const COOK_TIMERS_KEY = 'rc_cook_timers';
+const COOK_SCALE_KEY = 'rc_cook_scale';
+const COOK_STATE_PREFIX = 'rc_cook_state:';
+const COOK_SCALE_STEPS = [1, 1.15, 1.3, 1.5, 1.75];
+const COOK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+let cookRecipeId = null;
+let cookTimers = [];
+let cookListState = { ing: [], steps: [], ts: 0 };
+let cookStepTimers = [];
+let cookTickHandle = null;
+let cookAudioCtx = null;
+const cookBeeps = {};
+const cookDoneSeen = new Set();
+
+function readCookStore(key, fallback) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) || 'null');
+    return raw == null ? fallback : raw;
+  } catch (e) {
+    return fallback;
+  }
+}
+function writeCookStore(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ }
+}
+
+// ---- timers: storage ----
+function loadCookTimers() {
+  const raw = readCookStore(COOK_TIMERS_KEY, []);
+  if (!Array.isArray(raw)) return [];
+  const now = Date.now();
+  return raw.filter((t) => t
+    && typeof t.id === 'string'
+    && isFinite(Number(t.endsAt))
+    && RCUtils.isCookStateFresh({ ts: Number(t.startedAt) }, now, COOK_MAX_AGE_MS));
+}
+function saveCookTimers() {
+  writeCookStore(COOK_TIMERS_KEY, cookTimers);
+}
+
+// ---- timers: actions ----
+function startCookTimerAt(stepIndex, timerIndex) {
+  const found = (cookStepTimers[stepIndex] || [])[timerIndex];
+  if (!found) return;
+  ensureCookAudio();
+  const id = 't_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+  const timer = RCUtils.createTimer({ id, label: found.label, seconds: found.seconds, now: Date.now() });
+  timer.recipeId = cookRecipeId;
+  timer.step = stepIndex;
+  timer.startedAt = Date.now();
+  cookTimers.push(timer);
+  saveCookTimers();
+  renderCookTimers(true);
+  toast('Timer started: ' + found.label);
+}
+function findCookTimer(id) {
+  return cookTimers.find((t) => t.id === id);
+}
+function replaceCookTimer(updated) {
+  cookTimers = cookTimers.map((t) => (t.id === updated.id ? updated : t));
+  saveCookTimers();
+  renderCookTimers(true);
+}
+function toggleCookTimerPause(id) {
+  const t = findCookTimer(id);
+  if (!t) return;
+  const now = Date.now();
+  replaceCookTimer(t.pausedRemainingMs != null ? RCUtils.resumeTimer(t, now) : RCUtils.pauseTimer(t, now));
+}
+function addCookTimerTime(id, ms) {
+  const t = findCookTimer(id);
+  if (!t) return;
+  cookDoneSeen.delete(t.id);
+  stopBeep(t.id);
+  replaceCookTimer(RCUtils.addTime(t, ms, Date.now()));
+}
+function removeCookTimer(id) {
+  stopBeep(id);
+  cookDoneSeen.delete(id);
+  cookTimers = cookTimers.filter((t) => t.id !== id);
+  saveCookTimers();
+  renderCookTimers(true);
+}
+
+// ---- timers: sound ----
+// The AudioContext has to be created in a click handler: browsers refuse to
+// start one otherwise. Every path is wrapped so a blocked or missing audio API
+// can never break the screen.
+function ensureCookAudio() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!cookAudioCtx) cookAudioCtx = new Ctx();
+    if (cookAudioCtx.state === 'suspended' && cookAudioCtx.resume) cookAudioCtx.resume();
+  } catch (e) {
+    cookAudioCtx = null;
+  }
+}
+function startBeep(id) {
+  stopBeep(id);
+  if (!cookAudioCtx) return;
+  const play = () => {
+    try {
+      const osc = cookAudioCtx.createOscillator();
+      const gain = cookAudioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.value = 0.07;
+      osc.connect(gain);
+      gain.connect(cookAudioCtx.destination);
+      osc.start();
+      osc.stop(cookAudioCtx.currentTime + 0.18);
+    } catch (e) { /* never throw from a sound */ }
+  };
+  try {
+    play();
+    cookBeeps[id] = {
+      interval: setInterval(play, 900),
+      timeout: setTimeout(() => stopBeep(id), 30000),
+    };
+  } catch (e) { /* ignore */ }
+}
+function stopBeep(id) {
+  const b = cookBeeps[id];
+  if (!b) return;
+  clearInterval(b.interval);
+  clearTimeout(b.timeout);
+  delete cookBeeps[id];
+}
+
+function onCookTimerDone(timer) {
+  startBeep(timer.id);
+  try {
+    if (navigator.vibrate) navigator.vibrate([300, 150, 300]);
+  } catch (e) { /* ignore */ }
+  toast('Timer done: ' + timer.label);
+}
+
+// ---- timers: rendering ----
+function cookTimerButtons(t) {
+  const paused = t.pausedRemainingMs != null;
+  return '<button type="button" class="cook-timer-btn" onclick="toggleCookTimerPause(\'' + t.id + '\')">'
+    + (paused ? 'Resume' : 'Pause') + '</button>'
+    + '<button type="button" class="cook-timer-btn" onclick="addCookTimerTime(\'' + t.id + '\',60000)">+1 min</button>'
+    + '<button type="button" class="cook-timer-btn" onclick="removeCookTimer(\'' + t.id + '\')">Remove</button>';
+}
+
+function renderCookTimers(force) {
+  const bar = document.getElementById('cook-timers');
+  if (!bar) return;
+  const now = Date.now();
+  const mine = cookTimers.filter((t) => t.recipeId === cookRecipeId);
+  const sig = mine.map((t) => t.id).join(',');
+
+  if (force || bar.dataset.sig !== sig) {
+    bar.dataset.sig = sig;
+    bar.hidden = mine.length === 0;
+    bar.innerHTML = mine.length === 0 ? '' : mine.map((t) => (
+      '<div class="cook-timer" data-id="' + escapeHtml(t.id) + '" onclick="stopBeep(\'' + t.id + '\')">'
+      + '<div class="cook-timer-head">'
+      + '<span class="cook-timer-where">Step ' + (Number.isInteger(t.step) ? t.step + 1 : '') + '</span>'
+      + '<span class="cook-timer-label">' + escapeHtml(t.label) + '</span>'
+      + '</div>'
+      + '<div class="cook-timer-time">' + RCUtils.formatDuration(RCUtils.remainingMs(t, now)) + '</div>'
+      + '<div class="cook-timer-btns">' + cookTimerButtons(t) + '</div>'
+      + '</div>'
+    )).join('');
+  }
+
+  // Recompute from the absolute end time on every tick, so a phone that was
+  // asleep for ten minutes shows the right number the moment it wakes.
+  for (const t of mine) {
+    const row = bar.querySelector('[data-id="' + t.id + '"]');
+    if (!row) continue;
+    const remaining = RCUtils.remainingMs(t, now);
+    const timeEl = row.querySelector('.cook-timer-time');
+    if (timeEl) timeEl.textContent = RCUtils.formatDuration(remaining);
+    const paused = t.pausedRemainingMs != null;
+    row.classList.toggle('paused', paused);
+    row.classList.toggle('done', remaining === 0);
+    if (paused !== row.dataset.paused && force !== true) {
+      // The Pause/Resume label has to follow the state.
+      const btns = row.querySelector('.cook-timer-btns');
+      if (btns) btns.innerHTML = cookTimerButtons(t);
+    }
+    row.dataset.paused = String(paused);
+    if (remaining === 0 && !cookDoneSeen.has(t.id)) {
+      cookDoneSeen.add(t.id);
+      onCookTimerDone(t);
+    }
+  }
+}
+function startCookTicker() {
+  renderCookTimers(true);
+  if (cookTickHandle) return;
+  cookTickHandle = setInterval(() => renderCookTimers(false), 250);
+}
+function stopCookTicker() {
+  if (cookTickHandle) {
+    clearInterval(cookTickHandle);
+    cookTickHandle = null;
+  }
+  Object.keys(cookBeeps).forEach(stopBeep);
+}
+function onCookVisibilityChange() {
+  if (!document.hidden) renderCookTimers(true);
+}
+
+// ---- checklists ----
+function loadCookState(recipeId) {
+  const raw = readCookStore(COOK_STATE_PREFIX + recipeId, null);
+  if (!raw || typeof raw !== 'object') return { ing: [], steps: [], ts: 0 };
+  if (!RCUtils.isCookStateFresh(raw, Date.now(), COOK_MAX_AGE_MS)) {
+    try { localStorage.removeItem(COOK_STATE_PREFIX + recipeId); } catch (e) { /* ignore */ }
+    return { ing: [], steps: [], ts: 0 };
+  }
+  return {
+    ing: Array.isArray(raw.ing) ? raw.ing.filter((n) => Number.isInteger(n)) : [],
+    steps: Array.isArray(raw.steps) ? raw.steps.filter((n) => Number.isInteger(n)) : [],
+    ts: Number(raw.ts) || 0,
+  };
+}
+function saveCookState() {
+  cookListState.ts = Date.now();
+  writeCookStore(COOK_STATE_PREFIX + cookRecipeId, cookListState);
+}
+function updateCookProgress() {
+  const el = document.getElementById('cook-progress');
+  if (!el) return;
+  const total = (document.querySelectorAll('.cook-steps .cook-step').length) || 0;
+  const done = cookListState.steps.length;
+  el.textContent = done + ' of ' + total + ' steps done';
+}
+function toggleCookIng(i) {
+  const at = cookListState.ing.indexOf(i);
+  if (at === -1) cookListState.ing.push(i); else cookListState.ing.splice(at, 1);
+  saveCookState();
+  const box = document.querySelector('.cook-ing-check[data-i="' + i + '"]');
+  if (box && box.closest('.cook-ing-row')) {
+    box.closest('.cook-ing-row').classList.toggle('checked', cookListState.ing.includes(i));
+  }
+}
+function toggleCookStep(i) {
+  const at = cookListState.steps.indexOf(i);
+  if (at === -1) cookListState.steps.push(i); else cookListState.steps.splice(at, 1);
+  saveCookState();
+  const el = document.querySelector('.cook-step[data-step="' + i + '"]');
+  if (el) {
+    const done = cookListState.steps.includes(i);
+    el.classList.toggle('done', done);
+    el.setAttribute('aria-pressed', done ? 'true' : 'false');
+  }
+  updateCookProgress();
+}
+function cookStepKey(event, i) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    toggleCookStep(i);
+  }
+}
+function resetCookList() {
+  cookListState = { ing: [], steps: [], ts: Date.now() };
+  saveCookState();
+  document.querySelectorAll('.cook-ing-check').forEach((box) => {
+    box.checked = false;
+    if (box.closest('.cook-ing-row')) box.closest('.cook-ing-row').classList.remove('checked');
+  });
+  document.querySelectorAll('.cook-steps .cook-step').forEach((el) => {
+    el.classList.remove('done');
+    el.setAttribute('aria-pressed', 'false');
+  });
+  updateCookProgress();
+  toast('Checklist reset');
+}
+
+// ---- text size ----
+function cookScale() {
+  const v = Number(readCookStore(COOK_SCALE_KEY, 1));
+  return COOK_SCALE_STEPS.includes(v) ? v : 1;
+}
+function applyCookScale() {
+  const el = document.getElementById('cook-content');
+  if (el) el.style.setProperty('--cook-scale', String(cookScale()));
+}
+function changeCookScale(direction) {
+  const i = COOK_SCALE_STEPS.indexOf(cookScale());
+  const next = COOK_SCALE_STEPS[Math.max(0, Math.min(COOK_SCALE_STEPS.length - 1, i + direction))];
+  writeCookStore(COOK_SCALE_KEY, next);
+  applyCookScale();
+}
+
 async function openCookMode(id) {
   const r = recipes.find(x => x.id === id);
   if (!r) { toast('Recipe not found'); return; }
@@ -1341,17 +1636,55 @@ async function openCookMode(id) {
   const ms = mealStyle(r.mealType);
   const scaleFactor = (currentScaling && currentScaling.recipeId === r.id) ? currentScaling.factor : 1;
 
-  const ingredientsHtml = (r.ingredients || []).map(ing => `<li>${scaleIngredientLine(ing, scaleFactor)}</li>`).join('');
+  cookRecipeId = r.id;
+  cookListState = loadCookState(r.id);
+  cookTimers = loadCookTimers();
+  cookDoneSeen.clear();
+  for (const t of cookTimers) {
+    if (t.recipeId === r.id && RCUtils.isDone(t, Date.now())) cookDoneSeen.add(t.id);
+  }
 
-  const stepsHtml = (r.instructions || []).map(s => `<li>${escapeHtml(s)}</li>`).join('');
+  // Detected durations are kept in an array and referenced by index, so no
+  // recipe text ever has to be quoted inside an onclick attribute.
+  cookStepTimers = (r.instructions || []).map((s) => RCUtils.parseTimersFromStep(s));
+
+  const ingredientsHtml = (r.ingredients || []).map((ing, i) => {
+    const checked = cookListState.ing.includes(i) ? ' checked' : '';
+    return '<li><label class="cook-ing-row' + (checked ? ' checked' : '') + '">'
+      + '<input type="checkbox" class="cook-ing-check" data-i="' + i + '"' + checked + ' onchange="toggleCookIng(' + i + ')">'
+      + '<span class="cook-ing-text">' + scaleIngredientLine(ing, scaleFactor) + '</span>'
+      + '</label></li>';
+  }).join('');
+
+  const stepsHtml = (r.instructions || []).map((s, i) => {
+    const done = cookListState.steps.includes(i);
+    const chips = (cookStepTimers[i] || []).map((t, j) => (
+      '<button type="button" class="cook-timer-chip" onclick="startCookTimerAt(' + i + ',' + j + ')">'
+      + '⏱ Start ' + escapeHtml(t.label) + '</button>'
+    )).join('');
+    return '<li class="cook-step-item"><div class="cook-step-body">'
+      + '<div class="cook-step' + (done ? ' done' : '') + '" data-step="' + i + '" role="button" tabindex="0"'
+      + ' aria-pressed="' + (done ? 'true' : 'false') + '" onclick="toggleCookStep(' + i + ')"'
+      + ' onkeydown="cookStepKey(event,' + i + ')">' + escapeHtml(s) + '</div>'
+      + (chips ? '<div class="cook-step-timers">' + chips + '</div>' : '')
+      + '</div></li>';
+  }).join('');
 
   const metaBits = [];
   if (r.prepTime) metaBits.push(`<span class="meta-pill"><span class="k">Prep:</span> ${escapeHtml(r.prepTime)}</span>`);
   if (r.cookTime) metaBits.push(`<span class="meta-pill"><span class="k">Cook:</span> ${escapeHtml(r.cookTime)}</span>`);
   if (r.servings) metaBits.push(`<span class="meta-pill"><span class="k">Serves:</span> ${escapeHtml(r.servings)}</span>`);
 
+  const totalSteps = (r.instructions || []).length;
+
   const html = `
     <button class="cook-close" onclick="closeCookMode()" title="Close" aria-label="Close cook mode">✕</button>
+    <div class="cook-scale-bar">
+      <span class="cook-scale-label">Text</span>
+      <button type="button" class="cook-scale-btn" onclick="changeCookScale(-1)" aria-label="Smaller text">A−</button>
+      <button type="button" class="cook-scale-btn" onclick="changeCookScale(1)" aria-label="Larger text">A+</button>
+    </div>
+    <div class="cook-timers" id="cook-timers" hidden></div>
     <div class="cook-hero" style="background:${ms.bg}">${heroPhotoHtml(r, ms)}</div>
     <h1 class="cook-title">${escapeHtml(r.title)}</h1>
     ${r.description ? `<p class="recipe-desc" style="font-size:1.05rem">${escapeHtml(r.description)}</p>` : ''}
@@ -1363,8 +1696,14 @@ async function openCookMode(id) {
       <h2 class="cook-section-h">Ingredients</h2>
       <ul class="cook-ing">${ingredientsHtml}</ul>
     ` : ''}
-    ${r.instructions && r.instructions.length ? `
-      <h2 class="cook-section-h">Instructions</h2>
+    ${totalSteps ? `
+      <div class="cook-steps-head">
+        <h2 class="cook-section-h">Instructions</h2>
+        <div class="cook-steps-tools">
+          <span class="cook-progress" id="cook-progress">0 of ${totalSteps} steps done</span>
+          <button type="button" class="cook-reset" onclick="resetCookList()">Reset</button>
+        </div>
+      </div>
       <ol class="cook-steps">${stepsHtml}</ol>
     ` : ''}
     ${r.notes ? `<div class="cook-notes">💡 ${escapeHtml(r.notes)}</div>` : ''}
@@ -1376,6 +1715,11 @@ async function openCookMode(id) {
   document.getElementById('cook-overlay').classList.add('on');
   overlayOpened('cook-overlay');
   document.getElementById('cook-content').scrollTop = 0;
+
+  applyCookScale();
+  updateCookProgress();
+  startCookTicker();
+  document.addEventListener('visibilitychange', onCookVisibilityChange);
 
   const overlay = document.getElementById('cook-overlay');
   try {
@@ -1389,6 +1733,12 @@ async function openCookMode(id) {
 }
 
 function closeCookMode() {
+  const now = Date.now();
+  const running = cookTimers.filter((t) => t.recipeId === cookRecipeId && !RCUtils.isDone(t, now));
+  if (running.length && !confirm('Timers are still running. Leave anyway?')) return;
+
+  stopCookTicker();
+  document.removeEventListener('visibilitychange', onCookVisibilityChange);
   document.getElementById('cook-overlay').classList.remove('on');
   overlayClosed('cook-overlay');
   releaseWakeLock();
