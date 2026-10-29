@@ -39,6 +39,17 @@ function markWriteOnly() {
 document.addEventListener('DOMContentLoaded', () => {
   if (sessionState.role === 'guest') applyRole('guest');
 });
+// The grid and the detail view both render markup after login, so re-mark
+// whenever the tree changes (childList only, so class changes cannot loop).
+let markQueued = false;
+function scheduleMarkWriteOnly() {
+  if (sessionState.role !== 'guest' || markQueued) return;
+  markQueued = true;
+  setTimeout(() => { markQueued = false; markWriteOnly(); }, 0);
+}
+if (document.documentElement && typeof MutationObserver === 'function') {
+  new MutationObserver(scheduleMarkWriteOnly).observe(document.documentElement, { childList: true, subtree: true });
+}
 function requireWrite() {
   if (canWrite()) return true;
   toast('View-only access');
