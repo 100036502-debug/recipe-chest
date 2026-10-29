@@ -145,21 +145,21 @@ export const test = base.extend({
 
       if (path === '/api/recipes') {
         if (state.failRecipesWith401 || !state.unlocked) return json(route, 401, { error: 'Unauthorized' });
+
+        // PATCH merges the body and returns the single updated recipe.
+        if (method === 'PATCH') {
+          let patch = {};
+          try { patch = JSON.parse(request.postData() || '{}') || {}; } catch { patch = {}; }
+          const idx = state.recipes.findIndex((r) => r.id === patch.id);
+          if (idx === -1) return json(route, 404, { error: 'Not found' });
+          state.recipes[idx] = { ...state.recipes[idx], ...patch };
+          return json(route, 200, state.recipes[idx]);
+        }
+
         return json(route, 200, state.recipes);
       }
 
       if (!state.unlocked) return json(route, 401, { error: 'Unauthorized' });
-
-      // PATCH a recipe: merge the body and hand the recipe back, the way the
-      // real route does.
-      if (path === '/api/recipes' && method === 'PATCH') {
-        let patch = {};
-        try { patch = JSON.parse(request.postData() || '{}') || {}; } catch { patch = {}; }
-        const idx = state.recipes.findIndex((r) => r.id === patch.id);
-        if (idx === -1) return json(route, 404, { error: 'Not found' });
-        state.recipes[idx] = { ...state.recipes[idx], ...patch };
-        return json(route, 200, state.recipes[idx]);
-      }
 
       // Collections rename/delete across the mock recipes.
       if (path === '/api/collections' && method === 'POST') {
