@@ -485,3 +485,19 @@ body.guest .write-only{display:none !important}
 .storage-banner{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:10px 14px;margin:0 0 14px;border-radius:10px;background:var(--danger-bg);border:1px solid var(--danger-border);font-size:.85rem}
 .storage-banner[hidden]{display:none}
 .storage-banner-close{background:none;border:none;cursor:pointer;color:var(--dim);font-size:1rem;line-height:1}
+
+/* ---- Loading placeholders (task 21) ---- */
+.skeleton-card{cursor:default;pointer-events:none}
+.skeleton-card:hover{transform:none;border-color:var(--border);box-shadow:var(--shadow)}
+.sk-img{width:100%;aspect-ratio:4/3;background:var(--track)}
+.sk-body{padding:12px 14px 16px;display:flex;flex-direction:column;gap:8px}
+.sk-line{height:11px;border-radius:6px;background:var(--track);position:relative;overflow:hidden}
+.sk-title{height:15px;width:70%}
+.sk-short{width:45%}
+.sk-img::after,.sk-line::after{content:'';position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,var(--card),transparent);opacity:.45;animation:sk-shimmer 1.4s infinite}
+.sk-img{position:relative;overflow:hidden}
+@keyframes sk-shimmer{100%{transform:translateX(100%)}}
+@media (prefers-reduced-motion:reduce){
+  .sk-img::after,.sk-line::after{animation:none;display:none}
+  .sk-line{opacity:.85}
+}

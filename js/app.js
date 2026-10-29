@@ -995,7 +995,28 @@ async function processImport() {
 }
 document.getElementById('import-url').addEventListener('keypress', e => { if (e.key === 'Enter') processImport(); });
 
+// ---- Loading placeholders (task 21) ----
+// Eight grey cards shaped like real ones, so the grid does not jump when the
+// recipes arrive. The colours come from the theme variables, so dark mode works.
+function showSkeletons(count = 8) {
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+  if (!grid || recipes.length) return; // never blank out real content
+  if (empty) empty.style.display = 'none';
+  grid.setAttribute('aria-busy', 'true');
+  grid.innerHTML = Array.from({ length: count }, () => `
+    <div class="card skeleton-card" aria-hidden="true">
+      <div class="sk-img"></div>
+      <div class="sk-body">
+        <div class="sk-line sk-title"></div>
+        <div class="sk-line"></div>
+        <div class="sk-line sk-short"></div>
+      </div>
+    </div>`).join('');
+}
+
 async function loadRecipes() {
+  showSkeletons();
   try {
     const res = await apiFetch(`${API}/recipes`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error('Failed to load');
@@ -1077,6 +1098,7 @@ const SORTERS = {
 
 function renderGrid() {
   const grid = document.getElementById('grid');
+  if (grid) grid.removeAttribute('aria-busy');
   const empty = document.getElementById('empty');
   const stats = document.getElementById('stats');
   const banner = document.getElementById('offline-banner');
