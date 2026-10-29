@@ -1,7 +1,7 @@
 // api/verify-code.js
 import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
-import { makeSessionValue, hasValidSession } from '../lib/auth.js';
+import { makeSessionValue, hasValidSession, getSession, guestCode } from '../lib/auth.js';
 
 const ACCESS_CODE = process.env.ACCESS_CODE;
 const SESSION_SECRET = process.env.SESSION_SECRET;
@@ -33,7 +33,8 @@ export default async function handler(req, res) {
 
   // GET: check if the caller already has a valid session cookie
   if (req.method === 'GET') {
-    return res.status(200).json({ unlocked: hasValidSession(req) });
+    const cur = getSession(req);
+    return res.status(200).json({ unlocked: cur !== null, role: cur ? cur.role : null });
   }
 
   // POST: verify a submitted code
@@ -59,11 +60,16 @@ export default async function handler(req, res) {
     const submitted = typeof body.code === 'string' ? body.code : '';
 
     // Timing-safe compare to avoid leaking length or content via timing
-    const a = Buffer.from(submitted);
-    const b = Buffer.from(ACCESS_CODE);
-    const match = a.length === b.length && crypto.timingSafeEqual(a, b);
+    function same(candidate) {
+      const a = Buffer.from(submitted);
+      const b = Buffer.from(candidate);
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    }
 
-    if (!match) {
+    // Member code first, so a member is never downgraded to guest.
+    const guest = guestCode();
+    const role = same(ACCESS_CODE) ? 'member' : (guest && same(guest) ? 'guest' : null);
+    if (!role) {
       return res.status(401).json({ unlocked: false });
     }
 
@@ -72,7 +78,7 @@ export default async function handler(req, res) {
     // Set an HttpOnly cookie so the browser doesn't send the code again
     const isHttps = (req.headers['x-forwarded-proto'] || '').includes('https');
     const cookie = [
-      `rc_session=${makeSessionValue(ACCESS_CODE)}`,
+      `rc_session=${makeSessionValue(role === 'guest' ? guest : ACCESS_CODE, undefined, role)}`,
       'Path=/',
       'HttpOnly',
       'SameSite=Lax',
@@ -81,7 +87,7 @@ export default async function handler(req, res) {
     ].filter(Boolean).join('; ');
 
     res.setHeader('Set-Cookie', cookie);
-    return res.status(200).json({ unlocked: true });
+    return res.status(200).json({ unlocked: true, role });
   }
 
   // DELETE: log out — clear the session cookie
