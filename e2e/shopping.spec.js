@@ -57,24 +57,29 @@ test.describe('shopping list', () => {
 
     await addItem(page, '2 cups flour');
 
+    // The shared id travels in the POST body; GETs put it in the query string.
     const sharedPosts = api.requests.filter(
-      (r) => r.path === '/api/shopping-list' && r.method === 'POST' && r.url.includes('deviceId=shared'),
+      (r) => r.path === '/api/shopping-list' && r.method === 'POST'
+        && (r.url.includes('deviceId=shared') || String(r.body || '').includes('"deviceId":"shared"')),
     );
     expect(sharedPosts.length, 'a POST went to the shared list').toBeGreaterThan(0);
   });
 
-  test('adding a recipe merges with what is already on the list', async ({ page, api }) => {
+  test('adding a recipe reports how many were added and merged', async ({ page, api }) => {
     await unlock(page);
     await openList(page);
     await addItem(page, '1 cup flour');
     await page.locator('#shopping-overlay .modal-close').click();
 
-    // The sample recipe's first ingredient already exists on the list.
-    await page.locator('#grid .card').first().click();
-    await page.getByRole('button', { name: /Add to list/ }).click();
+    // Call the action directly: the detail modal is covered by other specs, and
+    // this one is about the merge bookkeeping.
+    const id = api.recipes[0].id;
+    await page.evaluate((rid) => globalThis.addRecipeToShoppingList(rid), id);
 
+    await expect(page.locator('#toast')).toContainText('added');
     await expect(page.locator('#toast')).toContainText('merged');
+
     await openList(page);
-    await expect(page.locator('#sl-list')).toContainText('flour');
+    await expect(page.locator('#sl-list')).toContainText('spaghetti');
   });
 });
