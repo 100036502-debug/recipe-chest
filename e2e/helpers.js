@@ -145,10 +145,36 @@ export const test = base.extend({
 
       if (path === '/api/recipes') {
         if (state.failRecipesWith401 || !state.unlocked) return json(route, 401, { error: 'Unauthorized' });
+
+        // PATCH merges the body and returns the single updated recipe.
+        if (method === 'PATCH') {
+          let patch = {};
+          try { patch = JSON.parse(request.postData() || '{}') || {}; } catch { patch = {}; }
+          const idx = state.recipes.findIndex((r) => r.id === patch.id);
+          if (idx === -1) return json(route, 404, { error: 'Not found' });
+          state.recipes[idx] = { ...state.recipes[idx], ...patch };
+          return json(route, 200, state.recipes[idx]);
+        }
+
         return json(route, 200, state.recipes);
       }
 
       if (!state.unlocked) return json(route, 401, { error: 'Unauthorized' });
+
+      // Collections rename/delete across the mock recipes.
+      if (path === '/api/collections' && method === 'POST') {
+        let body = {};
+        try { body = JSON.parse(request.postData() || '{}') || {}; } catch { body = {}; }
+        let changed = 0;
+        state.recipes.forEach((r) => {
+          const before = Array.isArray(r.collections) ? r.collections : [];
+          const next = body.rename
+            ? before.map((c) => (c.toLowerCase() === String(body.rename.from).toLowerCase() ? body.rename.to : c))
+            : before.filter((c) => c.toLowerCase() !== String(body.delete || '').toLowerCase());
+          if (JSON.stringify(next) !== JSON.stringify(before)) { r.collections = next; changed += 1; }
+        });
+        return json(route, 200, { changed });
+      }
 
       if (path === '/api/process-pdf' && method === 'POST') {
         const recipe = addRecipe('Imported PDF Recipe');

@@ -138,6 +138,15 @@
   </div>
 </div>
 
+<div class="overlay" id="coll-overlay">
+  <div class="modal" style="padding:28px 32px;max-width:520px" role="dialog" aria-modal="true" aria-labelledby="coll-title">
+    <button class="modal-close" onclick="closeCollectionsManager()" aria-label="Close manage collections">✕</button>
+    <h2 id="coll-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Manage collections</h2>
+    <p style="color:var(--dim);font-size:.82rem;margin-bottom:18px">Renaming or deleting updates every recipe that uses it.</p>
+    <div id="coll-manager-body"></div>
+  </div>
+</div>
+
 <div class="overlay" id="shopping-overlay">
   <div class="modal" style="padding:28px 32px;max-width:600px" role="dialog" aria-modal="true" aria-labelledby="shopping-title">
     <button class="modal-close" onclick="closeShoppingList()" aria-label="Close shopping list">✕</button>

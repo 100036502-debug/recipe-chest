@@ -136,6 +136,7 @@ function closeOverlayById(id) {
     case 'cook-overlay': closeCookMode(); break;
     case 'shopping-overlay': closeShoppingList(); break;
     case 'pantry-overlay': closePantry(); break;
+    case 'coll-overlay': closeCollectionsManager(); break;
     case 'plan-overlay': closeMealPlan(); break;
     case 'picker-overlay': closePicker(); break;
     case 'credit-overlay': cancelPhotoUpload(); break;
@@ -923,6 +924,7 @@ function renderGrid() {
   const allTags = new Map();
   recipes.forEach(r => (r.tags || []).forEach(t => allTags.set(t, (allTags.get(t) || 0) + 1)));
   let filtered = recipes;
+  if (currentCollection !== 'all') filtered = filtered.filter(r => (r.collections || []).includes(currentCollection));
   if (currentFilter === 'favorites') filtered = filtered.filter(r => r.favorite === true);
   else if (currentFilter !== 'all') filtered = filtered.filter(r => (r.tags || []).includes(currentFilter));
   if (currentMealFilter !== 'all') filtered = filtered.filter(r => r.mealType === currentMealFilter);
@@ -964,6 +966,17 @@ function renderGrid() {
       statHtml += `<span class="filter-chip" onclick="toggleShowAllTags()">${showAllTags ? '− less' : `+ ${tagList.length - 12} more`}</span>`;
     }
   }
+  // Collections row: "All" plus a chip per collection, with a manage dialog.
+  const collCounts = new Map();
+  recipes.forEach((r) => (r.collections || []).forEach((c) => collCounts.set(c, (collCounts.get(c) || 0) + 1)));
+  if (collCounts.size) {
+    const names = [...collCounts.keys()].sort((a, b) => a.localeCompare(b));
+    statHtml += `<div class="coll-row">` +
+      `<span class="coll-row-label">Collections:</span>` +
+      `<span class="filter-chip ${currentCollection === 'all' ? 'on' : ''}" onclick="setCollectionFilter('all')">All</span>` +
+      names.map((c) => `<span class="filter-chip ${currentCollection === c ? 'on' : ''}" data-coll="${escapeHtml(c)}" onclick="setCollectionFilter(this.dataset.coll)">${escapeHtml(c)}<span class="coll-count">${collCounts.get(c)}</span></span>`).join('') +
+      `<button class="coll-manage" onclick="openCollectionsManager()">Manage</button></div>`;
+  }
   stats.innerHTML = statHtml;
   if (!filtered.length) {
     grid.innerHTML = '';
@@ -996,6 +1009,148 @@ function renderGrid() {
     `;
   }).join('');
 }
+// ---- Collections (task 10) ----
+let currentCollection = 'all';
+
+function collectionNames() {
+  return [...new Set(recipes.flatMap((r) => r.collections || []))].sort((a, b) => a.localeCompare(b));
+}
+function setCollectionFilter(name) { currentCollection = name; renderGrid(); }
+
+function collectionsRowHtml(r) {
+  const chips = (r.collections || []).map((c) => `<span class="tag-chip coll-chip">${escapeHtml(c)}<button class="tag-x" data-coll="${escapeHtml(c)}" onclick="removeCollectionFromRecipe(this.dataset.recipe, this.dataset.coll)" data-recipe="${r.id}" aria-label="Remove from ${escapeHtml(c)}">✕</button></span>`).join('');
+  return `<div class="recipe-tags coll-detail-row">
+        <span class="coll-label">Collections:</span>${chips}
+        <button class="tag-add-btn" data-recipe="${r.id}" onclick="showCollectionInput(this.dataset.recipe)">+ Add to collection</button>
+        <span id="coll-input-wrap"></span>
+      </div>`;
+}
+
+async function patchCollections(id, list) {
+  try {
+    const res = await apiFetch(`${API}/recipes`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, collections: list }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not save');
+    const idx = recipes.findIndex((x) => x.id === id);
+    if (idx !== -1) recipes[idx] = data;
+    renderGrid();
+    if (document.getElementById('detail-overlay').classList.contains('on')) openDetail(id);
+  } catch (e) {
+    toast('Could not save: ' + e.message);
+  }
+}
+
+function showCollectionInput(id) {
+  const wrap = document.getElementById('coll-input-wrap');
+  if (!wrap) return;
+  const options = collectionNames().map((n) => `<option value="${escapeHtml(n)}"></option>`).join('');
+  wrap.innerHTML = `<input type="text" class="coll-input" id="coll-input" list="coll-names" maxlength="40" placeholder="Collection name">` +
+    `<datalist id="coll-names">${options}</datalist>` +
+    `<button class="tag-add-btn" onclick="saveCollectionFromInput(this.dataset.recipe)" data-recipe="${id}">Save</button>`;
+  const input = document.getElementById('coll-input');
+  if (!input) return;
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveCollectionFromInput(id); } });
+  input.focus();
+}
+
+async function saveCollectionFromInput(id) {
+  const input = document.getElementById('coll-input');
+  const name = input ? input.value.trim().slice(0, 40) : '';
+  if (!name) return;
+  const r = recipes.find((x) => x.id === id);
+  const list = (r && r.collections) || [];
+  if (list.some((c) => c.toLowerCase() === name.toLowerCase())) { toast('Already in that collection'); return; }
+  await patchCollections(id, [...list, name]);
+  toast('Added to ' + name);
+}
+
+async function removeCollectionFromRecipe(id, name) {
+  const r = recipes.find((x) => x.id === id);
+  if (!r) return;
+  await patchCollections(id, (r.collections || []).filter((c) => c !== name));
+  toast('Removed from ' + name);
+}
+
+async function refreshRecipesFromServer() {
+  try {
+    const res = await apiFetch(`${API}/recipes`, { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const list = await res.json();
+    if (!Array.isArray(list)) return;
+    // mutate in place so every existing reference stays valid
+    recipes.length = 0;
+    list.forEach((r) => recipes.push(r));
+    renderGrid();
+  } catch (e) { /* the grid keeps what it had */ }
+}
+
+function openCollectionsManager() {
+  const overlay = document.getElementById('coll-overlay');
+  if (!overlay) return;
+  overlay.classList.add('on');
+  overlayOpened('coll-overlay');
+  renderCollectionsManager();
+}
+function closeCollectionsManager() {
+  const overlay = document.getElementById('coll-overlay');
+  if (overlay) overlay.classList.remove('on');
+  overlayClosed('coll-overlay');
+}
+function renderCollectionsManager() {
+  const body = document.getElementById('coll-manager-body');
+  if (!body) return;
+  const names = collectionNames();
+  body.innerHTML = names.length
+    ? names.map((n) => `<div class="coll-manage-row"><span class="coll-manage-name">${escapeHtml(n)}</span>` +
+        `<button class="btn-secondary" data-coll="${escapeHtml(n)}" onclick="renameCollectionPrompt(this.dataset.coll)">Rename</button>` +
+        `<button class="btn-secondary" data-coll="${escapeHtml(n)}" onclick="deleteCollection(this.dataset.coll)">Delete</button></div>`).join('')
+    : '<p class="coll-empty">No collections yet. Open a recipe and add one.</p>';
+}
+
+async function collectionsAction(payload) {
+  const res = await apiFetch(`${API}/collections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Could not update collections');
+  return data;
+}
+
+async function renameCollectionPrompt(from) {
+  const to = prompt(`Rename "${from}" to:`, from);
+  if (!to) return;
+  const name = to.trim().slice(0, 40);
+  if (!name || name.toLowerCase() === from.toLowerCase()) return;
+  try {
+    const data = await collectionsAction({ rename: { from, to: name } });
+    if (currentCollection === from) currentCollection = name;
+    await refreshRecipesFromServer();
+    renderCollectionsManager();
+    toast(`Renamed in ${data.changed} recipe${data.changed === 1 ? '' : 's'}`);
+  } catch (e) {
+    toast('Could not rename: ' + e.message);
+  }
+}
+
+async function deleteCollection(name) {
+  if (!confirm(`Remove the collection "${name}" from every recipe?`)) return;
+  try {
+    const data = await collectionsAction({ delete: name });
+    if (currentCollection === name) currentCollection = 'all';
+    await refreshRecipesFromServer();
+    renderCollectionsManager();
+    toast(`Removed from ${data.changed} recipe${data.changed === 1 ? '' : 's'}`);
+  } catch (e) {
+    toast('Could not delete: ' + e.message);
+  }
+}
+
 function setFilter(t) { currentFilter = t; renderGrid(); }
 function setMealFilter(m) { currentMealFilter = currentMealFilter === m ? 'all' : m; renderGrid(); }
 function setSort(s) { currentSort = s; renderGrid(); }
@@ -1065,6 +1220,7 @@ function openDetail(id) {
         ${tagsHtml}
         <button class="tag-add-btn" id="tag-add-btn" onclick="showTagInput('${r.id}')">+ Add tag</button>
       </div>
+      ${collectionsRowHtml(r)}
       <div class="recipe-actions">
         <button class="action-btn primary" onclick="openCookMode('${r.id}')">👨‍🍳 Cook mode</button>
         <button class="action-btn ${r.favorite === true ? 'primary' : ''}" onclick="toggleFavorite('${r.id}')" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥ Favorited' : '♡ Favorite'}</button>
