@@ -112,3 +112,23 @@ npm run lint    # ESLint: run before every deploy (catches undefined variables)
 
 Tests cover the tag/meal-type/title normalizers, the private-IP guard used by
 URL imports, the tolerant AI-output parser and the JSON-LD recipe mapper.
+
+## Continuous integration
+
+Every push to `main` and every pull request runs the **CI** workflow in
+`.github/workflows/ci.yml`:
+
+1. `npm ci` — installs from the lockfile, so CI matches production.
+2. `npm run lint` — ESLint over `api/`, `lib/`, `test/`, `js/` and `sw.js`.
+3. `npm test` — the `node --test` suite.
+
+A red check means do not merge. The workflow needs no secrets: it only runs the
+offline unit tests, so it works on forks and pull requests too.
+
+The workflow also holds a commented-out `e2e` job for the Playwright browser
+smoke tests, which is enabled once those specs exist.
+
+**Branch protection (owner step).** In GitHub, open Settings > Branches and add
+a rule for `main` that requires the `CI / Lint and unit tests` check to pass
+before merging. That is what makes the check a real gate rather than a
+decoration; without it, a red run can still be merged.
