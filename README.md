@@ -128,6 +128,32 @@ offline unit tests, so it works on forks and pull requests too.
 The workflow also holds a commented-out `e2e` job for the Playwright browser
 smoke tests, which is enabled once those specs exist.
 
+### Browser smoke tests
+
+The **Browser smoke tests** job runs Playwright against the real front end to
+catch wiring bugs that unit tests cannot see, such as the doubled
+`/api/api/process` prefix that silently broke every photo import.
+
+```bash
+npx playwright install chromium   # once
+npm run test:e2e                  # headless, about 15 seconds
+```
+
+How it works, in `e2e/`:
+
+- `static-server.mjs` serves the repo root on port 4173 the way Vercel does.
+  It reads the `/(.*)` headers straight out of `vercel.json`, so the real
+  Content-Security-Policy is applied and a CSP violation fails the test.
+- `helpers.js` mocks every `/api/**` call (`page.route`), so the specs need no
+  database, no API keys and no network. It also records each request so specs
+  can assert on the exact path, and fails any test whose console shows a CSP
+  violation or an uncaught page error.
+- Specs: `unlock`, `import-photos` (image and PDF), `import-url`, `my-photo`
+  and `session-expired`.
+
+`npm test` stays `node --test` and ignores `e2e/`: the specs are named
+`*.spec.js` and live outside `test/`, so the two suites never collide.
+
 **Branch protection (owner step).** In GitHub, open Settings > Branches and add
 a rule for `main` that requires the `CI / Lint and unit tests` check to pass
 before merging. That is what makes the check a real gate rather than a
