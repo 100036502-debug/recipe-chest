@@ -557,6 +557,28 @@
     return out;
   }
 
+
+  // ---- cooking log stats ------------------------------------------------
+  // Everything the detail view and the cards need, derived from the log so the
+  // stored shape stays { id, date, rating, note, by }.
+  function cookStats(cookLog) {
+    var list = (Array.isArray(cookLog) ? cookLog : []).filter(function (e) {
+      return e && typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date);
+    });
+    if (!list.length) return { count: 0, lastDate: null, avgRating: null };
+
+    var lastDate = list.reduce(function (best, e) { return e.date > best ? e.date : best; }, list[0].date);
+    var ratings = list
+      .map(function (e) { return e.rating; })
+      .filter(function (r) { return typeof r === 'number' && r >= 1 && r <= 5; });
+    var avgRating = null;
+    if (ratings.length) {
+      var sum = ratings.reduce(function (a, b) { return a + b; }, 0);
+      avgRating = Math.round((sum / ratings.length) * 10) / 10;
+    }
+    return { count: list.length, lastDate: lastDate, avgRating: avgRating };
+  }
+
   root.RCUtils = {
     parseIngredientLine: parseIngredientLine,
     formatQty: formatQty,
@@ -573,5 +595,6 @@
     formatDuration: formatDuration,
     isCookStateFresh: isCookStateFresh,
     matchRecipesToPantry: matchRecipesToPantry,
+    cookStats: cookStats,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

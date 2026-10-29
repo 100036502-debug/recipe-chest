@@ -12,6 +12,7 @@ const ACTIONS = {
   'undo-delete': () => import('../lib/actions/undo-delete.js'),
   'health': () => import('../lib/actions/health.js'),
   'collections': () => import('../lib/actions/collections.js'),
+  'cooked': () => import('../lib/actions/cooked.js'),
   'client-error': () => import('../lib/actions/client-error.js'),
   // Later tasks add entries here, always as literal import() paths.
 };

@@ -137,6 +137,7 @@ function closeOverlayById(id) {
     case 'shopping-overlay': closeShoppingList(); break;
     case 'pantry-overlay': closePantry(); break;
     case 'coll-overlay': closeCollectionsManager(); break;
+    case 'cooked-overlay': closeCookedModal(); break;
     case 'plan-overlay': closeMealPlan(); break;
     case 'picker-overlay': closePicker(); break;
     case 'credit-overlay': cancelPhotoUpload(); break;
@@ -905,6 +906,21 @@ const SORTERS = {
   newest: (a, b) => (b.createdAt || 0) - (a.createdAt || 0),
   oldest: (a, b) => (a.createdAt || 0) - (b.createdAt || 0),
   az: (a, b) => String(a.title || '').localeCompare(String(b.title || '')),
+  recently: (a, b) => {
+    const sa = RCUtils.cookStats(a.cookLog), sb = RCUtils.cookStats(b.cookLog);
+    if (!sa.lastDate && !sb.lastDate) return (b.createdAt || 0) - (a.createdAt || 0);
+    if (!sa.lastDate) return 1;
+    if (!sb.lastDate) return -1;
+    return sa.lastDate < sb.lastDate ? 1 : sa.lastDate > sb.lastDate ? -1 : 0;
+  },
+  toprated: (a, b) => {
+    const ra = RCUtils.cookStats(a.cookLog).avgRating;
+    const rb = RCUtils.cookStats(b.cookLog).avgRating;
+    if (ra == null && rb == null) return (b.createdAt || 0) - (a.createdAt || 0);
+    if (ra == null) return 1;
+    if (rb == null) return -1;
+    return rb - ra;
+  },
   quickest: (a, b) => {
     const ta = totalTimeMinutes(a), tb = totalTimeMinutes(b);
     if (ta === -1 && tb === -1) return (b.createdAt || 0) - (a.createdAt || 0);
@@ -926,6 +942,7 @@ function renderGrid() {
   let filtered = recipes;
   if (currentCollection !== 'all') filtered = filtered.filter(r => (r.collections || []).includes(currentCollection));
   if (currentFilter === 'favorites') filtered = filtered.filter(r => r.favorite === true);
+  else if (currentFilter === 'never') filtered = filtered.filter(r => !(r.cookLog || []).length);
   else if (currentFilter !== 'all') filtered = filtered.filter(r => (r.tags || []).includes(currentFilter));
   if (currentMealFilter !== 'all') filtered = filtered.filter(r => r.mealType === currentMealFilter);
   if (currentSearch) {
@@ -940,8 +957,8 @@ function renderGrid() {
   // Sort dropdown next to the recipe count
   let statHtml = `<span>${recipes.length} recipe${recipes.length === 1 ? '' : 's'}</span>`;
   statHtml += `<select class="sort-select" onchange="setSort(this.value)" aria-label="Sort recipes">` +
-    ['newest', 'oldest', 'az', 'quickest'].map(s =>
-      `<option value="${s}"${currentSort === s ? ' selected' : ''}>${({ newest: 'Newest', oldest: 'Oldest', az: 'A to Z', quickest: 'Quickest' })[s]}</option>`
+    ['newest', 'oldest', 'az', 'quickest', 'recently', 'toprated'].map(s =>
+      `<option value="${s}"${currentSort === s ? ' selected' : ''}>${({ newest: 'Newest', oldest: 'Oldest', az: 'A to Z', quickest: 'Quickest', recently: 'Recently cooked', toprated: 'Top rated' })[s]}</option>`
     ).join('') + `</select>`;
 
   if (recipes.length) {
@@ -955,6 +972,9 @@ function renderGrid() {
       if (m === 'default') continue;
       if (!recipes.some(r => r.mealType === m)) continue;
       statHtml += `<span class="filter-chip ${currentMealFilter === m ? 'on' : ''}" onclick="setMealFilter('${m}')" data-meal="${m}">${MEAL_STYLES[m].emoji} ${MEAL_STYLES[m].label}</span>`;
+    }
+    if (recipes.some(r => !(r.cookLog || []).length)) {
+      statHtml += `<span class="filter-chip ${currentFilter === 'never' ? 'on' : ''}" onclick="setFilter('never')">Never cooked</span>`;
     }
     // Tag chips: most used first, top 12, rest behind a "more" toggle
     const tagList = [...allTags.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
@@ -1002,6 +1022,7 @@ function renderGrid() {
           <div class="card-desc">${escapeHtml(r.description || '')}</div>
           <div class="card-meta">
             <span>${ms.label}${r.prepTime ? ' • ⏱ ' + escapeHtml(r.prepTime) : ''}</span>
+            ${cardCookHtml(r)}
             <span>${r.addedBy ? 'by ' + escapeHtml(r.addedBy) : ''}</span>
           </div>
         </div>
@@ -1015,6 +1036,124 @@ let currentCollection = 'all';
 function collectionNames() {
   return [...new Set(recipes.flatMap((r) => r.collections || []))].sort((a, b) => a.localeCompare(b));
 }
+// ---- Cooking log (task 11) ----
+let cookedRecipeId = null;
+
+function localToday() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function shortDate(ymd) {
+  const d = new Date(ymd + 'T00:00:00');
+  if (isNaN(d.getTime())) return ymd;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+function starsText(rating) {
+  if (!rating) return '';
+  return '★'.repeat(rating) + '☆'.repeat(5 - rating);
+}
+function cookedSummary(r) {
+  const s = RCUtils.cookStats(r.cookLog);
+  if (!s.count) return '';
+  const bits = [`Cooked ${s.count} time${s.count === 1 ? '' : 's'}`];
+  if (s.lastDate) bits.push(`last on ${shortDate(s.lastDate)}`);
+  if (s.avgRating != null) bits.push(`average ${s.avgRating} stars`);
+  return bits.join(', ');
+}
+function cookedSectionHtml(r) {
+  const stats = RCUtils.cookStats(r.cookLog);
+  const entries = (r.cookLog || []).slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const rows = entries.map((e) => `<li class="cooked-row">
+      <span class="cooked-date">${escapeHtml(shortDate(e.date))}</span>
+      <span class="cooked-stars" aria-label="${e.rating ? e.rating + ' stars' : 'no rating'}">${escapeHtml(starsText(e.rating))}</span>
+      <span class="cooked-note">${escapeHtml(e.note || '')}${e.by ? ` <span class="cooked-by">· ${escapeHtml(e.by)}</span>` : ''}</span>
+      <button class="cooked-del" data-entry="${escapeHtml(e.id)}" data-recipe="${r.id}" onclick="deleteCookedEntry(this.dataset.recipe, this.dataset.entry)" aria-label="Delete this entry">✕</button>
+    </li>`).join('');
+
+  return `<div class="cooked-section">
+      <h2 class="cook-section-h">Cooking log</h2>
+      <button class="action-btn primary" data-recipe="${r.id}" onclick="openCookedModal(this.dataset.recipe)">🍳 I cooked this</button>
+      ${stats.count ? `<p class="cooked-summary">${escapeHtml(cookedSummary(r))}</p>` : '<p class="cooked-summary">Not cooked yet.</p>'}
+      ${rows ? `<ul class="cooked-list">${rows}</ul>` : ''}
+    </div>`;
+}
+function cardCookHtml(r) {
+  const s = RCUtils.cookStats(r.cookLog);
+  if (!s.count) return '';
+  const star = s.avgRating != null ? `<span class="card-cook">★ ${s.avgRating}</span>` : '';
+  return `<span class="card-cook">Cooked ${s.count}×</span>${star}`;
+}
+
+function openCookedModal(id) {
+  cookedRecipeId = id;
+  const overlay = document.getElementById('cooked-overlay');
+  if (!overlay) return;
+  const dateInput = document.getElementById('cooked-date');
+  if (dateInput) dateInput.value = localToday();
+  const note = document.getElementById('cooked-note');
+  if (note) note.value = '';
+  document.querySelectorAll('input[name="cooked-rating"]').forEach((el) => { el.checked = false; });
+  overlay.classList.add('on');
+  overlayOpened('cooked-overlay');
+}
+function closeCookedModal() {
+  const overlay = document.getElementById('cooked-overlay');
+  if (overlay) overlay.classList.remove('on');
+  overlayClosed('cooked-overlay');
+}
+function pickedRating() {
+  const el = document.querySelector('input[name="cooked-rating"]:checked');
+  return el ? Number(el.value) : null;
+}
+async function saveCookedEntry() {
+  if (!cookedRecipeId) return;
+  const dateEl = document.getElementById('cooked-date');
+  const noteEl = document.getElementById('cooked-note');
+  const body = { id: cookedRecipeId };
+  if (dateEl && dateEl.value) body.date = dateEl.value;
+  const rating = pickedRating();
+  if (rating != null) body.rating = rating;
+  if (noteEl && noteEl.value.trim()) body.note = noteEl.value.trim();
+  const me = (document.getElementById('user-tag') || {}).textContent || '';
+  const name = String(me).replace(/^👤\s*/, '').trim();
+  if (name && name.toLowerCase() !== 'anonymous') body.by = name;
+
+  try {
+    const res = await apiFetch(`${API}/cooked`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not save');
+    applyCookedRecipe(data);
+    closeCookedModal();
+    toast('Added to the cooking log');
+  } catch (e) {
+    toast('Could not save: ' + e.message);
+  }
+}
+async function deleteCookedEntry(recipeId, entryId) {
+  if (!confirm('Delete this cooking log entry?')) return;
+  try {
+    const res = await apiFetch(`${API}/cooked?id=${encodeURIComponent(recipeId)}&entry=${encodeURIComponent(entryId)}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not delete');
+    applyCookedRecipe(data);
+    toast('Entry deleted');
+  } catch (e) {
+    toast('Could not delete: ' + e.message);
+  }
+}
+function applyCookedRecipe(recipe) {
+  if (!recipe || !recipe.id) return;
+  const idx = recipes.findIndex((x) => x.id === recipe.id);
+  if (idx !== -1) recipes[idx] = recipe;
+  renderGrid();
+  if (document.getElementById('detail-overlay').classList.contains('on')) openDetail(recipe.id);
+}
+
 function setCollectionFilter(name) { currentCollection = name; renderGrid(); }
 
 function collectionsRowHtml(r) {
@@ -1221,6 +1360,7 @@ function openDetail(id) {
         <button class="tag-add-btn" id="tag-add-btn" onclick="showTagInput('${r.id}')">+ Add tag</button>
       </div>
       ${collectionsRowHtml(r)}
+      ${cookedSectionHtml(r)}
       <div class="recipe-actions">
         <button class="action-btn primary" onclick="openCookMode('${r.id}')">👨‍🍳 Cook mode</button>
         <button class="action-btn ${r.favorite === true ? 'primary' : ''}" onclick="toggleFavorite('${r.id}')" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥ Favorited' : '♡ Favorite'}</button>

@@ -96,6 +96,10 @@
     {
       "source": "/api/collections",
       "destination": "/api/extras?action=collections"
+    },
+    {
+      "source": "/api/cooked",
+      "destination": "/api/extras?action=cooked"
     }
   ]
 }
