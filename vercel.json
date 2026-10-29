@@ -140,7 +140,7 @@
       "destination": "/api/extras?action=import-text"
     },
     {
-      "source": "/api/share",
+      "source": "/api/ai-transform", "destination": "/api/extras?action=ai-transform" }, { "source": "/api/share",
       "destination": "/api/extras?action=share"
     },
     {

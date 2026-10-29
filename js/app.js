@@ -29,7 +29,7 @@ function applyRole(role) {
 }
 // Anything that opens a write flow is hidden for a guest, without having to
 // remember to annotate every button by hand.
-const WRITE_HANDLERS = /(openImport|openPasteImport|openUpload|openEdit|deleteRecipe|toggleFav|startCookLog|openShareModal|restoreRecipe|savePastedRecipe|createShareLink|revokeShareLink|addMissingToShoppingList|saveEdited)/;
+const WRITE_HANDLERS = /(openImport|openPasteImport|openUpload|openEdit|deleteRecipe|toggleFav|startCookLog|openShareModal|openAiTools|restoreRecipe|savePastedRecipe|createShareLink|revokeShareLink|addMissingToShoppingList|saveEdited)/;
 function markWriteOnly() {
   document.querySelectorAll('[onclick]').forEach((el) => {
     const code = el.getAttribute('onclick') || '';
@@ -1383,6 +1383,235 @@ async function shareNative(token) {
   }
 }
 
+// ---- AI helpers (task 16) ----
+const AI_TOOLS = [
+  { kind: 'metric', label: 'Convert to metric' },
+  { kind: 'us', label: 'Convert to US units' },
+  { kind: 'vegetarian', label: 'Make vegetarian' },
+  { kind: 'vegan', label: 'Make vegan' },
+  { kind: 'gluten-free', label: 'Make gluten free' },
+  { kind: 'dairy-free', label: 'Make dairy free' },
+  { kind: 'simplify', label: 'Simplify steps' },
+  { kind: 'cleanup', label: 'Clean up text' },
+  { kind: 'substitute', label: 'Suggest a substitute' },
+];
+const AI_LABELS = {
+  metric: 'Metric', us: 'US units', vegetarian: 'Vegetarian', vegan: 'Vegan',
+  'gluten-free': 'Gluten free', 'dairy-free': 'Dairy free', simplify: 'Simplified',
+  cleanup: 'Cleaned up', substitute: 'Substitute',
+};
+
+let aiRecipeId = null;
+let aiUndoTimer = null;
+let aiPrevious = null;
+
+function openAiTools(id) {
+  if (!requireWrite()) return;
+  aiRecipeId = id;
+  const recipe = recipes.find((r) => r.id === id);
+  document.getElementById('ai-overlay').classList.add('on');
+  overlayOpened('ai-overlay');
+  document.getElementById('ai-result').innerHTML = '';
+  document.getElementById('ai-intro').style.display = '';
+  const tools = document.getElementById('ai-tools');
+  tools.innerHTML = AI_TOOLS.map((tool) => `
+    <button class="btn-secondary ai-tool" id="ai-btn-${tool.kind}" data-kind="${tool.kind}" onclick="runAiTool('${tool.kind}')">${escapeHtml(tool.label)}</button>`).join('');
+  const picker = document.getElementById('ai-picker');
+  const select = document.getElementById('ai-ingredient');
+  if (recipe && Array.isArray(recipe.ingredients) && recipe.ingredients.length) {
+    select.innerHTML = recipe.ingredients
+      .map((line) => `<option value="${escapeHtml(line)}">${escapeHtml(line)}</option>`).join('');
+  } else {
+    select.innerHTML = '';
+  }
+  picker.style.display = 'none';
+  clearAiUndo();
+}
+
+function closeAiTools() {
+  document.getElementById('ai-overlay').classList.remove('on');
+  overlayClosed('ai-overlay');
+  clearAiUndo();
+  aiRecipeId = null;
+}
+
+function clearAiUndo() {
+  if (aiUndoTimer) { clearTimeout(aiUndoTimer); aiUndoTimer = null; }
+  aiPrevious = null;
+  const undo = document.getElementById('ai-undo');
+  if (undo) undo.remove();
+}
+
+function showAiIngredientPicker() {
+  document.getElementById('ai-picker').style.display = '';
+}
+
+async function runAiTool(kind) {
+  if (!aiRecipeId) return;
+  if (kind === 'substitute') {
+    showAiIngredientPicker();
+    document.getElementById('ai-intro').style.display = 'none';
+    document.getElementById('ai-result').innerHTML = '<p class="share-hint">Pick the ingredient, then press Suggest.</p><button class="btn-primary" id="ai-run-substitute" onclick="runAiSubstitute()">Suggest a substitute</button>';
+    return;
+  }
+  await postAiTool(kind);
+}
+
+async function runAiSubstitute() {
+  const select = document.getElementById('ai-ingredient');
+  await postAiTool('substitute', select ? select.value : '');
+}
+
+async function postAiTool(kind, ingredient) {
+  const out = document.getElementById('ai-result');
+  document.getElementById('ai-intro').style.display = 'none';
+  out.innerHTML = '<p class="ai-spinner" id="ai-working">Thinking…</p>';
+  try {
+    const res = await apiFetch(`${API}/ai-transform`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: aiRecipeId, kind, ingredient }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'The AI helper is unavailable right now.');
+    if (data.options) renderAiOptions(data.options);
+    else renderAiChange(data);
+  } catch (e) {
+    out.innerHTML = `<p class="ai-error">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderAiOptions(options) {
+  const out = document.getElementById('ai-result');
+  out.innerHTML = `
+    <h3 class="share-h">Substitute ideas</h3>
+    <ul class="ai-options">${options.map((option) => `
+      <li><strong>${escapeHtml(option.name)}</strong>${option.note ? ' — ' + escapeHtml(option.note) : ''}</li>`).join('')}</ul>
+    <button class="btn-secondary" onclick="closeAiTools()">Close</button>`;
+}
+
+function aiDiffColumn(beforeLines, afterLines) {
+  const rows = diffLines(beforeLines, afterLines);
+  return `<ul class="ai-diff">${rows.map((row) => `
+    <li class="ai-${row.type}">${row.type === 'add' ? '+ ' : row.type === 'del' ? '− ' : ''}${escapeHtml(row.text)}</li>`).join('')}</ul>`;
+}
+
+function renderAiChange(data) {
+  const out = document.getElementById('ai-result');
+  const label = AI_LABELS[data.kind] || data.kind;
+  out.innerHTML = `
+    <p class="ai-summary" id="ai-summary">${escapeHtml(data.summary || 'Done.')}</p>
+    <div class="ai-compare">
+      <div class="ai-side">
+        <h4>Ingredients</h4>
+        ${aiDiffColumn(data.before.ingredients, data.after.ingredients)}
+      </div>
+      <div class="ai-side">
+        <h4>Steps</h4>
+        ${aiDiffColumn(data.before.instructions, data.after.instructions)}
+      </div>
+    </div>
+    <div class="ai-actions">
+      <button class="btn-secondary" id="ai-cancel" onclick="closeAiTools()">Cancel</button>
+      <button class="btn-secondary" id="ai-replace" onclick="replaceWithAi()">Replace this recipe</button>
+      <button class="btn-primary" id="ai-save-new" data-label="${escapeHtml(label)}" onclick="saveAiAsNew(this)">Save as new recipe</button>
+    </div>`;
+  window.__aiPending = data;
+}
+
+async function saveAiAsNew(btn) {
+  if (!requireWrite()) return;
+  const data = window.__aiPending;
+  if (!data) return;
+  const recipe = recipes.find((r) => r.id === aiRecipeId);
+  const label = btn ? btn.dataset.label : (AI_LABELS[data.kind] || 'Adapted');
+  const body = {
+    title: `${recipe ? recipe.title : 'Recipe'} (${label})`,
+    ingredients: data.after.ingredients,
+    instructions: data.after.instructions,
+    notes: data.after.notes,
+    tags: ['adapted'],
+    mealType: recipe && recipe.mealType ? recipe.mealType : undefined,
+    skipDuplicateCheck: true,
+  };
+  try {
+    const res = await apiFetch(`${API}/recipes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error('Could not save that recipe');
+    closeAiTools();
+    await loadRecipes();
+    toast('Saved as a new recipe');
+  } catch (e) { toast(e.message); }
+}
+
+async function replaceWithAi() {
+  if (!requireWrite()) return;
+  const data = window.__aiPending;
+  if (!data) return;
+  if (!confirm('Replace the ingredients and steps of this recipe?')) return;
+  aiPrevious = data.before;
+  try {
+    const res = await apiFetch(`${API}/recipes?id=${encodeURIComponent(aiRecipeId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ingredients: data.after.ingredients,
+        instructions: data.after.instructions,
+        notes: data.after.notes,
+      }),
+    });
+    if (!res.ok) throw new Error('Could not update that recipe');
+    await loadRecipes();
+    toast('Recipe updated');
+    showAiUndo();
+  } catch (e) { toast(e.message); }
+}
+
+function showAiUndo() {
+  const out = document.getElementById('ai-result');
+  if (!out) return;
+  let bar = document.getElementById('ai-undo');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'ai-undo';
+    bar.className = 'ai-undo';
+    out.appendChild(bar);
+  }
+  bar.innerHTML = 'Recipe replaced. <button class="btn-secondary" onclick="undoAiReplace()">Undo</button> <span id="ai-undo-count">60</span>s';
+  let left = 60;
+  if (aiUndoTimer) clearInterval(aiUndoTimer);
+  aiUndoTimer = setInterval(() => {
+    left -= 1;
+    const count = document.getElementById('ai-undo-count');
+    if (count) count.textContent = String(left);
+    if (left <= 0) clearAiUndo();
+  }, 1000);
+}
+
+async function undoAiReplace() {
+  if (!aiPrevious || !aiRecipeId) return;
+  const previous = aiPrevious;
+  clearAiUndo();
+  try {
+    const res = await apiFetch(`${API}/recipes?id=${encodeURIComponent(aiRecipeId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ingredients: previous.ingredients, instructions: previous.instructions, notes: previous.notes }),
+    });
+    if (!res.ok) throw new Error('Could not undo that change');
+    await loadRecipes();
+    toast('Change undone');
+  } catch (e) { toast(e.message); }
+}
+
+// Line diff for the AI before/after view.
+function diffLines(before, after) {
+  return RCUtils.diffLines(before, after);
+}
+
 // ---- Cooking log (task 11) ----
 let cookedRecipeId = null;
 
@@ -1711,6 +1940,7 @@ function openDetail(id) {
       <div class="recipe-actions">
         <button class="action-btn primary" onclick="openCookMode('${r.id}')">👨‍🍳 Cook mode</button>
         <button class="action-btn" onclick="openShareModal('${r.id}')">🔗 Share link</button>
+        <button class="action-btn" onclick="openAiTools('${r.id}')">✨ AI tools</button>
         <button class="action-btn ${r.favorite === true ? 'primary' : ''}" onclick="toggleFavorite('${r.id}')" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥ Favorited' : '♡ Favorite'}</button>
         <button class="action-btn" onclick="addRecipeToShoppingList('${r.id}')">🛒 Add to list</button>
         <button class="action-btn" onclick="openEditMode('${r.id}')">✎ Edit</button>

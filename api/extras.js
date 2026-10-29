@@ -18,6 +18,7 @@ const ACTIONS = {
   'share-view': () => import('../lib/actions/share-view.js'),
   'share-photo': () => import('../lib/actions/share-photo.js'),
   'client-error': () => import('../lib/actions/client-error.js'),
+  'ai-transform': () => import('../lib/actions/ai-transform.js'),
   // Later tasks add entries here, always as literal import() paths.
 };
 

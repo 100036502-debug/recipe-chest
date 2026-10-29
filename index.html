@@ -171,6 +171,17 @@
   </div>
 </div>
 
+<div class="overlay" id="ai-overlay">
+  <div class="modal" style="padding:28px 32px;max-width:720px" role="dialog" aria-modal="true" aria-labelledby="ai-title">
+    <button class="modal-close" onclick="closeAiTools()" aria-label="Close AI tools">✕</button>
+    <h2 id="ai-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">AI tools</h2>
+    <p id="ai-intro" style="color:var(--dim);font-size:.82rem;margin-bottom:14px">Suggestions only. Nothing is saved until you choose Save or Replace.</p>
+    <div id="ai-tools" class="ai-tool-list"></div>
+    <div id="ai-picker" class="ai-picker"><label class="share-expiry-label" for="ai-ingredient">Ingredient</label><select id="ai-ingredient" class="share-select"></select></div>
+    <div id="ai-result"></div>
+  </div>
+</div>
+
 <div class="overlay" id="share-overlay">
   <div class="modal" style="padding:28px 32px;max-width:560px" role="dialog" aria-modal="true" aria-labelledby="share-title">
     <button class="modal-close" onclick="closeShareModal()" aria-label="Close share links">✕</button>
