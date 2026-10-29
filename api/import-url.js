@@ -129,7 +129,7 @@ ${pageText}`;
     // Duplicate check and photo lookup run at the same time to keep imports fast
     const [dup, image] = await Promise.all([
       findDuplicate(kv, { title, sourceUrl: parsedUrl.toString() }),
-      findDishImage(title),
+      findDishImage(title, { kv }),
     ]);
 
     if (dup) {

@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
+import { getKv } from '../lib/redis.js';
 import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
@@ -258,7 +259,7 @@ async function persistRecipe(parsedRecipe, senderName) {
   // Duplicate check and photo lookup run at the same time to keep imports fast
   const [dup, image] = await Promise.all([
     findDuplicate(redis, { title }),
-    findDishImage(title),
+    findDishImage(title, { kv: getKv() }),
   ]);
 
   if (dup) {

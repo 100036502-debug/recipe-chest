@@ -121,7 +121,7 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
     const skipDup = skipDuplicateCheck === true;
     const [dup, image] = await Promise.all([
       skipDup ? null : findDuplicate(kv, { title: recipe.title }),
-      findDishImage(recipe.title),
+      findDishImage(recipe.title, { kv }),
     ]);
 
     if (dup) {

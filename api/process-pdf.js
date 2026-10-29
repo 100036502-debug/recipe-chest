@@ -5,6 +5,7 @@ import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { findDuplicate, isUsableRecipe, cleanTags, normalizeMealType } from '../lib/recipes.js';
 import { findDishImage } from '../lib/image.js';
+import { getKv } from '../lib/redis.js';
 import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
@@ -65,7 +66,7 @@ export default async function handler(req, res) {
     const skipDup = skipDuplicateCheck === true;
     const [dup, image] = await Promise.all([
       skipDup ? null : findDuplicate(kv, { title: recipe.title }),
-      findDishImage(recipe.title),
+      findDishImage(recipe.title, { kv: getKv() }),
     ]);
 
     if (dup) {
