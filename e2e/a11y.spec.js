@@ -35,7 +35,11 @@ async function scan(page, label) {
     .analyze();
 
   const blocking = results.violations.filter((v) => BLOCKING.includes(v.impact));
-  const detail = blocking.map((v) => `${v.id} [${v.impact}] on ${v.nodes[0] && v.nodes[0].target} (${v.nodes.length} node(s))`);
+  // Print the failing nodes, so a red run says exactly what to change.
+  const detail = blocking.map((v) => [
+    `${v.id} [${v.impact}] x${v.nodes.length}`,
+    ...v.nodes.slice(0, 3).map((node, i) => `  ${i + 1}. ${node.target.join(' ')} :: ${node.html.slice(0, 160)} :: ${(node.failureSummary || '').replace(/\s+/g, ' ').slice(0, 240)}`),
+  ].join('\n'));
   expect(detail, `${label}: ${blocking.length} serious or critical violation(s)`).toEqual([]);
 }
 

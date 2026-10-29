@@ -2588,8 +2588,8 @@ async function openCookMode(id) {
     <button class="cook-close" onclick="closeCookMode()" title="Close" aria-label="Close cook mode">✕</button>
     <div class="cook-scale-bar">
       <span class="cook-scale-label">Text</span>
-      <button type="button" class="cook-scale-btn" onclick="changeCookScale(-1)" aria-label="Smaller text">A−</button>
-      <button type="button" class="cook-scale-btn" onclick="changeCookScale(1)" aria-label="Larger text">A+</button>
+      <button type="button" class="cook-scale-btn" onclick="changeCookScale(-1)" aria-label="A− smaller text">A−</button>
+      <button type="button" class="cook-scale-btn" onclick="changeCookScale(1)" aria-label="A+ larger text">A+</button>
     </div>
     <div class="cook-timers" id="cook-timers" hidden></div>
     <div class="cook-hero" style="background:${ms.bg}">${heroPhotoHtml(r, ms)}</div>
