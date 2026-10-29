@@ -53,6 +53,7 @@ try { var rcTheme = localStorage.getItem('rc_theme'); if (rcTheme === 'light' ||
       <button class="menu-item" role="menuitem" onclick="pickBackupFiles()">⬆️ Restore backup</button>
       <button class="menu-item" role="menuitem" onclick="openStorage()">📦 Storage</button>
       <button class="menu-item" role="menuitem" id="theme-item" onclick="cycleTheme()">🎨 Theme: Auto</button>
+      <button class="menu-item" role="menuitem" id="install-item" onclick="installApp()" hidden>📲 Install app</button>
     </div>
   </div>
   <button class="lock-btn" onclick="lockApp()" title="Lock Recipe Chest">🔒</button>
