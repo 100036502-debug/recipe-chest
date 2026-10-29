@@ -3504,3 +3504,41 @@ function dismissStorageBanner() {
   const banner = document.getElementById('storage-banner');
   if (banner) banner.hidden = true;
 }
+
+// ---- Theme (task 20) ----
+// Auto follows the system; light and dark pin the choice. The inline script in
+// each page's head applies the saved value before the first paint.
+const THEME_CHOICES = ['auto', 'light', 'dark'];
+
+function savedTheme() {
+  try {
+    const saved = localStorage.getItem('rc_theme');
+    return THEME_CHOICES.includes(saved) ? saved : 'auto';
+  } catch (e) { return 'auto'; }
+}
+
+function applyTheme(choice) {
+  const root = document.documentElement;
+  if (choice === 'light' || choice === 'dark') root.dataset.theme = choice;
+  else delete root.dataset.theme;
+  const item = document.getElementById('theme-item');
+  if (item) item.textContent = `🎨 Theme: ${choice === 'auto' ? 'Auto' : choice === 'light' ? 'Light' : 'Dark'}`;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    const bg = getComputedStyle(document.body).backgroundColor;
+    if (bg && bg !== 'rgba(0, 0, 0, 0)') meta.setAttribute('content', bg);
+  }
+}
+
+function cycleTheme() {
+  const next = THEME_CHOICES[(THEME_CHOICES.indexOf(savedTheme()) + 1) % THEME_CHOICES.length];
+  try { localStorage.setItem('rc_theme', next); } catch (e) { /* storage may be blocked */ }
+  applyTheme(next);
+  toast(`Theme: ${next === 'auto' ? 'Auto' : next === 'light' ? 'Light' : 'Dark'}`);
+}
+
+applyTheme(savedTheme());
+window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').addEventListener
+  && window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (savedTheme() === 'auto') applyTheme('auto');
+  });

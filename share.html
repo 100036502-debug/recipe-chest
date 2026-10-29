@@ -5,9 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
-  <meta name="theme-color" content="#f6efe6">
+  <meta name="theme-color" content="#faf6f0">
   <title>Shared recipe</title>
-  <link rel="stylesheet" href="/css/app.css">
+  <script>
+/* Set the saved theme before the stylesheet loads, so there is no flash of the
+   wrong one. Wrapped in try/catch: blocked storage must not break the page. */
+try { var rcTheme = localStorage.getItem('rc_theme'); if (rcTheme === 'light' || rcTheme === 'dark') { document.documentElement.dataset.theme = rcTheme; } } catch (e) {}
+</script>
+<link rel="stylesheet" href="/css/app.css">
 </head>
 <body class="share-page">
   <!-- Public page: no app code, no service worker, nothing that could reach the app's data. -->
