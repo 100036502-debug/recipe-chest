@@ -533,12 +533,12 @@ function fileToBase64(file) {
 function buildImportRequest(item, name, base64, mimeType) {
   if (item.isPdf) {
     return {
-      path: '/api/process-pdf',
+      path: '/api/api/process-pdf',
       body: { pdfBase64: base64, addedBy: name, skipDuplicateCheck: item.skipDuplicateCheck === true },
     };
   }
   return {
-    path: '/api/process',
+    path: '/api/api/process',
     body: { imageBase64: base64, mimeType, addedBy: name, skipDuplicateCheck: item.skipDuplicateCheck === true },
   };
 }
