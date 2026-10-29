@@ -53,12 +53,17 @@ try { var rcTheme = localStorage.getItem('rc_theme'); if (rcTheme === 'light' ||
       <button class="menu-item" role="menuitem" onclick="pickBackupFiles()">⬆️ Restore backup</button>
       <button class="menu-item" role="menuitem" onclick="openStorage()">📦 Storage</button>
       <button class="menu-item" role="menuitem" id="theme-item" onclick="cycleTheme()">🎨 Theme: Auto</button>
+      <button class="menu-item" role="menuitem" id="install-item" onclick="installApp()" hidden>📲 Install app</button>
     </div>
   </div>
   <button class="lock-btn" onclick="lockApp()" title="Lock Recipe Chest">🔒</button>
 </header>
 
 <main class="main">
+  <div class="ios-hint" id="ios-hint" hidden>
+    <span>To install: tap the Share button, then Add to Home Screen.</span>
+    <button class="ios-hint-close" onclick="dismissIosHint()" aria-label="Dismiss">✕</button>
+  </div>
   <div id="offline-banner" class="offline-banner" style="display:none">⚡ You're offline — showing saved recipes. Some actions are unavailable until you reconnect.</div>
   <div class="stats" id="stats"></div>
   <div class="grid" id="grid"></div>

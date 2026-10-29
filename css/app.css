@@ -501,3 +501,8 @@ body.guest .write-only{display:none !important}
   .sk-img::after,.sk-line::after{animation:none;display:none}
   .sk-line{opacity:.85}
 }
+
+/* ---- Install hint (task 22) ---- */
+.ios-hint{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:10px 14px;margin:0 0 14px;border-radius:10px;background:var(--surface-warm);border:1px solid var(--tag-border);color:var(--text);font-size:.85rem}
+.ios-hint[hidden]{display:none}
+.ios-hint-close{background:none;border:none;cursor:pointer;color:var(--dim);font-size:1rem;line-height:1}

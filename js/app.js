@@ -3564,3 +3564,75 @@ window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').addEventL
   && window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (savedTheme() === 'auto') applyTheme('auto');
   });
+
+// ---- Install app (task 22) ----
+// Chrome fires beforeinstallprompt when the app is installable; we hold on to
+// it and offer the menu item, because a prompt fired on load gets ignored.
+let installPrompt = null;
+
+function isStandalone() {
+  const byDisplay = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+  return Boolean(byDisplay || window.navigator.standalone === true);
+}
+
+function hideInstallItem() {
+  const item = document.getElementById('install-item');
+  if (item) item.hidden = true;
+}
+
+function revealInstallItem() {
+  if (isStandalone()) return hideInstallItem();
+  const item = document.getElementById('install-item');
+  if (item) item.hidden = false;
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPrompt = event;
+  revealInstallItem();
+});
+
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  hideInstallItem();
+  hideIosHint();
+});
+
+async function installApp() {
+  if (!installPrompt) return hideInstallItem();
+  const prompt = installPrompt;
+  installPrompt = null;
+  hideInstallItem();
+  try {
+    prompt.prompt();
+    if (prompt.userChoice && prompt.userChoice.then) await prompt.userChoice;
+  } catch (e) { /* the browser refused the prompt: nothing to do */ }
+}
+
+// iOS Safari has no install event at all, so it gets one quiet, dismissible
+// instruction instead.
+function isIos() {
+  const ua = navigator.userAgent || '';
+  return /iPhone|iPad|iPod/.test(ua);
+}
+
+function hideIosHint() {
+  const hint = document.getElementById('ios-hint');
+  if (hint) hint.hidden = true;
+}
+
+function dismissIosHint() {
+  try { localStorage.setItem('rc_ios_hint_dismissed', '1'); } catch (e) { /* storage blocked */ }
+  hideIosHint();
+}
+
+function maybeShowIosHint() {
+  if (!isIos() || isStandalone()) return hideIosHint();
+  try {
+    if (localStorage.getItem('rc_ios_hint_dismissed')) return;
+  } catch (e) { return; }
+  const hint = document.getElementById('ios-hint');
+  if (hint) hint.hidden = false;
+}
+
+maybeShowIosHint();
