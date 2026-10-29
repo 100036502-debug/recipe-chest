@@ -488,6 +488,75 @@
     });
   }
 
+
+  // ---- what can I make? ------------------------------------------------
+  // A pantry item covers an ingredient when either name contains the other as
+  // a whole word, so "chicken" covers "chicken breast" and "cheese" covers
+  // "cheddar cheese". Whole words only keeps "oil" out of "boiled".
+  var PANTRY_BASICS = ['salt', 'pepper', 'black pepper', 'water', 'oil', 'olive oil',
+    'vegetable oil', 'cooking spray', 'ice'];
+
+  function containsWord(haystack, needle) {
+    if (!haystack || !needle) return false;
+    var escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(^|[^a-z0-9])' + escaped + '([^a-z0-9]|$)', 'i').test(haystack);
+  }
+
+  function pantryCovers(pantryNames, name) {
+    for (var i = 0; i < pantryNames.length; i++) {
+      var p = pantryNames[i];
+      if (!p) continue;
+      if (p === name) return true;
+      if (containsWord(name, p) || containsWord(p, name)) return true;
+    }
+    return false;
+  }
+
+  function matchRecipesToPantry(recipes, pantry, options) {
+    var opts = options || {};
+    var assumeBasics = opts.assumeBasics !== false;
+    var minScore = opts.minScore == null ? 0.5 : Number(opts.minScore);
+
+    var pantryNames = (Array.isArray(pantry) ? pantry : [])
+      .map(function (p) { return normalizeIngredientName(String(p || '')); })
+      .filter(Boolean);
+    if (assumeBasics) PANTRY_BASICS.forEach(function (b) { pantryNames.push(b); });
+
+    var out = [];
+    (Array.isArray(recipes) ? recipes : []).forEach(function (recipe) {
+      if (!recipe || typeof recipe !== 'object') return;
+      var lines = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+      var names = lines
+        .map(function (line) { return normalizeIngredientName(parseIngredientLine(String(line || '')).name); })
+        .filter(Boolean);
+      if (!names.length) return; // nothing to cook, nothing to score
+
+      var haveNames = [];
+      var missing = [];
+      names.forEach(function (n) {
+        if (pantryCovers(pantryNames, n)) haveNames.push(n); else missing.push(n);
+      });
+
+      var score = haveNames.length / names.length;
+      if (!(score >= minScore)) return;
+
+      out.push({
+        recipe: recipe, have: haveNames.length, total: names.length,
+        score: score, missing: missing, haveNames: haveNames,
+      });
+    });
+
+    out.sort(function (a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      if (a.missing.length !== b.missing.length) return a.missing.length - b.missing.length;
+      var favA = a.recipe.favorite ? 1 : 0, favB = b.recipe.favorite ? 1 : 0;
+      if (favB !== favA) return favB - favA;
+      return (Number(b.recipe.createdAt) || 0) - (Number(a.recipe.createdAt) || 0);
+    });
+
+    return out;
+  }
+
   root.RCUtils = {
     parseIngredientLine: parseIngredientLine,
     formatQty: formatQty,
@@ -503,5 +572,6 @@
     isDone: isDone,
     formatDuration: formatDuration,
     isCookStateFresh: isCookStateFresh,
+    matchRecipesToPantry: matchRecipesToPantry,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

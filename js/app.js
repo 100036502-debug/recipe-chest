@@ -135,6 +135,7 @@ function closeOverlayById(id) {
     case 'detail-overlay': closeDetail(); break;
     case 'cook-overlay': closeCookMode(); break;
     case 'shopping-overlay': closeShoppingList(); break;
+    case 'pantry-overlay': closePantry(); break;
     case 'plan-overlay': closeMealPlan(); break;
     case 'picker-overlay': closePicker(); break;
     case 'credit-overlay': cancelPhotoUpload(); break;
@@ -2095,6 +2096,155 @@ async function addRecipeToShoppingList(id) {
   toast(`${addedCount} added, ${mergedCount} merged`);
 }
 
+
+// ---- What can I make? (pantry matcher) ----
+const PANTRY_KEY = 'rc_pantry';
+const PANTRY_BASICS_KEY = 'rc_pantry_basics';
+let pantryResults = [];
+
+function getPantry() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PANTRY_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter((x) => typeof x === 'string').slice(0, 100) : [];
+  } catch (e) { return []; }
+}
+function savePantry(list) {
+  try { localStorage.setItem(PANTRY_KEY, JSON.stringify(list.slice(0, 100))); } catch (e) { /* ignore */ }
+}
+function pantryBasicsOn() {
+  try { const v = localStorage.getItem(PANTRY_BASICS_KEY); return v === null ? true : v === '1'; } catch (e) { return true; }
+}
+
+function openPantry() {
+  document.getElementById('pantry-overlay').classList.add('on');
+  overlayOpened('pantry-overlay');
+  const box = document.getElementById('pantry-basics');
+  if (box) box.checked = pantryBasicsOn();
+  fillPantrySuggestions();
+  renderPantry();
+  const input = document.getElementById('pantry-input');
+  if (input) input.focus();
+}
+function closePantry() {
+  document.getElementById('pantry-overlay').classList.remove('on');
+  overlayClosed('pantry-overlay');
+}
+
+function addPantryItem() {
+  const input = document.getElementById('pantry-input');
+  if (!input) return;
+  const parts = String(input.value || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return;
+  const list = getPantry();
+  parts.forEach((p) => {
+    const clean = p.slice(0, 60);
+    if (!list.some((x) => x.toLowerCase() === clean.toLowerCase())) list.push(clean);
+  });
+  savePantry(list);
+  input.value = '';
+  renderPantry();
+}
+function removePantryItem(i) {
+  const list = getPantry();
+  list.splice(i, 1);
+  savePantry(list);
+  renderPantry();
+}
+function clearPantry() {
+  savePantry([]);
+  renderPantry();
+  toast('Pantry cleared');
+}
+function setPantryBasics(on) {
+  try { localStorage.setItem(PANTRY_BASICS_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+  renderPantry();
+}
+
+// Suggestions are the ingredient names this collection actually uses, so the
+// list is never a generic grocery catalogue.
+function fillPantrySuggestions() {
+  const el = document.getElementById('pantry-suggestions');
+  if (!el) return;
+  const seen = new Set();
+  const names = [];
+  (recipes || []).forEach((r) => {
+    (r.ingredients || []).forEach((line) => {
+      const parsed = RCUtils.parseIngredientLine(String(line));
+      const name = (parsed.name || '').trim();
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) return;
+      seen.add(key);
+      names.push(name);
+    });
+  });
+  names.sort();
+  el.innerHTML = names.slice(0, 300).map((n) => `<option value="${escapeHtml(n)}"></option>`).join('');
+}
+
+function renderPantry() {
+  const chips = document.getElementById('pantry-chips');
+  const list = getPantry();
+  if (chips) {
+    chips.innerHTML = list.map((p, i) =>
+      `<span class="pantry-chip">${escapeHtml(p)}<button class="pantry-chip-x" onclick="removePantryItem(${i})" aria-label="Remove ${escapeHtml(p)}">✕</button></span>`
+    ).join('');
+  }
+
+  const box = document.getElementById('pantry-results');
+  if (!box) return;
+
+  pantryResults = RCUtils.matchRecipesToPantry(recipes, list, { assumeBasics: pantryBasicsOn() });
+  if (!pantryResults.length) {
+    box.innerHTML = `<div class="pantry-empty">${list.length
+      ? 'Nothing matches yet. Add a few more things you have.'
+      : 'Add what you have to see what you can cook.'}</div>`;
+    return;
+  }
+
+  box.innerHTML = pantryResults.map((r, i) => {
+    const first = r.missing.slice(0, 4);
+    const more = r.missing.length - first.length;
+    const missingText = r.missing.length
+      ? 'Missing: ' + first.join(', ') + (more > 0 ? ` +${more} more` : '')
+      : 'You have everything';
+    return `<div class="pantry-card">
+      <button class="pantry-card-main" onclick="openPantryResult('${escapeHtml(r.recipe.id)}')">
+        <span class="pantry-card-title">${escapeHtml(r.recipe.title)}</span>
+        <span class="pantry-card-score">Have ${r.have} of ${r.total}</span>
+        <span class="pantry-bar"><span class="pantry-bar-fill" style="width:${Math.round(r.score * 100)}%"></span></span>
+        <span class="pantry-card-missing">${escapeHtml(missingText)}</span>
+      </button>
+      ${r.missing.length ? `<button class="btn-secondary pantry-add-missing" onclick="addPantryMissing(${i})">Add missing to list</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openPantryResult(id) {
+  closePantry();
+  openDetail(id);
+}
+
+async function addPantryMissing(i) {
+  const res = pantryResults[i];
+  if (!res || !res.missing.length) return;
+  await loadShoppingList();
+  if (!shoppingListReady()) return;
+
+  const lines = (res.recipe.ingredients || []).filter((line) => {
+    const n = RCUtils.normalizeIngredientName(RCUtils.parseIngredientLine(String(line)).name);
+    return res.missing.indexOf(n) !== -1;
+  });
+  const additions = lines.map((text) => ({ text: String(text), checked: false, recipeId: res.recipe.id }));
+  const apply = (items) => {
+    const merged = RCUtils.mergeShoppingItems(items.concat(additions.map((a) => ({ ...a }))));
+    items.length = 0;
+    merged.forEach((x) => items.push(x));
+  };
+  apply(shoppingList.items);
+  await saveShoppingList(apply);
+  renderShoppingList();
+  toast(`${additions.length} missing item${additions.length === 1 ? '' : 's'} added to the list`);
+}
 
 // ---- Meal plan ----
 async function openMealPlan() {

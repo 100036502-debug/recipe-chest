@@ -350,3 +350,23 @@ body.offline .add-btn,body.offline .import-btn,body.offline .action-btn,body.off
 .sl-merge-btn{margin:0;padding:10px 14px;font-size:.82rem;min-height:44px}
 .sl-aisle{margin-bottom:14px}
 .sl-aisle-h{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);font-weight:600;margin:0 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+
+/* ---- what can I make? (task 9) ---- */
+.pantry-btn{background:var(--bg);border:1px solid var(--border);color:var(--brown);padding:9px 14px;border-radius:9px;font-size:.85rem;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}
+.pantry-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
+.pantry-label{display:block;font-size:.8rem;color:var(--dim);margin-bottom:6px}
+.pantry-chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.pantry-chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:6px 8px 6px 12px;font-size:.85rem;color:var(--brown)}
+.pantry-chip-x{width:22px;height:22px;border-radius:50%;border:none;background:transparent;color:var(--dim);cursor:pointer;font-size:.8rem;line-height:1}
+.pantry-chip-x:hover{background:var(--primary);color:#fff}
+.pantry-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0 18px}
+.pantry-results{display:flex;flex-direction:column;gap:10px;max-height:46vh;overflow-y:auto}
+.pantry-empty{color:var(--dim);font-size:.88rem;padding:18px 0;text-align:center}
+.pantry-card{border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--card)}
+.pantry-card-main{display:flex;flex-direction:column;gap:6px;width:100%;background:transparent;border:none;text-align:left;cursor:pointer;padding:0;min-height:44px}
+.pantry-card-title{font-family:Georgia,serif;font-size:1.05rem;color:var(--brown)}
+.pantry-card-score{font-size:.8rem;color:var(--dim)}
+.pantry-bar{display:block;height:8px;border-radius:999px;background:var(--bg);overflow:hidden}
+.pantry-bar-fill{display:block;height:100%;background:#3f9d63;border-radius:999px}
+.pantry-card-missing{font-size:.78rem;color:var(--dim)}
+.pantry-add-missing{margin:10px 0 0;font-size:.78rem;padding:8px 12px;min-height:44px}
