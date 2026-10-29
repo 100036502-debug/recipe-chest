@@ -9,7 +9,7 @@ test.describe('client utilities', () => {
       return {
         available: typeof utils === 'object' && utils !== null,
         parsed: utils ? utils.parseIngredientLine('2 cups flour') : null,
-        order: Array.from(document.querySelectorAll('script[src]')).map((s) => s.getAttribute('src')),
+        order: Array.from(globalThis.document.querySelectorAll('script[src]')).map((s) => s.getAttribute('src')),
       };
     });
 
