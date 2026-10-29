@@ -236,3 +236,14 @@ files. Restoring never overwrites a recipe that already exists: anything already
 in the chest is left alone, so a restore is safe to run twice, and it can be used
 to bring back a single recipe by restoring a whole backup and deleting the rest.
 
+## Storage panel
+
+The app menu has a **Storage** entry showing how much of your Redis quota the
+chest is using: total size, photo count and recipe count, plus a progress bar
+when a cap is known. Set `STORAGE_CAP_MB` to your Upstash plan's storage limit to
+get the percentage; leave it unset and you get the raw numbers only.
+
+Measuring photo bytes means one command per photo and per thumbnail, so the
+result is cached for ten minutes. **Measure again** bypasses the cache. At 80% a
+banner appears above the grid suggesting you export a backup and delete photos
+you no longer need; dismissing it keeps it away for seven days.
