@@ -1,7 +1,9 @@
 import { test, expect, unlock } from './helpers.js';
 
 test.describe('client utilities', () => {
-  test('js/utils.js loads before the app and exposes RCUtils', async ({ page }) => {
+  // The api fixture installs the /api/** mocks; without it the unlock call
+  // would hit the static server and 404.
+  test('js/utils.js loads before the app and exposes RCUtils', async ({ page, api }) => {
     await unlock(page);
 
     const info = await page.evaluate(() => {
@@ -21,5 +23,6 @@ test.describe('client utilities', () => {
     // app.js calls RCUtils at parse time, so utils.js must come first.
     expect(info.order.indexOf('/js/utils.js')).toBeGreaterThan(-1);
     expect(info.order.indexOf('/js/utils.js')).toBeLessThan(info.order.indexOf('/js/app.js'));
+    expect(api.unlocked, 'the page really unlocked').toBe(true);
   });
 });
