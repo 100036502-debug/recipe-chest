@@ -18,11 +18,15 @@ test.describe('guest access', () => {
     await expect(page.locator('#role-pill')).toHaveText('View only');
 
     // the chest itself is readable
-    await expect(page.getByRole('button', { name: /Cook mode/ }).first()).toBeVisible();
-
-    // everything that changes data is gone
     await expect(page.getByRole('button', { name: /Import URL/ })).toBeHidden();
     await expect(page.getByRole('button', { name: /Paste text/ })).toBeHidden();
+
+    // and so is a recipe, in full
+    await page.locator('#grid .card').first().click();
+    await expect(page.getByRole('button', { name: /Cook mode/ })).toBeVisible();
+
+    // everything that changes data is gone
+    await expect(page.getByRole('button', { name: /Share link/ })).toBeHidden();
     await expect(page.getByRole('button', { name: /Add Photos/ })).toBeHidden();
   });
 
