@@ -44,10 +44,12 @@ test('the install item never appears when already installed', async ({ page, api
 
 test('iOS gets a dismissible hint that stays dismissed', async ({ page, api }) => {
   await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'userAgent', {
-      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1',
-      configurable: true,
-    });
+    // userAgent lives on Navigator.prototype in Chromium, so the instance is the
+    // wrong place to look: patch the getter where it actually is.
+    const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1';
+    const proto = Object.getPrototypeOf(navigator);
+    Object.defineProperty(proto, 'userAgent', { get: () => ua, configurable: true });
+    Object.defineProperty(proto, 'platform', { get: () => 'iPhone', configurable: true });
   });
 
   await unlock(page);
