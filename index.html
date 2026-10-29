@@ -5,11 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Recipe Chest</title>
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#c7541a">
+<meta name="theme-color" content="#faf6f0">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Recipe Chest">
+<script>
+/* Set the saved theme before the stylesheet loads, so there is no flash of the
+   wrong one. Wrapped in try/catch: blocked storage must not break the page. */
+try { var rcTheme = localStorage.getItem('rc_theme'); if (rcTheme === 'light' || rcTheme === 'dark') { document.documentElement.dataset.theme = rcTheme; } } catch (e) {}
+</script>
 <link rel="stylesheet" href="/css/app.css">
 </head>
 <body class="locked">
@@ -47,6 +52,7 @@
       <button class="menu-item" role="menuitem" onclick="exportBackup(true)">⬇️ Export with photos</button>
       <button class="menu-item" role="menuitem" onclick="pickBackupFiles()">⬆️ Restore backup</button>
       <button class="menu-item" role="menuitem" onclick="openStorage()">📦 Storage</button>
+      <button class="menu-item" role="menuitem" id="theme-item" onclick="cycleTheme()">🎨 Theme: Auto</button>
     </div>
   </div>
   <button class="lock-btn" onclick="lockApp()" title="Lock Recipe Chest">🔒</button>
