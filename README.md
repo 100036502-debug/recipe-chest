@@ -199,3 +199,40 @@ How it works, in `e2e/`:
 a rule for `main` that requires the `CI / Lint and unit tests` check to pass
 before merging. That is what makes the check a real gate rather than a
 decoration; without it, a red run can still be merged.
+
+## Automatic weekly backups
+
+Your recipes should not live in one database. `apps-script/Backup.gs` runs a
+weekly job that copies everything to Google Drive.
+
+It runs in the same Apps Script project as `Code.gs` (which it does not touch).
+You run one setup function and approve Drive and Mail access once:
+
+1. In the Apps Script editor, add these script properties:
+   `BACKUP_API_URL` (the full `https://<your-app>/api/export`),
+   `BACKUP_SECRET` (the same long random string as the app's `BACKUP_SECRET`),
+   and optionally `BACKUP_FOLDER_NAME`, `BACKUP_KEEP_WEEKS` (default 8) and
+   `BACKUP_NOTIFY_EMAIL` (default: your own address).
+2. Run `installWeeklyBackupTrigger()` once. It schedules `weeklyBackup` for every
+   Sunday at 03:00 in the script's time zone, replacing any earlier trigger.
+3. Run `weeklyBackup()` by hand once to confirm the folder and files appear.
+
+Each run writes a dated folder containing `recipe-chest-backup-<date>.json` and
+`recipe-chest-photos-<n>.json`. Those are deliberately the same file names the
+app's Export button produces, so Restore can read them directly. Folders older
+than `BACKUP_KEEP_WEEKS` are moved to the Drive trash. You get one email per run,
+success or failure, and a failure is raised again in the editor rather than
+swallowed.
+
+The backup authenticates with `Authorization: Bearer <BACKUP_SECRET>`, so the
+export route has to accept it: set the same string in the app's environment.
+Leaving `BACKUP_SECRET` empty disables that path entirely, and the route falls
+back to a normal member session.
+
+### Restoring a backup
+
+Use the app's Restore button and load the recipes file **first**, then the photo
+files. Restoring never overwrites a recipe that already exists: anything already
+in the chest is left alone, so a restore is safe to run twice, and it can be used
+to bring back a single recipe by restoring a whole backup and deleting the rest.
+
