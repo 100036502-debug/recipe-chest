@@ -8,14 +8,17 @@
 //      Vercel's ~4.5 MB limit; slices keep every response under ~3.5 MB
 //      (the limit shrinks automatically if the data is large).
 import { Redis } from '@upstash/redis';
-import { requireAuth } from '../lib/auth.js';
+import { requireAuth, hasBearerSecret } from '../lib/auth.js';
 import { ID_PATTERN, getRecipesByIds } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
 
-const kv = new Redis({
+// let, not const: tests swap in a fake store instead of a real connection.
+let kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
+
+export function __setKvForTests(store) { kv = store; }
 
 export const config = { maxDuration: 60 };
 
@@ -65,7 +68,10 @@ async function collectPhotoSlice(ids, offset, limit) {
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-  if (!requireAuth(req, res, { memberOnly: true })) return;
+  // The weekly backup calls this with a bearer secret; a browser still uses a
+  // session. The secret is checked first so a machine caller never needs a cookie.
+  const viaSecret = hasBearerSecret(req, process.env.BACKUP_SECRET);
+  if (!viaSecret && !requireAuth(req, res, { memberOnly: true })) return;
 
   try {
     const ids = (await kv.lrange('recipe_ids', 0, -1)).filter(isId);
