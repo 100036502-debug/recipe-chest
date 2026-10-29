@@ -15,6 +15,17 @@ with your last saved recipes).
   you get a confirmation reply (see "Apps Script setup").
 - User photos of the finished dish with optional credit, cook mode, shopping list,
   meal plan, favorites, sorting and filters, offline caching and JSON backups.
+- Cook mode: sticky timers read out of each step, tappable ingredients and steps,
+  and a font size that sticks.
+- Collections, a cooking log with 1-5 star ratings, and a pantry matcher that
+  ranks the recipes you can actually cook right now.
+- Shopping list with aisle grouping, quantity merging and a shared household list.
+- AI tools: nine one-tap transformations with per-IP and daily limits, and a
+  60-second undo.
+- Read-only share links that can be revoked, and a separate guest code for
+  view-only access.
+- Dark mode, skeleton loading cards, printable 4x6 cards, and install to the
+  home screen on Android and iOS.
 
 ## Setup
 
@@ -35,6 +46,11 @@ with your last saved recipes).
 | `EMAIL_IMPORT_SECRET` | no | Bearer secret the Gmail import uses; required for email import. |
 | `UPSTASH_REDIS_REST_URL` | yes | Also accepts `KV_REST_API_URL`. |
 | `UPSTASH_REDIS_REST_TOKEN` | yes | Also accepts `KV_REST_API_TOKEN`. |
+| `BACKUP_SECRET` | no | Bearer secret for the weekly Drive backup. |
+| `GUEST_CODE` | no | Second code that unlocks read-only guest access. |
+| `PUBLIC_BASE_URL` | no | Public origin used in emails and share links. |
+| `AI_DAILY_LIMIT` | no | Daily cap on AI tool calls across all users (default 100). |
+| `STORAGE_CAP_MB` | no | Your Upstash plan size, so the storage panel can show a percentage. |
 
 All variables are listed with empty values in [`.env.example`](.env.example).
 
@@ -49,6 +65,71 @@ All variables are listed with empty values in [`.env.example`](.env.example).
   capped at 3 MB.
 - The login code is throttled to 10 attempts per 15 minutes per IP; the import
   endpoints are rate-limited per IP per hour.
+
+## Architecture
+
+- `index.html`, `css/app.css`, `js/app.js`: one static page. `js/utils.js` and
+  `js/share.js` are small shared scripts that load first.
+- `api/`: 12 Vercel functions, the Hobby plan maximum. `api/extras.js` is a
+  dispatcher: `?action=<name>` lazy-loads `lib/actions/<name>.js`.
+- `lib/`: the logic the functions and the unit tests share (auth, recipes, kv,
+  ai, mail).
+- `vercel.json`: rewrites every `/api/<name>` to the dispatcher, plus headers,
+  the Content-Security-Policy and the no-store rule.
+
+## Testing
+
+```bash
+npm test          # unit tests: node --test, no dependencies, no network
+npm run lint      # ESLint over api, lib, test, js and sw.js
+npm run test:e2e  # Playwright browser specs (see below)
+```
+
+All three must be green before a pull request. `npm test` has to pass on a clean
+checkout with no `.env`: nothing in the suite reads a real key.
+
+## Guest access
+
+Set `GUEST_CODE` to enable a read-only view. It issues the same signed cookie
+with `role: guest`, and every write route answers 403 for that role, except the
+shopping list and meal plan, which stay writable so a guest can still add to the
+list. The client hides the write buttons as a convenience; the server enforces
+the rule.
+
+## Share links
+
+**Share link** in a recipe's action row mints a token and gives you `/s/<token>`.
+That page is a separate static document: it shows only whitelisted fields
+(title, times, ingredients, steps, notes, source), sends `noindex`, and never
+loads the app script. Tokens live in Redis under `share:<token>`; **Revoke link**
+deletes the key and the URL starts returning 404 immediately.
+
+## AI tools and limits
+
+Nine transformations (scale, simplify, convert units, summarise, substitute, and
+more) go through `/api/ai-tool`. Limits: 20 requests per hour per IP and
+`AI_DAILY_LIMIT` (default 100) per day overall, counted in Redis. Output is
+sanitised and applied as a replacement that can be undone for 60 seconds. No
+prompt or result is stored server-side; the undo snapshot lives in the browser.
+
+## Share target on Android, and iOS
+
+An installed Android app shares into the import dialog through the manifest's
+Web Share Target. iOS has no share target: copy the link into **Import from URL**.
+The iOS install hint in the app walks through Share, then Add to Home Screen.
+
+## Troubleshooting
+
+- **"No more than 12 Serverless Functions"** on deploy: a new file appeared in
+  `api/`. Move the logic to `lib/actions/` and register it in `api/extras.js`.
+- **401 everywhere after unlocking**: `SESSION_SECRET` changed or is missing, so
+  the old cookie no longer verifies. Unlock again.
+- **403 on a write**: you are a guest session. Unlock with the owner code to edit.
+- **No photos, or Unsplash 403**: the demo key is limited to about 50 requests an
+  hour. Wait, or apply for production access.
+- **Storage panel warns about the cap**: Redis is near `STORAGE_CAP_MB`. The
+  photos are the bulk of it; delete the ones you do not need.
+- **A share link returns 404**: it was revoked.
 
 ## Backup and restore
 
