@@ -94,7 +94,7 @@ test.describe('cook mode', () => {
     // Custom properties are read straight off the computed style: toHaveCSS is
     // unreliable for them.
     const scaleOf = () => page.locator('.cook-mode').evaluate(
-      (el) => getComputedStyle(el).getPropertyValue('--cook-scale').trim(),
+      (el) => globalThis.getComputedStyle(el).getPropertyValue('--cook-scale').trim(),
     );
 
     expect(await scaleOf()).toBe('1');
