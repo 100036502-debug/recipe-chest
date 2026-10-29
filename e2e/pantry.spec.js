@@ -1,5 +1,7 @@
 import { test, expect, unlock } from './helpers.js';
 
+// Every test takes the api fixture: it installs the /api mocks the unlock
+// call needs, and Playwright only builds a fixture a body destructures.
 async function openPantry(page) {
   await page.getByRole('button', { name: /What can I make/ }).click();
   await expect(page.locator('#pantry-overlay')).toHaveClass(/on/);
@@ -12,7 +14,7 @@ async function addPantry(page, text) {
 }
 
 test.describe('what can I make', () => {
-  test('pantry items rank the recipe you can actually cook first', async ({ page }) => {
+  test('pantry items rank the recipe you can actually cook first', async ({ page, api }) => {
     await unlock(page);
     await openPantry(page);
 
@@ -29,7 +31,7 @@ test.describe('what can I make', () => {
     await expect(page.locator('#pantry-results')).not.toContainText('Bean Stew');
   });
 
-  test('a pantry chip can be removed and the results follow', async ({ page }) => {
+  test('a pantry chip can be removed and the results follow', async ({ page, api }) => {
     await unlock(page);
     await openPantry(page);
     await addPantry(page, 'spaghetti');
@@ -40,7 +42,7 @@ test.describe('what can I make', () => {
     await expect(page.locator('.pantry-empty')).toBeVisible();
   });
 
-  test('the pantry survives a reload', async ({ page }) => {
+  test('the pantry survives a reload', async ({ page, api }) => {
     await unlock(page);
     await openPantry(page);
     await addPantry(page, 'beans');
