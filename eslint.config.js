@@ -20,11 +20,12 @@ export default [
     },
   },
   {
-    files: ['js/utils.js'],
+    // Both are classic browser scripts loaded before app.js.
+    files: ['js/utils.js', 'js/share.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'script',
-      globals: { ...globals.browser },
+      globals: { ...globals.browser, RCUtils: 'readonly' },
     },
     rules: {
       ...js.configs.recommended.rules,
