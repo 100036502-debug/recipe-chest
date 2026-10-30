@@ -8,6 +8,13 @@ const GUEST_SESSION = {
 
 const MEMBER_MENU_ITEMS = [/Export backup/, /Export with photos/, /Restore backup/, /Storage/];
 
+// The menu rows carry role="menuitem", so getByRole('button') cannot match them.
+// Matching on the class keeps the guest assertions meaningful: the row exists,
+// it is just hidden.
+function menuItem(page, name) {
+  return page.locator('#app-menu button.menu-item').filter({ hasText: name });
+}
+
 test.describe('guest access', () => {
   test('a guest sees the recipe chest but none of the write buttons', async ({ page, api }) => {
     await unlock(page);
@@ -40,7 +47,8 @@ test.describe('guest access', () => {
     await page.locator('#menu-btn').click();
     await expect(page.locator('#app-menu')).toBeVisible();
     for (const item of MEMBER_MENU_ITEMS) {
-      await expect(page.locator('#app-menu').getByRole('button', { name: item })).toBeHidden();
+      await expect(menuItem(page, item)).toHaveCount(1);
+      await expect(menuItem(page, item)).toBeHidden();
     }
   });
 
@@ -55,7 +63,8 @@ test.describe('guest access', () => {
     await page.locator('#menu-btn').click();
     await expect(page.locator('#app-menu')).toBeVisible();
     for (const item of MEMBER_MENU_ITEMS) {
-      await expect(page.locator('#app-menu').getByRole('button', { name: item })).toBeVisible();
+      await expect(menuItem(page, item)).toHaveCount(1);
+      await expect(menuItem(page, item)).toBeVisible();
     }
   });
 });
