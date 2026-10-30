@@ -96,6 +96,21 @@ shopping list and meal plan, which stay writable so a guest can still add to the
 list. The client hides the write buttons as a convenience; the server enforces
 the rule.
 
+### Browse as guest (no code)
+
+`GUEST_OPEN=1` adds a **Browse as guest** button under the lock screen's Enter
+button. Tapping it signs the visitor in as a guest with no code at all. It is
+**off by default**: set it to `1` to show the button, and remove it or set it to
+anything else to turn it off. While it is on, **anyone with the site URL can read
+every recipe and photo**. Existing open-guest sessions stop working the moment
+the flag goes away, unless `GUEST_CODE` is also set, in which case guest cookies
+are signed with that code and keep working as before.
+
+The button is only a convenience: `/api/verify-code` refuses `{ guest: true }`
+whenever the flag is off, so a client cannot grant itself guest access. Only the
+guest role can ever be issued without a code; the member role always needs the
+access code, and a request carrying a code is never treated as a guest request.
+
 ## Share links
 
 **Share link** in a recipe's action row mints a token and gives you `/s/<token>`.

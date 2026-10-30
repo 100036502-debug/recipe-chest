@@ -81,6 +81,7 @@ function showLockScreen(message) {
   document.getElementById('lock-err').textContent = message || '';
   const input = document.getElementById('lock-input');
   if (input) input.value = '';
+  refreshGuestButton(); // the guest door reappears if the server still allows it
 }
 
 // ---- client error reporting ------------------------------------------------
@@ -294,6 +295,10 @@ function getDeviceId() {
   return id;
 }
 
+// The one post-unlock path: the code form and the guest button both end here,
+// so a guest can never miss a step that a typed guest code gets.
+function completeUnlock(role) { applyRole(role); unlockApp(); }
+
 async function tryUnlock() {
   const val = document.getElementById('lock-input').value;
   const err = document.getElementById('lock-err');
@@ -307,7 +312,7 @@ async function tryUnlock() {
       credentials: 'same-origin',
     });
     const data = await res.json();
-    if (data && data.unlocked) { applyRole(data.role); unlockApp(); }
+    if (data && data.unlocked) completeUnlock(data.role);
         else { err.textContent = (data && data.error) || 'Incorrect access code.'; document.getElementById('lock-input').value = ''; }
   } catch (e) { err.textContent = 'Could not verify. Try again.'; }
 }
@@ -340,11 +345,62 @@ document.getElementById('lock-input').addEventListener('keypress', e => { if (e.
   try {
     const res = await fetch(`${API}/verify-code`, { credentials: 'same-origin' });
     const data = await res.json();
-    if (data && data.unlocked) { applyRole(data.role); unlockApp(); applyPendingShareSafe(); return; }
-  } catch (e) {}
+    if (data && data.unlocked) { completeUnlock(data.role); applyPendingShareSafe(); return; }
+    // No session: offer the guest door only when the server says it is open.
+    setGuestButtonVisible(data && data.guestOpen === true);
+  } catch (e) {
+    setGuestButtonVisible(false);
+  }
   const input = document.getElementById('lock-input');
   if (input) input.focus();
 })();
+
+// ---- Open guest access -----------------------------------------------------
+// GUEST_OPEN is a server flag. The button is decoration: /api/verify-code
+// refuses { guest: true } whenever the flag is off or missing.
+function setGuestButtonVisible(on) {
+  const btn = document.getElementById('guest-btn');
+  if (!btn) return;
+  if (on === true) btn.removeAttribute('hidden');
+  else btn.setAttribute('hidden', '');
+}
+
+async function refreshGuestButton() {
+  try {
+    const res = await fetch(`${API}/verify-code`, { credentials: 'same-origin' });
+    const data = await res.json();
+    setGuestButtonVisible(data && data.guestOpen === true && !data.unlocked);
+  } catch (e) {
+    setGuestButtonVisible(false);
+  }
+}
+
+async function browseAsGuest() {
+  const btn = document.getElementById('guest-btn');
+  const err = document.getElementById('lock-err');
+  if (err) err.textContent = '';
+  if (btn) btn.disabled = true; // a double tap must not send two requests
+  try {
+    const res = await fetch(`${API}/verify-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guest: true }),
+      credentials: 'same-origin',
+    });
+    const data = await res.json();
+    if (data && data.unlocked === true && data.role === 'guest') {
+      completeUnlock('guest');
+    } else {
+      if (err) err.textContent = 'Guest access is not available.';
+      setGuestButtonVisible(false);
+    }
+  } catch (e) {
+    if (err) err.textContent = 'Guest access is not available.';
+    setGuestButtonVisible(false);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 
 // unlockApp can be reached from the session check and from the unlock form, so
 // hook it once rather than patching both call sites.

@@ -1,7 +1,7 @@
 // api/verify-code.js
 import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
-import { makeSessionValue, hasValidSession, getSession, guestCode } from '../lib/auth.js';
+import { makeSessionValue, getSession, guestCode, guestOpen, guestSigningCode } from '../lib/auth.js';
 
 const ACCESS_CODE = process.env.ACCESS_CODE;
 const SESSION_SECRET = process.env.SESSION_SECRET;
@@ -10,10 +10,13 @@ if (!ACCESS_CODE) {
   console.error('ACCESS_CODE is not set in environment variables');
 }
 
-const kv = new Redis({
+// let, not const: tests swap in a fake store instead of a real connection.
+let kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
+
+export function __setKvForTests(store) { kv = store; }
 
 const MAX_ATTEMPTS = 10;
 const WINDOW_SECONDS = 15 * 60;
@@ -34,11 +37,32 @@ export default async function handler(req, res) {
   // GET: check if the caller already has a valid session cookie
   if (req.method === 'GET') {
     const cur = getSession(req);
-    return res.status(200).json({ unlocked: cur !== null, role: cur ? cur.role : null });
+    return res.status(200).json({ unlocked: cur !== null, role: cur ? cur.role : null, guestOpen: guestOpen() });
   }
 
   // POST: verify a submitted code
   if (req.method === 'POST') {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+
+    // Open guest access: a body of exactly { guest: true } and nothing else.
+    // This sits before the attempt counter because no code is being guessed,
+    // and a sent code always wins so a member can never be downgraded.
+    if (body.guest === true && typeof body.code !== 'string') {
+      if (!guestOpen()) return res.status(403).json({ unlocked: false });
+      const guestSecret = guestSigningCode();
+      if (!guestSecret) return res.status(403).json({ unlocked: false });
+      const guestHttps = (req.headers['x-forwarded-proto'] || '').includes('https');
+      res.setHeader('Set-Cookie', [
+        `rc_session=${makeSessionValue(guestSecret, undefined, 'guest')}`,
+        'Path=/',
+        'HttpOnly',
+        'SameSite=Lax',
+        guestHttps ? 'Secure' : '',
+        'Max-Age=2592000',
+      ].filter(Boolean).join('; '));
+      return res.status(200).json({ unlocked: true, role: 'guest' });
+    }
+
     // Throttle guesses per IP. If Redis is down, fail open rather than lock everyone out.
     const attemptsKey = `verify_attempts:${clientIp(req)}`;
     let attempts = 0;
@@ -56,7 +80,6 @@ export default async function handler(req, res) {
       });
     }
 
-    const body = req.body || {};
     const submitted = typeof body.code === 'string' ? body.code : '';
 
     // Timing-safe compare to avoid leaking length or content via timing

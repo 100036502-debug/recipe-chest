@@ -99,6 +99,8 @@ export const test = base.extend({
   api: async ({ page }, use) => {
     const state = {
       unlocked: false,
+      role: null,
+      guestOpen: false, // set to true by the specs that exercise GUEST_OPEN
       failRecipesWith401: false,
       requests: [],
       recipes: JSON.parse(JSON.stringify(SAMPLE_RECIPES)),
@@ -129,16 +131,28 @@ export const test = base.extend({
 
       // Session check
       if (path === '/api/verify-code') {
-        if (method === 'GET') return json(route, 200, { unlocked: state.unlocked });
+        if (method === 'GET') {
+          return json(route, 200, { unlocked: state.unlocked, role: state.role, guestOpen: state.guestOpen });
+        }
         if (method === 'DELETE') {
           state.unlocked = false;
+          state.role = null;
           return json(route, 200, { unlocked: false });
         }
-        let code = '';
-        try { code = JSON.parse(request.postData() || '{}').code || ''; } catch { /* ignore */ }
+        let body = {};
+        try { body = JSON.parse(request.postData() || '{}') || {}; } catch { /* ignore */ }
+        // The guest door, mirroring the server: a typed code always wins.
+        if (body.guest === true && typeof body.code !== 'string') {
+          if (!state.guestOpen) return json(route, 403, { unlocked: false });
+          state.unlocked = true;
+          state.role = 'guest';
+          return json(route, 200, { unlocked: true, role: 'guest' });
+        }
+        const code = typeof body.code === 'string' ? body.code : '';
         if (code === ACCESS_CODE) {
           state.unlocked = true;
-          return json(route, 200, { unlocked: true });
+          state.role = 'member';
+          return json(route, 200, { unlocked: true, role: 'member' });
         }
         return json(route, 401, { unlocked: false, error: 'Incorrect access code.' });
       }
