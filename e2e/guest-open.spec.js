@@ -49,14 +49,21 @@ test.describe('browse as guest, flag on', () => {
     await page.locator('#guest-btn').click();
     await expect(page.locator('#app-content')).toBeVisible();
 
+    // Overlays are shown with the `on` class, not by hiding the element, so the
+    // class is what says whether one is open.
     await page.locator('button.list-btn').click();
-    await expect(page.locator('#shopping-overlay')).toBeVisible();
-    await expect(page.locator('#shopping-overlay .btn-primary')).toBeVisible();
+    await expect(page.locator('#shopping-overlay')).toHaveClass(/on/);
+
+    // A guest may write the list: adding an item must actually land.
+    await page.fill('#sl-input', '2 cups flour');
+    await page.locator('#shopping-overlay').getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.locator('#sl-list')).toContainText('2 cups flour');
+
     await page.locator('#shopping-overlay .modal-close').click();
-    await expect(page.locator('#shopping-overlay')).toBeHidden();
+    await expect(page.locator('#shopping-overlay')).not.toHaveClass(/on/);
 
     await page.locator('button.plan-btn').click();
-    await expect(page.locator('#plan-overlay')).toBeVisible();
+    await expect(page.locator('#plan-overlay')).toHaveClass(/on/);
   });
 
   test('locking the app offers the guest door again', async ({ page, api }) => {
