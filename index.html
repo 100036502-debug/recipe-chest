@@ -27,6 +27,7 @@ try { var rcTheme = localStorage.getItem('rc_theme'); if (rcTheme === 'light' ||
     <input type="password" id="lock-input" placeholder="Access code" autocomplete="off" autofocus>
     <div class="lock-err" id="lock-err"></div>
     <button class="btn-primary" onclick="tryUnlock()">Enter</button>
+    <button class="btn-link guest-btn" id="guest-btn" onclick="browseAsGuest()" hidden>Browse as guest</button>
   </div>
 </div>
 
