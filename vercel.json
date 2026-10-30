@@ -140,7 +140,15 @@
       "destination": "/api/extras?action=import-text"
     },
     {
-      "source": "/api/storage-stats", "destination": "/api/extras?action=storage-stats" }, { "source": "/api/ai-transform", "destination": "/api/extras?action=ai-transform" }, { "source": "/api/share",
+      "source": "/api/storage-stats",
+      "destination": "/api/extras?action=storage-stats"
+    },
+    {
+      "source": "/api/ai-transform",
+      "destination": "/api/extras?action=ai-transform"
+    },
+    {
+      "source": "/api/share",
       "destination": "/api/extras?action=share"
     },
     {

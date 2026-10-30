@@ -29,7 +29,7 @@ function applyRole(role) {
 }
 // Anything that opens a write flow is hidden for a guest, without having to
 // remember to annotate every button by hand.
-const WRITE_HANDLERS = /(openImport|openPasteImport|openUpload|openEdit|deleteRecipe|toggleFav|startCookLog|openShareModal|openAiTools|restoreRecipe|savePastedRecipe|createShareLink|revokeShareLink|addMissingToShoppingList|saveEdited)/;
+const WRITE_HANDLERS = /(openImport|openPasteImport|openUpload|openEdit|saveEdit|deleteRecipe|toggleFav|startCookLog|openCookedModal|deleteCookedEntry|openShareModal|openAiTools|restoreRecipe|savePastedRecipe|createShareLink|revokeShareLink|showTagInput|removeTag|showCollectionInput|removeCollectionFromRecipe|openCollectionsManager|renameCollectionPrompt|deleteCollection|pickRecipePhoto|removeRecipePhoto|exportBackup|pickBackupFiles|openStorage)/;
 function markWriteOnly() {
   document.querySelectorAll('[onclick]').forEach((el) => {
     const code = el.getAttribute('onclick') || '';
