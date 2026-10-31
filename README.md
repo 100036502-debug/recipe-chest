@@ -118,9 +118,13 @@ the rule.
 
 ### What a guest may write
 
-A guest session (typed code or the Browse as guest button) may edit its **own**
-device's shopping list and meal plan. That is what makes the kitchen tablet
-work. It may not touch the household `shared` bucket: only a member may write or
+A guest session (typed code or the Browse as guest button) may edit **one**
+shopping list and meal plan: the bucket derived from its own session cookie
+(`g_` plus a hash of the cookie), not an id it names. A guest therefore cannot
+create endless buckets, and cannot reach a member's bucket even if it knows the
+id. Guest buckets expire after 30 days, and a guest may write at most 240 times
+an hour per session on top of 120 per IP. Unlocking again issues a new cookie,
+so the guest starts with an empty list. It may not touch the household `shared` bucket: only a member may write or
 delete that one, and a guest attempt gets `403 View-only access`. Guest writes
 are also rate limited to 120 per hour per IP, because a guest cookie costs
 nothing to obtain once `GUEST_OPEN` is on.

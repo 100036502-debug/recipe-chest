@@ -2,7 +2,7 @@ import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { sendServerError } from '../lib/http.js';
 import { cleanItems, decideWrite } from '../lib/shopping-list.js';
-import { refuseGuestWrite } from '../lib/device-buckets.js';
+import { refuseGuestWrite, resolveBucketId, bucketSetOptions } from '../lib/device-buckets.js';
 
 // let, not const: tests swap in a fake store.
 let kv = new Redis({
@@ -27,16 +27,19 @@ export default async function handler(req, res) {
 
   // deviceId can arrive via query (?deviceId=...) or body
   const rawId = req.query?.deviceId || (req.body && req.body.deviceId);
-  const deviceId = cleanDeviceId(rawId);
-  if (!deviceId) {
+  const requested = cleanDeviceId(rawId);
+  if (!requested) {
     return res.status(400).json({ error: 'Missing or invalid deviceId' });
   }
 
+  // A guest is pinned to the bucket derived from its session, whatever id it
+  // asked for; a member may use any device id (including 'shared').
+  const deviceId = resolveBucketId(req, requested);
   const key = keyFor(deviceId);
 
   // Guests keep their own device list; the household bucket is members only.
   if (req.method !== 'GET' && req.method !== 'OPTIONS'
-    && await refuseGuestWrite(req, res, kv, { deviceId, name: 'list-write' })) return;
+    && await refuseGuestWrite(req, res, kv, { deviceId: requested, name: 'list-write' })) return;
 
   // GET: return the current list for this device
   if (req.method === 'GET') {
@@ -66,7 +69,7 @@ export default async function handler(req, res) {
       }
 
       const payload = { items: clean, updatedAt: Date.now() };
-      await kv.set(key, payload);
+      await kv.set(key, payload, bucketSetOptions(req));
       return res.status(200).json(payload);
     } catch (e) {
       return sendServerError(res, e);
