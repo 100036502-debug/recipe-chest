@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Recipe Chest">
+  <title>Recipe Chest</title>
+  <!-- A cook pot: bold shapes that still read at 16px. -->
+  <rect width="64" height="64" rx="14" fill="#FAF6F0"/>
+  <g fill="none" stroke="#C7541A" stroke-width="2.4" stroke-linecap="round" opacity="0.85">
+    <path d="M27 20c-2 -2.2 2 -3.4 0 -6"/>
+    <path d="M37 20c-2 -2.2 2 -3.4 0 -6"/>
+  </g>
+  <rect x="12" y="29" width="40" height="4.5" rx="2.2" fill="#5A3A22"/>
+  <circle cx="32" cy="26.5" r="3" fill="#5A3A22"/>
+  <path d="M15 33.5h34a3 3 0 0 1 3 3v10a9.5 9.5 0 0 1 -9.5 9.5h-21A9.5 9.5 0 0 1 12 46.5v-10a3 3 0 0 1 3 -3z" fill="#5A3A22"/>
+  <path d="M15 36.5h34" stroke="#FAF6F0" stroke-width="2" opacity="0.28"/>
+  <path d="M11 36h-3.5a2.5 2.5 0 0 0 -2.5 2.5v2A2.5 2.5 0 0 0 7.5 43H11" fill="none" stroke="#5A3A22" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M53 36h3.5a2.5 2.5 0 0 1 2.5 2.5v2a2.5 2.5 0 0 1 -2.5 2.5H53" fill="none" stroke="#5A3A22" stroke-width="2.6" stroke-linecap="round"/>
+</svg>
