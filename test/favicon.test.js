@@ -35,3 +35,45 @@ test('the icon is served from our own origin, which the CSP allows', () => {
   const imgSrc = csp.split(';').map((part) => part.trim()).find((part) => part.startsWith('img-src'));
   assert.match(imgSrc, /'self'/, 'img-src must allow same-origin icons');
 });
+
+// ---- the app icon (manifest + home screen) --------------------------------
+
+function pngSize(path) {
+  const buf = readFileSync(join(root, path));
+  // IHDR is the first chunk: 8 byte signature, 4 length, 4 type, then w/h.
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+test('every manifest icon exists at the size it claims', () => {
+  const manifest = JSON.parse(read('manifest.json'));
+  assert.ok(manifest.icons.length >= 4);
+
+  for (const icon of manifest.icons) {
+    const path = icon.src.replace(/^\//, '');
+    assert.ok(existsSync(join(root, path)), `${icon.src} is missing`);
+    const [w, h] = icon.sizes.split('x').map(Number);
+    assert.deepEqual(pngSize(path), { width: w, height: h }, `${path} is not ${icon.sizes}`);
+    assert.equal(icon.type, 'image/png');
+  }
+
+  const purposes = manifest.icons.map((i) => i.purpose);
+  assert.ok(purposes.includes('any') && purposes.includes('maskable'), 'both purposes are needed');
+});
+
+test('the maskable icon is its own full-bleed artwork, not the tab tile reused', () => {
+  const manifest = JSON.parse(read('manifest.json'));
+  const any = manifest.icons.filter((i) => i.purpose === 'any').map((i) => i.src);
+  const maskable = manifest.icons.filter((i) => i.purpose === 'maskable').map((i) => i.src);
+  assert.equal(maskable.some((src) => any.includes(src)), false, 'a masked launch would clip the tile');
+
+  const svg = read('icons/icon-maskable.svg');
+  assert.match(svg, /<rect width="64" height="64" fill="#FAF6F0"\/>/, 'the background must be full bleed');
+  assert.equal(/rx="14"/.test(svg), false, 'a maskable icon must not carry its own rounded corners');
+  assert.match(svg, /scale\(0\.74\)/, 'the pot sits inside the central safe zone');
+});
+
+test('the apple touch icon is the pot, at 180x180', () => {
+  const html = read('index.html');
+  assert.match(html, /rel="apple-touch-icon" href="\/icons\/apple-touch-icon\.png"/);
+  assert.deepEqual(pngSize('icons/apple-touch-icon.png'), { width: 180, height: 180 });
+});
