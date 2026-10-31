@@ -71,7 +71,7 @@ test.describe('browse as guest, flag on', () => {
     await page.locator('#guest-btn').click();
     await expect(page.locator('#app-content')).toBeVisible();
 
-    await page.locator('button[onclick="lockApp()"]').click();
+    await page.locator('button[data-action="lockApp"]').click();
     await expect(page.locator('#lock-screen')).toBeVisible();
     await expect(page.locator('#guest-btn')).toBeVisible();
   });

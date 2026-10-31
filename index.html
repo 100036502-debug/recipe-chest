@@ -22,8 +22,8 @@
     <p>Enter the access code to continue.</p>
     <input type="password" id="lock-input" placeholder="Access code" autocomplete="off" autofocus>
     <div class="lock-err" id="lock-err"></div>
-    <button class="btn-primary" onclick="tryUnlock()">Enter</button>
-    <button class="btn-link guest-btn" id="guest-btn" onclick="browseAsGuest()" hidden>Browse as guest</button>
+    <button class="btn-primary" data-action="tryUnlock">Enter</button>
+    <button class="btn-link guest-btn" id="guest-btn" data-action="browseAsGuest" hidden>Browse as guest</button>
   </div>
 </div>
 
@@ -34,32 +34,32 @@
     <input type="text" id="search-input" placeholder="Search recipes, ingredients, tags...">
   </div>
   <div class="header-btns">
-    <button class="pantry-btn" onclick="openPantry()">🥕 What can I make?</button>
-    <button class="list-btn" onclick="openShoppingList()">🛒 List</button>
-    <button class="plan-btn" onclick="openMealPlan()">📅 Plan</button>
-    <button class="import-btn" onclick="openImport()">🔗 Import URL</button>
-    <button class="paste-btn" onclick="openPasteImport()">📋 Paste text</button>
-    <button class="add-btn" onclick="openUpload()">＋ Add Photos</button>
+    <button class="pantry-btn" data-action="openPantry">🥕 What can I make?</button>
+    <button class="list-btn" data-action="openShoppingList">🛒 List</button>
+    <button class="plan-btn" data-action="openMealPlan">📅 Plan</button>
+    <button class="import-btn" data-action="openImport">🔗 Import URL</button>
+    <button class="paste-btn" data-action="openPasteImport">📋 Paste text</button>
+    <button class="add-btn" data-action="openUpload">＋ Add Photos</button>
   </div>
   <span class="user-tag" id="user-tag" title="Click to change your name">👤 Anonymous</span>
   <div class="menu-wrap">
-    <button class="lock-btn" id="menu-btn" onclick="toggleAppMenu()" aria-label="More options" aria-haspopup="true" title="More options">⋯</button>
+    <button class="lock-btn" id="menu-btn" data-action="toggleAppMenu" aria-label="More options" aria-haspopup="true" title="More options">⋯</button>
     <div class="menu" id="app-menu" role="menu">
-      <button class="menu-item" role="menuitem" onclick="exportBackup(false)">⬇️ Export backup</button>
-      <button class="menu-item" role="menuitem" onclick="exportBackup(true)">⬇️ Export with photos</button>
-      <button class="menu-item" role="menuitem" onclick="pickBackupFiles()">⬆️ Restore backup</button>
-      <button class="menu-item" role="menuitem" onclick="openStorage()">📦 Storage</button>
-      <button class="menu-item" role="menuitem" id="theme-item" onclick="cycleTheme()">🎨 Theme: Auto</button>
-      <button class="menu-item" role="menuitem" id="install-item" onclick="installApp()" hidden>📲 Install app</button>
+      <button class="menu-item" role="menuitem" data-action="exportBackup" data-bool="0">⬇️ Export backup</button>
+      <button class="menu-item" role="menuitem" data-action="exportBackup" data-bool="1">⬇️ Export with photos</button>
+      <button class="menu-item" role="menuitem" data-action="pickBackupFiles">⬆️ Restore backup</button>
+      <button class="menu-item" role="menuitem" data-action="openStorage">📦 Storage</button>
+      <button class="menu-item" role="menuitem" id="theme-item" data-action="cycleTheme">🎨 Theme: Auto</button>
+      <button class="menu-item" role="menuitem" id="install-item" data-action="installApp" hidden>📲 Install app</button>
     </div>
   </div>
-  <button class="lock-btn" onclick="lockApp()" title="Lock Recipe Chest">🔒</button>
+  <button class="lock-btn" data-action="lockApp" title="Lock Recipe Chest">🔒</button>
 </header>
 
 <main class="main">
   <div class="ios-hint" id="ios-hint" hidden>
     <span>To install: tap the Share button, then Add to Home Screen.</span>
-    <button class="ios-hint-close" onclick="dismissIosHint()" aria-label="Dismiss">✕</button>
+    <button class="ios-hint-close" data-action="dismissIosHint" aria-label="Dismiss">✕</button>
   </div>
   <div id="offline-banner" class="offline-banner" style="display:none">⚡ You're offline — showing saved recipes. Some actions are unavailable until you reconnect.</div>
   <div class="stats" id="stats"></div>
@@ -68,7 +68,7 @@
     <div class="icon">🥘</div>
     <h2>The chest is empty</h2>
     <p>Upload photos of recipes or import them from a website.</p>
-    <button class="add-btn" onclick="openUpload()">＋ Add the first recipe</button>
+    <button class="add-btn" data-action="openUpload">＋ Add the first recipe</button>
   </div>
 </main>
 </div>
@@ -90,15 +90,15 @@
       <div class="queue-list" id="queue-list"></div>
     </div>
     <label class="one-recipe" id="one-recipe-wrap" style="display:none">
-      <input type="checkbox" id="one-recipe" onchange="updateOneRecipeControl()">
+      <input type="checkbox" id="one-recipe" data-change="updateOneRecipeControl">
       These photos are all ONE recipe
     </label>
     <div class="one-recipe-note" id="one-recipe-note" style="display:none"></div>
     <input type="text" class="name-input" id="uploader-name" placeholder="Your name (optional)" maxlength="40">
     <div class="status" id="upload-status"></div>
     <div>
-      <button class="btn-secondary" id="upload-cancel-btn" onclick="cancelUpload()">Close</button>
-      <button class="btn-primary" id="process-btn" onclick="startBatch()" disabled>Save All to Chest</button>
+      <button class="btn-secondary" id="upload-cancel-btn" data-action="cancelUpload">Close</button>
+      <button class="btn-primary" id="process-btn" data-action="startBatch" disabled>Save All to Chest</button>
     </div>
   </div>
 </div>
@@ -111,15 +111,15 @@
     <input type="text" class="name-input" id="importer-name" placeholder="Your name (optional)" maxlength="40">
     <div class="status" id="import-status"></div>
     <div>
-      <button class="btn-secondary" onclick="closeImport()">Cancel</button>
-      <button class="btn-primary" id="import-btn" onclick="processImport()">Read &amp; Save Recipe</button>
+      <button class="btn-secondary" data-action="closeImport">Cancel</button>
+      <button class="btn-primary" id="import-btn" data-action="processImport">Read &amp; Save Recipe</button>
     </div>
   </div>
 </div>
 
 <div class="overlay" id="detail-overlay">
   <div class="modal" id="detail-modal" role="dialog" aria-modal="true" aria-label="Recipe details">
-    <button class="modal-close" onclick="closeDetail()" aria-label="Close recipe details">✕</button>
+    <button class="modal-close" data-action="closeDetail" aria-label="Close recipe details">✕</button>
     <div id="detail-content"></div>
   </div>
 </div>
@@ -130,23 +130,23 @@
 
 <div class="overlay" id="pantry-overlay">
   <div class="modal" style="padding:28px 32px;max-width:640px" role="dialog" aria-modal="true" aria-labelledby="pantry-title">
-    <button class="modal-close" onclick="closePantry()" aria-label="Close pantry">✕</button>
+    <button class="modal-close" data-action="closePantry" aria-label="Close pantry">✕</button>
     <h2 id="pantry-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">What can I make?</h2>
     <p style="color:var(--dim);font-size:.82rem;margin-bottom:16px">Tell me what you have. I'll rank your recipes by how much of each you can already cook.</p>
 
     <label class="pantry-label" for="pantry-input">Add something you have</label>
     <div class="sl-add">
       <input type="text" id="pantry-input" list="pantry-suggestions" placeholder="e.g. eggs, rice, cheddar" maxlength="60"
-             onkeypress="if(event.key==='Enter')addPantryItem()">
-      <button class="btn-primary" style="margin:0" onclick="addPantryItem()">Add</button>
+             data-enter="addPantryItem">
+      <button class="btn-primary" style="margin:0" data-action="addPantryItem">Add</button>
     </div>
     <datalist id="pantry-suggestions"></datalist>
 
     <div id="pantry-chips" class="pantry-chips" aria-live="polite"></div>
 
     <div class="pantry-controls">
-      <label class="sl-toggle"><input type="checkbox" id="pantry-basics" onchange="setPantryBasics(this.checked)"> Assume I have salt, pepper, water and oil</label>
-      <button class="btn-secondary" onclick="clearPantry()">Clear pantry</button>
+      <label class="sl-toggle"><input type="checkbox" id="pantry-basics" data-change="setPantryBasics"> Assume I have salt, pepper, water and oil</label>
+      <button class="btn-secondary" data-action="clearPantry">Clear pantry</button>
     </div>
 
     <div id="pantry-results" class="pantry-results"></div>
@@ -155,7 +155,7 @@
 
 <div class="overlay" id="cooked-overlay">
   <div class="modal" style="padding:28px 32px;max-width:480px" role="dialog" aria-modal="true" aria-labelledby="cooked-title">
-    <button class="modal-close" onclick="closeCookedModal()" aria-label="Close cooking log">✕</button>
+    <button class="modal-close" data-action="closeCookedModal" aria-label="Close cooking log">✕</button>
     <h2 id="cooked-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.4rem;font-weight:normal;margin-bottom:16px">I cooked this</h2>
     <div class="cooked-form">
       <label class="cooked-label" for="cooked-date">Date</label>
@@ -173,8 +173,8 @@
       <label class="cooked-label" for="cooked-note">Note (optional)</label>
       <textarea id="cooked-note" class="coll-input" rows="3" maxlength="300" placeholder="How did it turn out?" style="width:100%;resize:vertical"></textarea>
       <div class="cooked-actions">
-        <button class="btn-primary" onclick="saveCookedEntry()">Save</button>
-        <button class="btn-secondary" onclick="closeCookedModal()">Cancel</button>
+        <button class="btn-primary" data-action="saveCookedEntry">Save</button>
+        <button class="btn-secondary" data-action="closeCookedModal">Cancel</button>
       </div>
     </div>
   </div>
@@ -182,7 +182,7 @@
 
 <div class="overlay" id="storage-overlay">
   <div class="modal" style="padding:28px 32px;max-width:520px" role="dialog" aria-modal="true" aria-labelledby="storage-title">
-    <button class="modal-close" onclick="closeStorage()" aria-label="Close storage">✕</button>
+    <button class="modal-close" data-action="closeStorage" aria-label="Close storage">✕</button>
     <h2 id="storage-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:14px">Storage</h2>
     <div id="storage-body"></div>
   </div>
@@ -190,7 +190,7 @@
 
 <div class="overlay" id="ai-overlay">
   <div class="modal" style="padding:28px 32px;max-width:720px" role="dialog" aria-modal="true" aria-labelledby="ai-title">
-    <button class="modal-close" onclick="closeAiTools()" aria-label="Close AI tools">✕</button>
+    <button class="modal-close" data-action="closeAiTools" aria-label="Close AI tools">✕</button>
     <h2 id="ai-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">AI tools</h2>
     <p id="ai-intro" style="color:var(--dim);font-size:.82rem;margin-bottom:14px">Suggestions only. Nothing is saved until you choose Save or Replace.</p>
     <div id="ai-tools" class="ai-tool-list"></div>
@@ -201,7 +201,7 @@
 
 <div class="overlay" id="share-overlay">
   <div class="modal" style="padding:28px 32px;max-width:560px" role="dialog" aria-modal="true" aria-labelledby="share-title">
-    <button class="modal-close" onclick="closeShareModal()" aria-label="Close share links">✕</button>
+    <button class="modal-close" data-action="closeShareModal" aria-label="Close share links">✕</button>
     <h2 id="share-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Share this recipe</h2>
     <p style="color:var(--dim);font-size:.82rem;margin-bottom:16px">Anyone with the link can read the recipe, without the access code. Revoke it any time.</p>
     <div class="share-create-row">
@@ -211,7 +211,7 @@
         <option value="30" selected>30 days</option>
         <option value="90">90 days</option>
       </select>
-      <button class="btn-primary" id="share-create" onclick="createShareLink()">Create link</button>
+      <button class="btn-primary" id="share-create" data-action="createShareLink">Create link</button>
     </div>
     <div id="share-result"></div>
     <h3 class="share-h">Existing links</h3>
@@ -221,22 +221,22 @@
 
 <div class="overlay" id="paste-overlay">
   <div class="modal" style="padding:28px 32px;max-width:620px" role="dialog" aria-modal="true" aria-labelledby="paste-title">
-    <button class="modal-close" onclick="closePasteImport()" aria-label="Close paste import">✕</button>
+    <button class="modal-close" data-action="closePasteImport" aria-label="Close paste import">✕</button>
     <h2 id="paste-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Paste a recipe</h2>
     <p style="color:var(--dim);font-size:.82rem;margin-bottom:14px">Copy the text of a recipe from a message, an email or a page, and paste it here.</p>
-    <textarea id="paste-text" class="paste-text" maxlength="12000" oninput="updatePasteCount()" placeholder="Paste the recipe text..."></textarea>
+    <textarea id="paste-text" class="paste-text" maxlength="12000" data-input="updatePasteCount" placeholder="Paste the recipe text..."></textarea>
     <div class="paste-count" id="paste-count">0 / 12000</div>
     <input type="text" class="name-input" id="paste-name" placeholder="Your name (optional)" maxlength="40">
     <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn-secondary" onclick="closePasteImport()">Cancel</button>
-      <button class="btn-primary" id="paste-save" onclick="savePastedRecipe()">Save to chest</button>
+      <button class="btn-secondary" data-action="closePasteImport">Cancel</button>
+      <button class="btn-primary" id="paste-save" data-action="savePastedRecipe">Save to chest</button>
     </div>
   </div>
 </div>
 
 <div class="overlay" id="coll-overlay">
   <div class="modal" style="padding:28px 32px;max-width:520px" role="dialog" aria-modal="true" aria-labelledby="coll-title">
-    <button class="modal-close" onclick="closeCollectionsManager()" aria-label="Close manage collections">✕</button>
+    <button class="modal-close" data-action="closeCollectionsManager" aria-label="Close manage collections">✕</button>
     <h2 id="coll-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Manage collections</h2>
     <p style="color:var(--dim);font-size:.82rem;margin-bottom:18px">Renaming or deleting updates every recipe that uses it.</p>
     <div id="coll-manager-body"></div>
@@ -245,46 +245,46 @@
 
 <div class="overlay" id="shopping-overlay">
   <div class="modal" style="padding:28px 32px;max-width:600px" role="dialog" aria-modal="true" aria-labelledby="shopping-title">
-    <button class="modal-close" onclick="closeShoppingList()" aria-label="Close shopping list">✕</button>
+    <button class="modal-close" data-action="closeShoppingList" aria-label="Close shopping list">✕</button>
     <h2 id="shopping-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Shopping List</h2>
     <p id="sl-note" style="color:var(--dim);font-size:.82rem;margin-bottom:12px">Saved for this device.</p>
     <div class="sl-controls">
-      <label class="sl-toggle"><input type="checkbox" id="sl-group" onchange="setGroupByAisle(this.checked)"> Group by aisle</label>
-      <label class="sl-toggle write-only"><input type="checkbox" id="sl-shared" onchange="setSharedMode(this.checked)"> Share with everyone</label>
-      <button class="btn-secondary sl-merge-btn" onclick="mergeShoppingList()">Merge duplicates</button>
+      <label class="sl-toggle"><input type="checkbox" id="sl-group" data-change="setGroupByAisle"> Group by aisle</label>
+      <label class="sl-toggle write-only"><input type="checkbox" id="sl-shared" data-change="setSharedMode"> Share with everyone</label>
+      <button class="btn-secondary sl-merge-btn" data-action="mergeShoppingList">Merge duplicates</button>
     </div>
     <div class="sl-add">
-      <input type="text" id="sl-input" placeholder="Add an item..." maxlength="200" onkeypress="if(event.key==='Enter')addShoppingItem()">
-      <button class="btn-primary" style="margin:0" onclick="addShoppingItem()">Add</button>
+      <input type="text" id="sl-input" placeholder="Add an item..." maxlength="200" data-enter="addShoppingItem">
+      <button class="btn-primary" style="margin:0" data-action="addShoppingItem">Add</button>
     </div>
     <div id="sl-list"></div>
     <div style="margin-top:16px;text-align:right">
-      <button class="btn-secondary" onclick="clearShoppingList()">Clear all</button>
+      <button class="btn-secondary" data-action="clearShoppingList">Clear all</button>
     </div>
   </div>
 </div>
 
 <div class="overlay" id="plan-overlay">
   <div class="modal" style="padding:28px 32px;max-width:680px" role="dialog" aria-modal="true" aria-labelledby="plan-title">
-    <button class="modal-close" onclick="closeMealPlan()" aria-label="Close meal plan">✕</button>
+    <button class="modal-close" data-action="closeMealPlan" aria-label="Close meal plan">✕</button>
     <h2 id="plan-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Meal Plan</h2>
     <p id="mp-note" style="color:var(--dim);font-size:.82rem;margin-bottom:12px">Saved for this device. Tap a day to add recipes.</p>
     <div class="sl-controls" style="margin-bottom:16px">
-      <label class="sl-toggle write-only"><input type="checkbox" id="mp-shared" onchange="setSharedMode(this.checked)"> Share with everyone</label>
+      <label class="sl-toggle write-only"><input type="checkbox" id="mp-shared" data-change="setSharedMode"> Share with everyone</label>
     </div>
     <div class="mp-week-nav">
-      <button class="btn-secondary mp-nav-btn" onclick="changePlanWeek(-1)">← Previous</button>
+      <button class="btn-secondary mp-nav-btn" data-action="changePlanWeek" data-index="-1">← Previous</button>
       <span class="mp-week-label" id="mp-week-label">This week</span>
-      <button class="btn-secondary mp-nav-btn" onclick="changePlanWeek(1)">Next →</button>
+      <button class="btn-secondary mp-nav-btn" data-action="changePlanWeek" data-index="1">Next →</button>
     </div>
     <div class="mp-week" id="mp-week"></div>
-    <button class="btn-primary mp-add-week" onclick="addWeekToShoppingList()">🛒 Add this week's ingredients to the shopping list</button>
+    <button class="btn-primary mp-add-week" data-action="addWeekToShoppingList">🛒 Add this week's ingredients to the shopping list</button>
   </div>
 </div>
 
 <div class="overlay" id="picker-overlay">
   <div class="modal" style="padding:28px 32px;max-width:560px" role="dialog" aria-modal="true" aria-labelledby="picker-title">
-    <button class="modal-close" onclick="closePicker()" aria-label="Close recipe picker">✕</button>
+    <button class="modal-close" data-action="closePicker" aria-label="Close recipe picker">✕</button>
     <h2 style="font-family:Georgia,serif;color:var(--brown);font-size:1.3rem;font-weight:normal;margin-bottom:16px" id="picker-title">Pick a recipe</h2>
     <div class="mp-picker" id="picker-list"></div>
   </div>
@@ -296,8 +296,8 @@
     <label class="sub" for="credit-input">Photo credit (optional)</label>
     <input type="text" class="name-input" id="credit-input" placeholder="Who took the photo, if it wasn't you" maxlength="100">
     <div>
-      <button class="btn-secondary" onclick="cancelPhotoUpload()">Cancel</button>
-      <button class="btn-primary" id="credit-upload-btn" onclick="confirmPhotoUpload()">Upload photo</button>
+      <button class="btn-secondary" data-action="cancelPhotoUpload">Cancel</button>
+      <button class="btn-primary" id="credit-upload-btn" data-action="confirmPhotoUpload">Upload photo</button>
     </div>
   </div>
 </div>
