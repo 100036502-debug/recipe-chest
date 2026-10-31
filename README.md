@@ -162,6 +162,16 @@ An installed Android app shares into the import dialog through the manifest's
 Web Share Target. iOS has no share target: copy the link into **Import from URL**.
 The iOS install hint in the app walks through Share, then Add to Home Screen.
 
+### What a saved recipe may contain
+
+Every write path (POST and PATCH, URL import through JSON-LD or the model, PDF
+import, email import) runs incoming data through `normalizeIncomingRecipe` in
+`lib/recipes.js`: titles are capped at 200 characters, descriptions and notes at
+500 and 1000, times and servings at 40, each ingredient or instruction at 1000
+with at most 100 items, and markup is stripped from all free text. Renderers
+escape as well; the sanitizer exists so one missed escape cannot become stored
+markup.
+
 ## Troubleshooting
 
 - **"No more than 12 Serverless Functions"** on deploy: a new file appeared in

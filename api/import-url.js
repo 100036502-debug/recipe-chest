@@ -3,7 +3,7 @@ import { requireAuth } from '../lib/auth.js';
 import { groqChat } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { safeFetchText } from '../lib/safe-fetch.js';
-import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe } from '../lib/recipes.js';
+import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { extractRecipeFromJsonLd } from '../lib/jsonld-recipe.js';
 import { rateLimited } from '../lib/rate-limit.js';
@@ -117,6 +117,10 @@ ${pageText}`;
     if (!recipe) return res.status(500).json({ error: 'AI returned invalid JSON' });
     if (recipe.error) return res.status(400).json({ error: recipe.error });
   }
+
+  // JSON-LD and AI output both land here: cap lengths and strip markup before
+  // anything is stored or echoed back.
+  recipe = normalizeIncomingRecipe(recipe);
 
   // Never save an empty shell; the JSON-LD path already guarantees both.
   if (!isUsableRecipe(recipe)) {

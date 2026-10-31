@@ -6,7 +6,7 @@ import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { getKv } from '../lib/redis.js';
 import { bumpCounter } from '../lib/rate-limit.js';
-import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe } from '../lib/recipes.js';
+import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
 
@@ -134,7 +134,7 @@ export default async function handler(req, res) {
           continue;
         }
 
-        const recipe = await recipeFromPdfText(text);
+        const recipe = normalizeIncomingRecipe(await recipeFromPdfText(text));
 
         if (!isUsableRecipe(recipe)) {
           console.warn(`PDF ${filename}: no usable recipe in the model output`, recipe.error || '');
@@ -174,7 +174,7 @@ export default async function handler(req, res) {
             ...images.map((url) => ({ type: 'image_url', image_url: { url } })),
           ];
 
-          const recipe = await callGroq(contentPayload, { vision: true });
+          const recipe = normalizeIncomingRecipe(await callGroq(contentPayload, { vision: true }));
 
           if (!isUsableRecipe(recipe)) {
             console.warn('Image recipe: no usable recipe in the model output', recipe.error || '');
@@ -204,7 +204,7 @@ export default async function handler(req, res) {
         ]);
 
         if (isUsableRecipe(recipe)) {
-          const saved = await persistRecipe(recipe, senderName);
+          const saved = await persistRecipe(normalizeIncomingRecipe(recipe), senderName);
           savedRecipes.push(saved);
           console.log(`${saved.duplicate ? 'Already had' : 'Saved'} recipe from email body: ${saved.recipe.title}`);
         }

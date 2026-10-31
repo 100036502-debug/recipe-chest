@@ -3,7 +3,7 @@
 import { parsePdfText, PdfUnreadable } from '../lib/pdf-text.js';
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
-import { findDuplicate, isUsableRecipe, cleanTags, normalizeMealType } from '../lib/recipes.js';
+import { findDuplicate, isUsableRecipe, cleanTags, normalizeMealType, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { findDishImage } from '../lib/image.js';
 import { getKv } from '../lib/redis.js';
 import { rateLimited } from '../lib/rate-limit.js';
@@ -51,7 +51,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'That PDF has almost no readable text (it may be a scan). Copy the recipe text instead.' });
     }
 
-    const recipe = await recipeFromPdfText(text);
+    const recipe = normalizeIncomingRecipe(await recipeFromPdfText(text));
     if (recipe && recipe.error) {
       return res.status(400).json({ error: recipe.error });
     }
