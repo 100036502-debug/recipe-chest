@@ -31,9 +31,8 @@ function applyRole(role) {
 // remember to annotate every button by hand.
 const WRITE_HANDLERS = /(openImport|openPasteImport|openUpload|openEdit|saveEdit|deleteRecipe|toggleFav|startCookLog|openCookedModal|deleteCookedEntry|openShareModal|openAiTools|restoreRecipe|savePastedRecipe|createShareLink|revokeShareLink|showTagInput|removeTag|showCollectionInput|removeCollectionFromRecipe|openCollectionsManager|renameCollectionPrompt|deleteCollection|pickRecipePhoto|removeRecipePhoto|exportBackup|pickBackupFiles|openStorage)/;
 function markWriteOnly() {
-  document.querySelectorAll('[onclick]').forEach((el) => {
-    const code = el.getAttribute('onclick') || '';
-    if (WRITE_HANDLERS.test(code)) el.classList.add('write-only');
+  document.querySelectorAll('[data-action]').forEach((el) => {
+    if (WRITE_HANDLERS.test(el.dataset.action || '')) el.classList.add('write-only');
   });
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -50,6 +49,104 @@ function scheduleMarkWriteOnly() {
 if (document.documentElement && typeof MutationObserver === 'function') {
   new MutationObserver(scheduleMarkWriteOnly).observe(document.documentElement, { childList: true, subtree: true });
 }
+// ---- Delegated events -------------------------------------------------------
+// The markup names an action (data-action, data-change, data-input, data-enter,
+// data-emoji) instead of carrying inline JavaScript, so the CSP no longer needs
+// script-src 'unsafe-inline'. Arguments come from the element: data-id, data-arg
+// and data-index, in that order. window[name] is safe because the name comes
+// from our own markup, and it is shape-checked anyway.
+const ACTION_NAME = /^[A-Za-z_$][\w$]*$/;
+
+// Actions that do not fit the argument convention.
+const SPECIAL_CLICK = {
+  selectAll: (el) => el.select(),
+  saveAiAsNew: (el) => saveAiAsNew(el),
+  startCookTimerAt: (el) => startCookTimerAt(Number(el.dataset.index), Number(el.dataset.arg)),
+};
+
+// Change/input handlers take the element, because most of them read its value.
+const CHANGE_ACTIONS = {
+  setGroupByAisle: (el) => setGroupByAisle(el.checked),
+  setPantryBasics: (el) => setPantryBasics(el.checked),
+  setSharedMode: (el) => setSharedMode(el.checked),
+  updateOneRecipeControl: () => updateOneRecipeControl(),
+  setSort: (el) => setSort(el.value),
+  changeServings: (el) => changeServings(el.dataset.id, el.value),
+  toggleCookIng: (el) => toggleCookIng(Number(el.dataset.index)),
+  toggleShoppingItem: (el) => toggleShoppingItem(Number(el.dataset.index)),
+};
+
+const INPUT_ACTIONS = {
+  updatePasteCount: () => updatePasteCount(),
+};
+
+const ENTER_ACTIONS = {
+  addPantryItem: () => addPantryItem(),
+  addShoppingItem: () => addShoppingItem(),
+};
+
+const KEYDOWN_ACTIONS = {
+  cookStepKey: (el, event) => cookStepKey(event, Number(el.dataset.index)),
+};
+
+function runClickAction(el, event) {
+  if (el.dataset.stop === '1') event.stopPropagation();
+  const name = el.dataset.action || '';
+  const special = SPECIAL_CLICK[name];
+  if (special) return special(el, event);
+  if (!ACTION_NAME.test(name)) return;
+  const fn = window[name];
+  if (typeof fn !== 'function') return;
+  const args = [];
+  if ('bool' in el.dataset) args.push(el.dataset.bool === '1');
+  if ('id' in el.dataset) args.push(el.dataset.id);
+  if ('arg' in el.dataset) args.push(el.dataset.arg);
+  if ('index' in el.dataset) args.push(Number(el.dataset.index));
+  if ('pass' in el.dataset) args.push(el.dataset[el.dataset.pass]);
+  if ('pass2' in el.dataset) args.push(el.dataset[el.dataset.pass2]);
+  return fn.apply(el, args);
+}
+
+document.addEventListener('click', (event) => {
+  const el = event.target && event.target.closest ? event.target.closest('[data-action]') : null;
+  if (el) runClickAction(el, event);
+});
+
+document.addEventListener('change', (event) => {
+  const el = event.target && event.target.closest ? event.target.closest('[data-change]') : null;
+  const action = el && CHANGE_ACTIONS[el.dataset.change];
+  if (action) action(el, event);
+});
+
+document.addEventListener('input', (event) => {
+  const el = event.target && event.target.closest ? event.target.closest('[data-input]') : null;
+  const action = el && INPUT_ACTIONS[el.dataset.input];
+  if (action) action(el, event);
+});
+
+document.addEventListener('keydown', (event) => {
+  const el = event.target && event.target.closest ? event.target.closest('[data-enter],[data-keys]') : null;
+  if (!el) return;
+  if (el.dataset.enter && event.key === 'Enter') {
+    const action = ENTER_ACTIONS[el.dataset.enter];
+    if (action) action(el, event);
+  }
+  if (el.dataset.keys) {
+    const action = KEYDOWN_ACTIONS[el.dataset.keys];
+    if (action) action(el, event);
+  }
+});
+
+// Images that fail to load fall back to a meal-type emoji. `error` does not
+// bubble, so this listener has to be in the capture phase.
+document.addEventListener('error', (event) => {
+  const el = event.target;
+  if (!el || el.tagName !== 'IMG' || !el.dataset || !el.dataset.emoji) return;
+  const span = document.createElement('span');
+  span.textContent = el.dataset.emoji;
+  if (el.parentNode) el.parentNode.replaceChild(span, el);
+}, true);
+
 function requireWrite() {
   if (canWrite()) return true;
   toast('View-only access');
@@ -250,11 +347,11 @@ function cardPhotoSrc(r) {
 // credit), then the Unsplash photo (with attribution), then the emoji.
 function heroPhotoHtml(r, ms) {
   if (r.userPhoto) {
-    return `<img class="hero-img" src="/api/photo?id=${encodeURIComponent(r.id)}&amp;v=${r.userPhoto.updatedAt}" alt="${escapeHtml(r.title)}" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` +
+    return `<img class="hero-img" src="/api/photo?id=${encodeURIComponent(r.id)}&amp;v=${r.userPhoto.updatedAt}" alt="${escapeHtml(r.title)}" data-emoji="${ms.emoji}">` +
       (r.userPhoto.credit ? `<div class="img-credit">${escapeHtml(r.userPhoto.credit)}</div>` : '');
   }
   if (r.image && r.image.url) {
-    return `<img class="hero-img" src="${escapeHtml(r.image.url)}" alt="${escapeHtml(r.image.alt || r.title)}" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` +
+    return `<img class="hero-img" src="${escapeHtml(r.image.url)}" alt="${escapeHtml(r.image.alt || r.title)}" data-emoji="${ms.emoji}">` +
       `<div class="img-credit">Photo by ${(r.image.photographerUrl && safeHref(r.image.photographerUrl)) ? `<a href="${escapeHtml(safeHref(r.image.photographerUrl))}" target="_blank" rel="noopener">${escapeHtml(r.image.photographer || 'Unknown')}</a>` : escapeHtml(r.image.photographer || 'Unknown')} on <a href="https://unsplash.com/?utm_source=recipe_chest&amp;utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></div>`;
   }
   return `<span>${ms.emoji}</span>`;
@@ -1205,34 +1302,34 @@ function renderGrid() {
 
   // Sort dropdown next to the recipe count
   let statHtml = `<span>${recipes.length} recipe${recipes.length === 1 ? '' : 's'}</span>`;
-  statHtml += `<select class="sort-select" onchange="setSort(this.value)" aria-label="Sort recipes">` +
+  statHtml += `<select class="sort-select" data-change="setSort" aria-label="Sort recipes">` +
     ['newest', 'oldest', 'az', 'quickest', 'recently', 'toprated'].map(s =>
       `<option value="${s}"${currentSort === s ? ' selected' : ''}>${({ newest: 'Newest', oldest: 'Oldest', az: 'A to Z', quickest: 'Quickest', recently: 'Recently cooked', toprated: 'Top rated' })[s]}</option>`
     ).join('') + `</select>`;
 
   if (recipes.length) {
     statHtml += `<span style="color:var(--border)">•</span>`;
-    statHtml += `<span class="filter-chip ${currentFilter === 'all' ? 'on' : ''}" onclick="setFilter('all')">all</span>`;
+    statHtml += `<span class="filter-chip ${currentFilter === 'all' ? 'on' : ''}" data-action="setFilter" data-arg="all">all</span>`;
     if (recipes.some(r => r.favorite)) {
-      statHtml += `<span class="filter-chip ${currentFilter === 'favorites' ? 'on' : ''}" onclick="setFilter('favorites')">♥</span>`;
+      statHtml += `<span class="filter-chip ${currentFilter === 'favorites' ? 'on' : ''}" data-action="setFilter" data-arg="favorites">♥</span>`;
     }
     // Meal-type filter chips, only for types that are actually in use
     for (const m of Object.keys(MEAL_STYLES)) {
       if (m === 'default') continue;
       if (!recipes.some(r => r.mealType === m)) continue;
-      statHtml += `<span class="filter-chip ${currentMealFilter === m ? 'on' : ''}" onclick="setMealFilter('${m}')" data-meal="${m}">${MEAL_STYLES[m].emoji} ${MEAL_STYLES[m].label}</span>`;
+      statHtml += `<span class="filter-chip ${currentMealFilter === m ? 'on' : ''}" data-action="setMealFilter" data-id="${m}" data-meal="${m}">${MEAL_STYLES[m].emoji} ${MEAL_STYLES[m].label}</span>`;
     }
     if (recipes.some(r => !(r.cookLog || []).length)) {
-      statHtml += `<span class="filter-chip ${currentFilter === 'never' ? 'on' : ''}" onclick="setFilter('never')">Never cooked</span>`;
+      statHtml += `<span class="filter-chip ${currentFilter === 'never' ? 'on' : ''}" data-action="setFilter" data-arg="never">Never cooked</span>`;
     }
     // Tag chips: most used first, top 12, rest behind a "more" toggle
     const tagList = [...allTags.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     const shownTags = showAllTags ? tagList : tagList.slice(0, 12);
     for (const [t] of shownTags) {
-      statHtml += `<span class="filter-chip ${currentFilter === t ? 'on' : ''}" data-tag="${escapeHtml(t)}" onclick="setFilter(this.dataset.tag)">${escapeHtml(t)}</span>`;
+      statHtml += `<span class="filter-chip ${currentFilter === t ? 'on' : ''}" data-tag="${escapeHtml(t)}" data-action="setFilter" data-pass="tag">${escapeHtml(t)}</span>`;
     }
     if (tagList.length > 12) {
-      statHtml += `<span class="filter-chip" onclick="toggleShowAllTags()">${showAllTags ? '− less' : `+ ${tagList.length - 12} more`}</span>`;
+      statHtml += `<span class="filter-chip" data-action="toggleShowAllTags">${showAllTags ? '− less' : `+ ${tagList.length - 12} more`}</span>`;
     }
   }
   // Collections row: "All" plus a chip per collection, with a manage dialog.
@@ -1242,9 +1339,9 @@ function renderGrid() {
     const names = [...collCounts.keys()].sort((a, b) => a.localeCompare(b));
     statHtml += `<div class="coll-row">` +
       `<span class="coll-row-label">Collections:</span>` +
-      `<span class="filter-chip ${currentCollection === 'all' ? 'on' : ''}" onclick="setCollectionFilter('all')">All</span>` +
-      names.map((c) => `<span class="filter-chip ${currentCollection === c ? 'on' : ''}" data-coll="${escapeHtml(c)}" onclick="setCollectionFilter(this.dataset.coll)">${escapeHtml(c)}<span class="coll-count">${collCounts.get(c)}</span></span>`).join('') +
-      `<button class="coll-manage" onclick="openCollectionsManager()">Manage</button></div>`;
+      `<span class="filter-chip ${currentCollection === 'all' ? 'on' : ''}" data-action="setCollectionFilter" data-arg="all">All</span>` +
+      names.map((c) => `<span class="filter-chip ${currentCollection === c ? 'on' : ''}" data-coll="${escapeHtml(c)}" data-action="setCollectionFilter" data-pass="coll">${escapeHtml(c)}<span class="coll-count">${collCounts.get(c)}</span></span>`).join('') +
+      `<button class="coll-manage" data-action="openCollectionsManager">Manage</button></div>`;
   }
   stats.innerHTML = statHtml;
   if (!filtered.length) {
@@ -1263,11 +1360,11 @@ function renderGrid() {
   grid.innerHTML = sorted.map(r => {
     const ms = mealStyle(r.mealType);
     return `
-      <div class="card" onclick="openDetail('${r.id}')">
+      <div class="card" data-action="openDetail" data-id="${r.id}">
         <div class="card-meal" style="background:${ms.bg}">
-          <button class="fav-btn ${r.favorite === true ? 'on' : ''}" onclick="event.stopPropagation(); toggleFavorite('${r.id}')" aria-label="${r.favorite === true ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥' : '♡'}</button>${r.userPhoto || (r.image && (r.image.thumb || r.image.url)) ? `<img class="card-img" src="${escapeHtml(cardPhotoSrc(r))}" alt="${escapeHtml(r.title)}" loading="lazy" onerror="this.outerHTML='<span>${ms.emoji}</span>'">` : `<span>${ms.emoji}</span>`}${r.image && r.image.url && !r.userPhoto ? `<div class="card-credit">Photo: ${escapeHtml(r.image.photographer || 'Unknown')} on Unsplash</div>` : ''}</div>
+          <button class="fav-btn ${r.favorite === true ? 'on' : ''}" data-action="toggleFavorite" data-id="${r.id}" data-stop="1" aria-label="${r.favorite === true ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥' : '♡'}</button>${r.userPhoto || (r.image && (r.image.thumb || r.image.url)) ? `<img class="card-img" src="${escapeHtml(cardPhotoSrc(r))}" alt="${escapeHtml(r.title)}" loading="lazy" data-emoji="${ms.emoji}">` : `<span>${ms.emoji}</span>`}${r.image && r.image.url && !r.userPhoto ? `<div class="card-credit">Photo: ${escapeHtml(r.image.photographer || 'Unknown')} on Unsplash</div>` : ''}</div>
         <div class="card-body">
-          <button class="card-title card-title-btn" onclick="event.stopPropagation(); openDetail('${r.id}')">${escapeHtml(r.title)}</button>
+          <button class="card-title card-title-btn" data-action="openDetail" data-id="${r.id}" data-stop="1">${escapeHtml(r.title)}</button>
           <div class="card-desc">${escapeHtml(r.description || '')}</div>
           <div class="card-meta">
             <span>${ms.label}${r.prepTime ? ' • ⏱ ' + escapeHtml(r.prepTime) : ''}</span>
@@ -1411,8 +1508,8 @@ async function loadShareLinks() {
           <span class="share-link-url">${escapeHtml(link.url)}</span>
           <span class="share-link-expiry">Expires ${escapeHtml(shareExpiryLabel(link.expiresAt))}</span>
         </div>
-        <button class="btn-secondary" data-token="${escapeHtml(link.token)}" onclick="copyShareLink(this.dataset.token)">Copy</button>
-        <button class="btn-secondary" data-token="${escapeHtml(link.token)}" onclick="revokeShareLink(this.dataset.token)">Revoke</button>
+        <button class="btn-secondary" data-token="${escapeHtml(link.token)}" data-action="copyShareLink" data-pass="token">Copy</button>
+        <button class="btn-secondary" data-token="${escapeHtml(link.token)}" data-action="revokeShareLink" data-pass="token">Revoke</button>
       </div>`).join('');
   } catch (e) {
     list.innerHTML = '<p class="share-hint">Could not load links.</p>';
@@ -1436,8 +1533,8 @@ async function createShareLink() {
     if (!res.ok) throw new Error(data.error || 'Could not create a link');
     document.getElementById('share-result').innerHTML = `
       <div class="share-result">
-        <input class="share-result-input" id="share-result-input" readonly value="${escapeHtml(data.url)}" onclick="this.select()">
-        <button class="btn-secondary" onclick="copyShareLink(this.dataset.token)" data-token="${escapeHtml(data.token)}">Copy</button>
+        <input class="share-result-input" id="share-result-input" readonly value="${escapeHtml(data.url)}" data-action="selectAll">
+        <button class="btn-secondary" data-action="copyShareLink" data-pass="token" data-token="${escapeHtml(data.token)}">Copy</button>
       </div>`;
     loadShareLinks();
     toast('Link created');
@@ -1520,7 +1617,7 @@ function openAiTools(id) {
   document.getElementById('ai-intro').style.display = '';
   const tools = document.getElementById('ai-tools');
   tools.innerHTML = AI_TOOLS.map((tool) => `
-    <button class="btn-secondary ai-tool" id="ai-btn-${tool.kind}" data-kind="${tool.kind}" onclick="runAiTool('${tool.kind}')">${escapeHtml(tool.label)}</button>`).join('');
+    <button class="btn-secondary ai-tool" id="ai-btn-${tool.kind}" data-kind="${tool.kind}" data-action="runAiTool" data-id="${tool.kind}">${escapeHtml(tool.label)}</button>`).join('');
   const picker = document.getElementById('ai-picker');
   const select = document.getElementById('ai-ingredient');
   if (recipe && Array.isArray(recipe.ingredients) && recipe.ingredients.length) {
@@ -1556,7 +1653,7 @@ async function runAiTool(kind) {
   if (kind === 'substitute') {
     showAiIngredientPicker();
     document.getElementById('ai-intro').style.display = 'none';
-    document.getElementById('ai-result').innerHTML = '<p class="share-hint">Pick the ingredient, then press Suggest.</p><button class="btn-primary" id="ai-run-substitute" onclick="runAiSubstitute()">Suggest a substitute</button>';
+    document.getElementById('ai-result').innerHTML = '<p class="share-hint">Pick the ingredient, then press Suggest.</p><button class="btn-primary" id="ai-run-substitute" data-action="runAiSubstitute">Suggest a substitute</button>';
     return;
   }
   await postAiTool(kind);
@@ -1592,7 +1689,7 @@ function renderAiOptions(options) {
     <h3 class="share-h">Substitute ideas</h3>
     <ul class="ai-options">${options.map((option) => `
       <li><strong>${escapeHtml(option.name)}</strong>${option.note ? ' — ' + escapeHtml(option.note) : ''}</li>`).join('')}</ul>
-    <button class="btn-secondary" onclick="closeAiTools()">Close</button>`;
+    <button class="btn-secondary" data-action="closeAiTools">Close</button>`;
 }
 
 function aiDiffColumn(beforeLines, afterLines) {
@@ -1617,9 +1714,9 @@ function renderAiChange(data) {
       </div>
     </div>
     <div class="ai-actions">
-      <button class="btn-secondary" id="ai-cancel" onclick="closeAiTools()">Cancel</button>
-      <button class="btn-secondary" id="ai-replace" onclick="replaceWithAi()">Replace this recipe</button>
-      <button class="btn-primary" id="ai-save-new" data-label="${escapeHtml(label)}" onclick="saveAiAsNew(this)">Save as new recipe</button>
+      <button class="btn-secondary" id="ai-cancel" data-action="closeAiTools">Cancel</button>
+      <button class="btn-secondary" id="ai-replace" data-action="replaceWithAi">Replace this recipe</button>
+      <button class="btn-primary" id="ai-save-new" data-label="${escapeHtml(label)}" data-action="saveAiAsNew">Save as new recipe</button>
     </div>`;
   window.__aiPending = data;
 }
@@ -1685,7 +1782,7 @@ function showAiUndo() {
     bar.className = 'ai-undo';
     out.appendChild(bar);
   }
-  bar.innerHTML = 'Recipe replaced. <button class="btn-secondary" onclick="undoAiReplace()">Undo</button> <span id="ai-undo-count">60</span>s';
+  bar.innerHTML = 'Recipe replaced. <button class="btn-secondary" data-action="undoAiReplace">Undo</button> <span id="ai-undo-count">60</span>s';
   let left = 60;
   if (aiUndoTimer) clearInterval(aiUndoTimer);
   aiUndoTimer = setInterval(() => {
@@ -1749,12 +1846,12 @@ function cookedSectionHtml(r) {
       <span class="cooked-date">${escapeHtml(shortDate(e.date))}</span>
       <span class="cooked-stars" aria-label="${e.rating ? e.rating + ' stars' : 'no rating'}">${escapeHtml(starsText(e.rating))}</span>
       <span class="cooked-note">${escapeHtml(e.note || '')}${e.by ? ` <span class="cooked-by">· ${escapeHtml(e.by)}</span>` : ''}</span>
-      <button class="cooked-del" data-entry="${escapeHtml(e.id)}" data-recipe="${r.id}" onclick="deleteCookedEntry(this.dataset.recipe, this.dataset.entry)" aria-label="Delete this entry">✕</button>
+      <button class="cooked-del" data-entry="${escapeHtml(e.id)}" data-recipe="${r.id}" data-action="deleteCookedEntry" data-pass="recipe" data-pass2="entry" aria-label="Delete this entry">✕</button>
     </li>`).join('');
 
   return `<div class="cooked-section">
       <h2 class="cook-section-h">Cooking log</h2>
-      <button class="action-btn primary" data-recipe="${r.id}" onclick="openCookedModal(this.dataset.recipe)">🍳 I cooked this</button>
+      <button class="action-btn primary" data-recipe="${r.id}" data-action="openCookedModal" data-pass="recipe">🍳 I cooked this</button>
       ${stats.count ? `<p class="cooked-summary">${escapeHtml(cookedSummary(r))}</p>` : '<p class="cooked-summary">Not cooked yet.</p>'}
       ${rows ? `<ul class="cooked-list">${rows}</ul>` : ''}
     </div>`;
@@ -1838,10 +1935,10 @@ function applyCookedRecipe(recipe) {
 function setCollectionFilter(name) { currentCollection = name; renderGrid(); }
 
 function collectionsRowHtml(r) {
-  const chips = (r.collections || []).map((c) => `<span class="tag-chip coll-chip">${escapeHtml(c)}<button class="tag-x" data-coll="${escapeHtml(c)}" onclick="removeCollectionFromRecipe(this.dataset.recipe, this.dataset.coll)" data-recipe="${r.id}" aria-label="Remove from ${escapeHtml(c)}">✕</button></span>`).join('');
+  const chips = (r.collections || []).map((c) => `<span class="tag-chip coll-chip">${escapeHtml(c)}<button class="tag-x" data-coll="${escapeHtml(c)}" data-action="removeCollectionFromRecipe" data-pass="recipe" data-pass2="coll" data-recipe="${r.id}" aria-label="Remove from ${escapeHtml(c)}">✕</button></span>`).join('');
   return `<div class="recipe-tags coll-detail-row">
         <span class="coll-label">Collections:</span>${chips}
-        <button class="tag-add-btn" data-recipe="${r.id}" onclick="showCollectionInput(this.dataset.recipe)">+ Add to collection</button>
+        <button class="tag-add-btn" data-recipe="${r.id}" data-action="showCollectionInput" data-pass="recipe">+ Add to collection</button>
         <span id="coll-input-wrap"></span>
       </div>`;
 }
@@ -1870,7 +1967,7 @@ function showCollectionInput(id) {
   const options = collectionNames().map((n) => `<option value="${escapeHtml(n)}"></option>`).join('');
   wrap.innerHTML = `<input type="text" class="coll-input" id="coll-input" list="coll-names" maxlength="40" placeholder="Collection name">` +
     `<datalist id="coll-names">${options}</datalist>` +
-    `<button class="tag-add-btn" onclick="saveCollectionFromInput(this.dataset.recipe)" data-recipe="${id}">Save</button>`;
+    `<button class="tag-add-btn" data-action="saveCollectionFromInput" data-pass="recipe" data-recipe="${id}">Save</button>`;
   const input = document.getElementById('coll-input');
   if (!input) return;
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveCollectionFromInput(id); } });
@@ -1926,8 +2023,8 @@ function renderCollectionsManager() {
   const names = collectionNames();
   body.innerHTML = names.length
     ? names.map((n) => `<div class="coll-manage-row"><span class="coll-manage-name">${escapeHtml(n)}</span>` +
-        `<button class="btn-secondary" data-coll="${escapeHtml(n)}" onclick="renameCollectionPrompt(this.dataset.coll)">Rename</button>` +
-        `<button class="btn-secondary" data-coll="${escapeHtml(n)}" onclick="deleteCollection(this.dataset.coll)">Delete</button></div>`).join('')
+        `<button class="btn-secondary" data-coll="${escapeHtml(n)}" data-action="renameCollectionPrompt" data-pass="coll">Rename</button>` +
+        `<button class="btn-secondary" data-coll="${escapeHtml(n)}" data-action="deleteCollection" data-pass="coll">Delete</button></div>`).join('')
     : '<p class="coll-empty">No collections yet. Open a recipe and add one.</p>';
 }
 
@@ -2007,7 +2104,7 @@ function openDetail(id) {
     const tagsHtml = (r.tags || []).map(t => `
     <span class="tag">
       ${escapeHtml(t)}
-      <button class="tag-x" data-id="${escapeHtml(r.id)}" data-tag="${escapeHtml(t)}" onclick="event.stopPropagation(); removeTag(this.dataset.id, this.dataset.tag)" title="Remove tag" aria-label="Remove tag ${escapeHtml(t)}">✕</button>
+      <button class="tag-x" data-id="${escapeHtml(r.id)}" data-tag="${escapeHtml(t)}" data-action="removeTag" data-pass="id" data-pass2="tag" data-stop="1" title="Remove tag" aria-label="Remove tag ${escapeHtml(t)}">✕</button>
     </span>
   `).join('');
   let servingsHtml = '';
@@ -2020,7 +2117,7 @@ function openDetail(id) {
         const selected = Math.abs(mult - scaleFactor) < 0.01 ? ' selected' : '';
         return `<option value="${mult}"${selected}>${s} servings</option>`;
       }).join('');
-      servingsHtml = `<select class="servings-select" onchange="changeServings('${r.id}', this.value)">${options}</select>`;
+      servingsHtml = `<select class="servings-select" data-change="changeServings" data-id="${r.id}">${options}</select>`;
     }
   }
   const scaleFactor = (currentScaling && currentScaling.recipeId === r.id) ? currentScaling.factor : 1;
@@ -2038,21 +2135,21 @@ function openDetail(id) {
       </div>
       <div class="recipe-tags" id="tag-row">
         ${tagsHtml}
-        <button class="tag-add-btn" id="tag-add-btn" onclick="showTagInput('${r.id}')">+ Add tag</button>
+        <button class="tag-add-btn" id="tag-add-btn" data-action="showTagInput" data-id="${r.id}">+ Add tag</button>
       </div>
       ${collectionsRowHtml(r)}
       ${cookedSectionHtml(r)}
       <div class="recipe-actions">
-        <button class="action-btn primary" onclick="openCookMode('${r.id}')">👨‍🍳 Cook mode</button>
-        <button class="action-btn" onclick="openShareModal('${r.id}')">🔗 Share link</button>
-        <button class="action-btn" onclick="openAiTools('${r.id}')">✨ AI tools</button>
-        <button class="action-btn ${r.favorite === true ? 'primary' : ''}" onclick="toggleFavorite('${r.id}')" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥ Favorited' : '♡ Favorite'}</button>
-        <button class="action-btn" onclick="addRecipeToShoppingList('${r.id}')">🛒 Add to list</button>
-        <button class="action-btn" onclick="openEditMode('${r.id}')">✎ Edit</button>
-        <button class="action-btn" onclick="pickRecipePhoto('${r.id}')">📷 ${r.userPhoto ? 'Replace my photo' : 'Add my photo'}</button>
-        ${r.userPhoto ? `<button class="action-btn" onclick="removeRecipePhoto('${r.id}')">🗑 Remove my photo</button>` : ''}
-        <button class="action-btn" onclick="printRecipe()">🖨️ Print</button>
-        <button class="action-btn" onclick="printCard()">🗂️ Print card</button>
+        <button class="action-btn primary" data-action="openCookMode" data-id="${r.id}">👨‍🍳 Cook mode</button>
+        <button class="action-btn" data-action="openShareModal" data-id="${r.id}">🔗 Share link</button>
+        <button class="action-btn" data-action="openAiTools" data-id="${r.id}">✨ AI tools</button>
+        <button class="action-btn ${r.favorite === true ? 'primary' : ''}" data-action="toggleFavorite" data-id="${r.id}" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥ Favorited' : '♡ Favorite'}</button>
+        <button class="action-btn" data-action="addRecipeToShoppingList" data-id="${r.id}">🛒 Add to list</button>
+        <button class="action-btn" data-action="openEditMode" data-id="${r.id}">✎ Edit</button>
+        <button class="action-btn" data-action="pickRecipePhoto" data-id="${r.id}">📷 ${r.userPhoto ? 'Replace my photo' : 'Add my photo'}</button>
+        ${r.userPhoto ? `<button class="action-btn" data-action="removeRecipePhoto" data-id="${r.id}">🗑 Remove my photo</button>` : ''}
+        <button class="action-btn" data-action="printRecipe">🖨️ Print</button>
+        <button class="action-btn" data-action="printCard">🗂️ Print card</button>
       </div>
       ${r.ingredients && r.ingredients.length ? `
         <h3 class="section-h">Ingredients</h3>
@@ -2065,7 +2162,7 @@ function openDetail(id) {
       ${r.notes ? `<div class="notes-box">💡 ${escapeHtml(r.notes)}</div>` : ''}
       <div class="recipe-footer">
         <span>Added by ${escapeHtml(r.addedBy || 'Anonymous')} on ${new Date(r.createdAt).toLocaleDateString()}</span>
-        <button class="delete-btn" onclick="deleteRecipe('${r.id}')">Delete</button>
+        <button class="delete-btn" data-action="deleteRecipe" data-id="${r.id}">Delete</button>
       </div>
     </div>
   `;
@@ -2290,8 +2387,8 @@ function openEditMode(id) {
         <textarea class="edit-textarea" id="edit-notes" style="min-height:80px">${escapeHtml(r.notes || '')}</textarea>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;flex-wrap:wrap">
-        <button class="btn-secondary" onclick="openDetail('${r.id}')">Cancel</button>
-        <button class="btn-primary" onclick="saveEdit('${r.id}')">Save changes</button>
+        <button class="btn-secondary" data-action="openDetail" data-id="${r.id}">Cancel</button>
+        <button class="btn-primary" data-action="saveEdit" data-id="${r.id}">Save changes</button>
       </div>
     </div>
   `;
@@ -2468,10 +2565,10 @@ function onCookTimerDone(timer) {
 // ---- timers: rendering ----
 function cookTimerButtons(t) {
   const paused = t.pausedRemainingMs != null;
-  return '<button type="button" class="cook-timer-btn" onclick="toggleCookTimerPause(\'' + t.id + '\')">'
+  return '<button type="button" class="cook-timer-btn" data-action="toggleCookTimerPause" data-id="' + t.id + '">'
     + (paused ? 'Resume' : 'Pause') + '</button>'
-    + '<button type="button" class="cook-timer-btn" onclick="addCookTimerTime(\'' + t.id + '\',60000)">+1 min</button>'
-    + '<button type="button" class="cook-timer-btn" onclick="removeCookTimer(\'' + t.id + '\')">Remove</button>';
+    + '<button type="button" class="cook-timer-btn" data-action="addCookTimerTime" data-id="' + t.id + '" data-index="60000">+1 min</button>'
+    + '<button type="button" class="cook-timer-btn" data-action="removeCookTimer" data-id="' + t.id + '">Remove</button>';
 }
 
 function renderCookTimers(force) {
@@ -2485,7 +2582,7 @@ function renderCookTimers(force) {
     bar.dataset.sig = sig;
     bar.hidden = mine.length === 0;
     bar.innerHTML = mine.length === 0 ? '' : mine.map((t) => (
-      '<div class="cook-timer" data-id="' + escapeHtml(t.id) + '" onclick="stopBeep(\'' + t.id + '\')">'
+      '<div class="cook-timer" data-id="' + escapeHtml(t.id) + '" data-action="stopBeep" data-id="' + t.id + '">'
       + '<div class="cook-timer-head">'
       + '<span class="cook-timer-where">Step ' + (Number.isInteger(t.step) ? t.step + 1 : '') + '</span>'
       + '<span class="cook-timer-label">' + escapeHtml(t.label) + '</span>'
@@ -2640,7 +2737,7 @@ async function openCookMode(id) {
   const ingredientsHtml = (r.ingredients || []).map((ing, i) => {
     const checked = cookListState.ing.includes(i) ? ' checked' : '';
     return '<li><label class="cook-ing-row' + (checked ? ' checked' : '') + '">'
-      + '<input type="checkbox" class="cook-ing-check" data-i="' + i + '"' + checked + ' onchange="toggleCookIng(' + i + ')">'
+      + '<input type="checkbox" class="cook-ing-check" data-i="' + i + '"' + checked + ' data-action="toggleCookIng" data-index="' + i + '">'
       + '<span class="cook-ing-text">' + scaleIngredientLine(ing, scaleFactor) + '</span>'
       + '</label></li>';
   }).join('');
@@ -2648,13 +2745,13 @@ async function openCookMode(id) {
   const stepsHtml = (r.instructions || []).map((s, i) => {
     const done = cookListState.steps.includes(i);
     const chips = (cookStepTimers[i] || []).map((t, j) => (
-      '<button type="button" class="cook-timer-chip" onclick="startCookTimerAt(' + i + ',' + j + ')">'
+      '<button type="button" class="cook-timer-chip" data-action="startCookTimerAt" data-index="' + i + '" data-arg="' + j + '">'
       + '⏱ Start ' + escapeHtml(t.label) + '</button>'
     )).join('');
     return '<li class="cook-step-item"><div class="cook-step-body">'
       + '<div class="cook-step' + (done ? ' done' : '') + '" data-step="' + i + '" role="button" tabindex="0"'
-      + ' aria-pressed="' + (done ? 'true' : 'false') + '" onclick="toggleCookStep(' + i + ')"'
-      + ' onkeydown="cookStepKey(event,' + i + ')">' + escapeHtml(s) + '</div>'
+      + ' aria-pressed="' + (done ? 'true' : 'false') + '" data-action="toggleCookStep" data-index="' + i + '"'
+      + ' data-keys="cookStepKey" data-index="' + i + '">' + escapeHtml(s) + '</div>'
       + (chips ? '<div class="cook-step-timers">' + chips + '</div>' : '')
       + '</div></li>';
   }).join('');
@@ -2667,11 +2764,11 @@ async function openCookMode(id) {
   const totalSteps = (r.instructions || []).length;
 
   const html = `
-    <button class="cook-close" onclick="closeCookMode()" title="Close" aria-label="Close cook mode">✕</button>
+    <button class="cook-close" data-action="closeCookMode" title="Close" aria-label="Close cook mode">✕</button>
     <div class="cook-scale-bar">
       <span class="cook-scale-label">Text</span>
-      <button type="button" class="cook-scale-btn" onclick="changeCookScale(-1)" aria-label="A− smaller text">A−</button>
-      <button type="button" class="cook-scale-btn" onclick="changeCookScale(1)" aria-label="A+ larger text">A+</button>
+      <button type="button" class="cook-scale-btn" data-action="changeCookScale" data-index="-1" aria-label="A− smaller text">A−</button>
+      <button type="button" class="cook-scale-btn" data-action="changeCookScale" data-index="1" aria-label="A+ larger text">A+</button>
     </div>
     <div class="cook-timers" id="cook-timers" hidden></div>
     <div class="cook-hero" style="background:${ms.bg}">${heroPhotoHtml(r, ms)}</div>
@@ -2690,14 +2787,14 @@ async function openCookMode(id) {
         <h2 class="cook-section-h">Instructions</h2>
         <div class="cook-steps-tools">
           <span class="cook-progress" id="cook-progress">0 of ${totalSteps} steps done</span>
-          <button type="button" class="cook-reset" onclick="resetCookList()">Reset</button>
+          <button type="button" class="cook-reset" data-action="resetCookList">Reset</button>
         </div>
       </div>
       <ol class="cook-steps">${stepsHtml}</ol>
     ` : ''}
     ${r.notes ? `<div class="cook-notes">💡 ${escapeHtml(r.notes)}</div>` : ''}
     <div class="cook-footer">
-      <button onclick="closeCookMode()">Done cooking</button>
+      <button data-action="closeCookMode">Done cooking</button>
     </div>
   `;
   document.getElementById('cook-content').innerHTML = html;
@@ -2874,9 +2971,9 @@ function shoppingRowHtml(entry) {
   const it = entry.it;
   return `
     <div class="sl-item ${it.checked ? 'checked' : ''}">
-      <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="toggleShoppingItem(${entry.i})">
+      <input type="checkbox" ${it.checked ? 'checked' : ''} data-action="toggleShoppingItem" data-index="${entry.i}">
       <span class="sl-text">${escapeHtml(it.text)}</span>
-      <button class="sl-del" onclick="removeShoppingItem(${entry.i})" title="Remove" aria-label="Remove item">✕</button>
+      <button class="sl-del" data-action="removeShoppingItem" data-index="${entry.i}" title="Remove" aria-label="Remove item">✕</button>
     </div>`;
 }
 
@@ -2892,7 +2989,7 @@ function renderShoppingList() {
   const banner = blocked
     ? `<div class="sl-error" role="alert">
         <span>Your list didn't load, so it can't be changed right now. Nothing on the server has been overwritten.</span>
-        <button class="btn-secondary" onclick="retryShoppingList()">Retry</button>
+        <button class="btn-secondary" data-action="retryShoppingList">Retry</button>
       </div>`
     : '';
   if (!items.length) {
@@ -3174,7 +3271,7 @@ function renderPantry() {
   const list = getPantry();
   if (chips) {
     chips.innerHTML = list.map((p, i) =>
-      `<span class="pantry-chip">${escapeHtml(p)}<button class="pantry-chip-x" onclick="removePantryItem(${i})" aria-label="Remove ${escapeHtml(p)}">✕</button></span>`
+      `<span class="pantry-chip">${escapeHtml(p)}<button class="pantry-chip-x" data-action="removePantryItem" data-index="${i}" aria-label="Remove ${escapeHtml(p)}">✕</button></span>`
     ).join('');
   }
 
@@ -3196,13 +3293,13 @@ function renderPantry() {
       ? 'Missing: ' + first.join(', ') + (more > 0 ? ` +${more} more` : '')
       : 'You have everything';
     return `<div class="pantry-card">
-      <button class="pantry-card-main" onclick="openPantryResult('${escapeHtml(r.recipe.id)}')">
+      <button class="pantry-card-main" data-action="openPantryResult" data-id="${escapeHtml(r.recipe.id)}">
         <span class="pantry-card-title">${escapeHtml(r.recipe.title)}</span>
         <span class="pantry-card-score">Have ${r.have} of ${r.total}</span>
         <span class="pantry-bar"><span class="pantry-bar-fill" style="width:${Math.round(r.score * 100)}%"></span></span>
         <span class="pantry-card-missing">${escapeHtml(missingText)}</span>
       </button>
-      ${r.missing.length ? `<button class="btn-secondary pantry-add-missing" onclick="addPantryMissing(${i})">Add missing to list</button>` : ''}
+      ${r.missing.length ? `<button class="btn-secondary pantry-add-missing" data-action="addPantryMissing" data-index="${i}">Add missing to list</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -3285,6 +3382,12 @@ function getWeekDays() {
   }
   return days;
 }
+// A planned slot may point at a recipe that has since been deleted: the old
+// inline handler checked for that before opening the detail view.
+function openPlannedRecipe(id) {
+  if (recipes.find((x) => x.id === id)) openDetail(id);
+}
+
 function changePlanWeek(delta) {
   planWeekOffset += delta;
   renderMealPlan();
@@ -3310,7 +3413,7 @@ function renderMealPlan() {
   el.innerHTML = (listWriteBlocked(mealPlanState)
     ? `<div class="mp-error" role="alert">
         <span>Your meal plan didn't load, so it can't be changed right now. Nothing on the server has been overwritten.</span>
-        <button class="btn-secondary" onclick="retryMealPlan()">Retry</button>
+        <button class="btn-secondary" data-action="retryMealPlan">Retry</button>
       </div>`
     : '') + days.map((d, idx) => {
     const key = ymd(d);
@@ -3321,13 +3424,13 @@ function renderMealPlan() {
       const r = recipes.find(x => x.id === rid);
       const title = r ? r.title : '(deleted)';
       const ms = r ? mealStyle(r.mealType) : mealStyle('default');
-      return `<div class="mp-slot" onclick="if(${r ? 'true' : 'false'}) openDetail('${rid}')"><span>${ms.emoji}</span><span class="mp-slot-title">${escapeHtml(title)}</span><button class="mp-slot-del" onclick="event.stopPropagation(); removeFromPlan('${key}', '${rid}')" title="Remove" aria-label="Remove ${escapeHtml(title)} from plan">✕</button></div>`;
+      return `<div class="mp-slot" data-action="openPlannedRecipe" data-id="${rid}"><span>${ms.emoji}</span><span class="mp-slot-title">${escapeHtml(title)}</span><button class="mp-slot-del" data-action="removeFromPlan" data-id="${key}" data-arg="${rid}" data-stop="1" title="Remove" aria-label="Remove ${escapeHtml(title)} from plan">✕</button></div>`;
     }).join('');
     return `
       <div class="mp-day">
         <div class="mp-day-head">
           <div><span class="mp-day-name">${label}</span><span class="mp-day-date">${dateStr}</span></div>
-          <button class="mp-add" onclick="openPicker('${key}')">+ Add recipe</button>
+          <button class="mp-add" data-action="openPicker" data-id="${key}">+ Add recipe</button>
         </div>
         ${slots ? `<div class="mp-slots">${slots}</div>` : '<div style="color:var(--dim);font-size:.78rem">No meals planned</div>'}
       </div>
@@ -3408,7 +3511,7 @@ function openPicker(date) {
   } else {
     list.innerHTML = recipes.map(r => {
       const ms = mealStyle(r.mealType);
-      return `<button class="mp-pick" onclick="pickRecipe('${r.id}')"><span style="font-size:1.3rem">${ms.emoji}</span><span>${escapeHtml(r.title)}</span></button>`;
+      return `<button class="mp-pick" data-action="pickRecipe" data-id="${r.id}"><span style="font-size:1.3rem">${ms.emoji}</span><span>${escapeHtml(r.title)}</span></button>`;
     }).join('');
   }
   document.getElementById('picker-overlay').classList.add('on');
@@ -3593,7 +3696,7 @@ function renderStorageBody(stats) {
     <p class="storage-line">${formatMb(stats.totalBytes)} used, ${photos}, ${count}</p>
     ${bar}
     <p class="share-hint">Photos ${formatMb(stats.photoBytes)} · recipe text ${formatMb(stats.recipeBytes)}</p>
-    <button class="btn-secondary" onclick="openStorage()">Measure again</button>`);
+    <button class="btn-secondary" data-action="openStorage">Measure again</button>`);
 }
 
 async function checkStorageBanner() {

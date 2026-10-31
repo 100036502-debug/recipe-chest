@@ -13,7 +13,7 @@ test('locking throws away the offline copy of the recipes', async ({ page, api }
   // The cache is what offline mode reads, so it exists while unlocked.
   await expect.poll(() => cacheValue(page)).not.toBeNull();
 
-  await page.locator('button[onclick="lockApp()"]').click();
+  await page.locator('button[data-action="lockApp"]').click();
   await expect(page.locator('#lock-screen')).toBeVisible();
 
   expect(await cacheValue(page)).toBeNull();
