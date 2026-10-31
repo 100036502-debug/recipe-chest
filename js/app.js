@@ -53,8 +53,8 @@ if (document.documentElement && typeof MutationObserver === 'function') {
 // The markup names an action (data-action, data-change, data-input, data-enter,
 // data-emoji) instead of carrying inline JavaScript, so the CSP no longer needs
 // script-src 'unsafe-inline'. Arguments come from the element: data-id, data-arg
-// and data-index, in that order. window[name] is safe because the name comes
-// from our own markup, and it is shape-checked anyway.
+// and data-index, in that order. The name is looked up in ACTIONS, an explicit
+// list, so injected markup cannot reach an unrelated global.
 const ACTION_NAME = /^[A-Za-z_$][\w$]*$/;
 
 // Actions that do not fit the argument convention.
@@ -89,13 +89,116 @@ const KEYDOWN_ACTIONS = {
   cookStepKey: (el, event) => cookStepKey(event, Number(el.dataset.index)),
 };
 
+// Click actions, listed so the dispatcher can only ever call one of these.
+// Anything else in a data-action attribute does nothing, which keeps injected
+// markup from reaching an unrelated global.
+const ACTIONS = {
+  addCookTimerTime,
+  addPantryItem,
+  addPantryMissing,
+  addRecipeToShoppingList,
+  addShoppingItem,
+  addWeekToShoppingList,
+  browseAsGuest,
+  cancelPhotoUpload,
+  cancelUpload,
+  changeCookScale,
+  changePlanWeek,
+  clearPantry,
+  clearShoppingList,
+  closeAiTools,
+  closeCollectionsManager,
+  closeCookMode,
+  closeCookedModal,
+  closeDetail,
+  closeImport,
+  closeMealPlan,
+  closePantry,
+  closePasteImport,
+  closePicker,
+  closeShareModal,
+  closeShoppingList,
+  closeStorage,
+  confirmPhotoUpload,
+  copyShareLink,
+  createShareLink,
+  cycleTheme,
+  deleteCollection,
+  deleteCookedEntry,
+  deleteRecipe,
+  dismissIosHint,
+  exportBackup,
+  installApp,
+  lockApp,
+  mergeShoppingList,
+  openAiTools,
+  openCollectionsManager,
+  openCookMode,
+  openCookedModal,
+  openDetail,
+  openEditMode,
+  openImport,
+  openMealPlan,
+  openPantry,
+  openPantryResult,
+  openPasteImport,
+  openPicker,
+  openPlannedRecipe,
+  openShareModal,
+  openShoppingList,
+  openStorage,
+  openUpload,
+  pickBackupFiles,
+  pickRecipe,
+  pickRecipePhoto,
+  printCard,
+  printRecipe,
+  processImport,
+  removeCollectionFromRecipe,
+  removeCookTimer,
+  removeFromPlan,
+  removePantryItem,
+  removeRecipePhoto,
+  removeShoppingItem,
+  removeTag,
+  renameCollectionPrompt,
+  replaceWithAi,
+  resetCookList,
+  retryMealPlan,
+  retryShoppingList,
+  revokeShareLink,
+  runAiSubstitute,
+  runAiTool,
+  saveCollectionFromInput,
+  saveCookedEntry,
+  saveEdit,
+  savePastedRecipe,
+  setCollectionFilter,
+  setFilter,
+  setMealFilter,
+  showCollectionInput,
+  showTagInput,
+  startBatch,
+  stopBeep,
+  toggleAppMenu,
+  toggleCookIng,
+  toggleCookStep,
+  toggleCookTimerPause,
+  toggleFavorite,
+  toggleShoppingItem,
+  toggleShowAllTags,
+  tryUnlock,
+  undoAiReplace,
+};
+
 function runClickAction(el, event) {
   if (el.dataset.stop === '1') event.stopPropagation();
   const name = el.dataset.action || '';
   const special = SPECIAL_CLICK[name];
   if (special) return special(el, event);
   if (!ACTION_NAME.test(name)) return;
-  const fn = window[name];
+  if (!Object.prototype.hasOwnProperty.call(ACTIONS, name)) return;
+  const fn = ACTIONS[name];
   if (typeof fn !== 'function') return;
   const args = [];
   if ('bool' in el.dataset) args.push(el.dataset.bool === '1');
