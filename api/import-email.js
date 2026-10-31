@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
-import sharp from 'sharp';
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { parsePdfText } from '../lib/pdf-text.js';
+import { resizeImage } from '../lib/image-input.js';
 import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { getKv } from '../lib/redis.js';
@@ -110,10 +110,9 @@ export default async function handler(req, res) {
 
       try {
         const buffer = Buffer.from(base64, 'base64');
-        const parsed = await pdfParse(buffer);
-        const text = (parsed.text || '').trim();
+        const text = await parsePdfText(buffer);
 
-        console.log(`PDF ${filename}: ${parsed.numpages || 1} pages, ${text.length} chars of text`);
+        console.log(`PDF ${filename}: ${text.length} chars of text`);
 
         if (text.length < 50) {
           console.warn(`PDF ${filename} has almost no text (${text.length} chars); skipping`);
@@ -144,11 +143,7 @@ export default async function handler(req, res) {
         const base64Data = att.content || att.data;
         if (!base64Data) continue;
         try {
-          const resized = await sharp(Buffer.from(base64Data, 'base64'))
-            .rotate()
-            .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
-            .jpeg({ quality: 80 })
-            .toBuffer();
+          const resized = await resizeImage(Buffer.from(base64Data, 'base64'), { width: 1024, height: 1024, quality: 80 });
 
           // Groq expects a data URL: data:image/jpeg;base64,...
           images.push(`data:image/jpeg;base64,${resized.toString('base64')}`);

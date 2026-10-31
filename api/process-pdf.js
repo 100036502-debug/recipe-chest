@@ -1,6 +1,6 @@
 // POST /api/process-pdf — extract a recipe from an uploaded PDF.
 // Same duplicate detection, photo lookup and storage as api/process.js.
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { parsePdfText, PdfUnreadable } from '../lib/pdf-text.js';
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { findDuplicate, isUsableRecipe, cleanTags, normalizeMealType } from '../lib/recipes.js';
@@ -46,8 +46,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const parsed = await pdfParse(buffer);
-    const text = (parsed.text || '').trim();
+    const text = await parsePdfText(buffer);
     if (text.length < 50) {
       return res.status(400).json({ error: 'That PDF has almost no readable text (it may be a scan). Copy the recipe text instead.' });
     }
@@ -101,6 +100,9 @@ export default async function handler(req, res) {
     await kv.lpush('recipe_ids', id);
     return res.status(200).json(finalRecipe);
   } catch (error) {
+    if (error instanceof PdfUnreadable) {
+      return res.status(400).json({ error: error.message });
+    }
     // pdf-parse throws for corrupt files; treat those as user errors.
     if (/pdf|invalid|unexpected end/i.test(String(error && error.message || ''))) {
       console.error('PDF parse failed:', error.message);

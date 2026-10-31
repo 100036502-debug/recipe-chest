@@ -1,4 +1,3 @@
-/* eslint-disable no-undef -- the callbacks below run in the browser, not in Node. */
 import { test, expect, unlock } from './helpers.js';
 
 const CACHE_KEY = 'rc_recipes_cache';
