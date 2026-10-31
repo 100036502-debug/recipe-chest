@@ -2,6 +2,8 @@
 // Photos live in Redis under photo:<id> (1000px) and photothumb:<id> (400px).
 import { Redis } from '@upstash/redis';
 import { resizeImage } from '../lib/image-input.js';
+import { cleanText } from '../lib/recipes.js';
+import { saveRecipeRecord } from '../lib/save-recipe.js';
 import { requireAuth } from '../lib/auth.js';
 import { ID_PATTERN } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
@@ -97,11 +99,11 @@ export default async function handler(req, res) {
         await kv.del(`photo:${id}`, `photothumb:${id}`);
         return res.status(404).json({ error: 'Recipe was deleted' });
       }
-      const credit = typeof body.credit === 'string' ? body.credit.trim().slice(0, 100) : '';
+      const credit = typeof body.credit === 'string' ? cleanText(body.credit, 100) : '';
       const userPhoto = { updatedAt: Date.now() };
       if (credit) userPhoto.credit = credit;
       const updated = { ...fresh, userPhoto };
-      await kv.set(`recipe:${id}`, updated);
+      await saveRecipeRecord(kv, updated);
       return res.status(200).json(updated);
     } catch (e) {
       // sharp throws for invalid/corrupt images; those are user errors (400).
@@ -128,7 +130,7 @@ export default async function handler(req, res) {
       if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
 
       const { userPhoto, ...rest } = recipe;
-      await kv.set(`recipe:${id}`, rest);
+      await saveRecipeRecord(kv, rest);
       return res.status(200).json(rest);
     } catch (e) {
       return sendServerError(res, e);

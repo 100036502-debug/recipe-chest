@@ -98,3 +98,45 @@ test('JSON-LD page data is stripped after entities are decoded', () => {
   assert.equal(/<[a-z/]/i.test(text), false, `no tag survived: ${text}`);
   assert.match(recipe.title, /Pasta/);
 });
+
+// ---- S2: the write paths themselves, not just the normalizer --------------
+
+test('saveRecipeRecord is the only way a recipe reaches Redis', async () => {
+  const { createFakeKv } = await import('./helpers/fake-kv.js');
+  const { saveRecipeRecord } = await import('../lib/save-recipe.js');
+  const kv = createFakeKv();
+
+  const saved = await saveRecipeRecord(kv, {
+    id: 'r_1',
+    title: `${HOSTILE}${'x'.repeat(400)}`,
+    notes: HOSTILE,
+    addedBy: HOSTILE,
+    user: HOSTILE,
+    ingredients: [HOSTILE],
+    instructions: [HOSTILE],
+    userPhoto: { credit: HOSTILE, updatedAt: 1 },
+    cookLog: [{ date: '2026-10-01', by: HOSTILE, note: HOSTILE }],
+  });
+
+  const stored = await kv.get('recipe:r_1');
+  const text = JSON.stringify(stored);
+  assert.equal(/<[a-z/]/i.test(text), false, `no tag reached Redis: ${text}`);
+  assert.equal(stored.title.length, 200);
+  assert.equal(saved.title, stored.title);
+});
+
+test('a recipe without an id is refused rather than written to "recipe:undefined"', async () => {
+  const { createFakeKv } = await import('./helpers/fake-kv.js');
+  const { saveRecipeRecord } = await import('../lib/save-recipe.js');
+  const kv = createFakeKv();
+  await assert.rejects(() => saveRecipeRecord(kv, { title: 'Soup' }), /needs an id/);
+});
+
+test('shopping list text and the cook-log name are stripped too', async () => {
+  const { cleanItems } = await import('../lib/shopping-list.js');
+  const { cleanCookLog } = await import('../lib/recipes.js');
+  const items = cleanItems([{ text: `${HOSTILE}milk` }]);
+  assert.equal(/<[a-z/]/i.test(items[0].text), false);
+  const log = cleanCookLog([{ date: '2026-10-01', by: `${HOSTILE}Sam`, note: HOSTILE }]);
+  assert.equal(/<[a-z/]/i.test(JSON.stringify(log)), false);
+});

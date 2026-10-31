@@ -3,6 +3,7 @@ import { requireAuth } from '../lib/auth.js';
 import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, cleanCollections, findDuplicate, getRecipesByIds, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { TRASH_TTL_SECONDS, buildTrashEntry, trashKey } from '../lib/trash.js';
 import { sendServerError } from '../lib/http.js';
+import { saveRecipeRecord } from '../lib/save-recipe.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -106,7 +107,7 @@ export default async function handler(req, res) {
         createdAt: Number.isFinite(body.createdAt) ? body.createdAt : Date.now(),
       }, body);
 
-      await kv.set(`recipe:${id}`, recipe);
+      await saveRecipeRecord(kv, recipe);
       const existingIds = await kv.lrange('recipe_ids', 0, -1);
       if (!existingIds.includes(id)) {
         await kv.lpush('recipe_ids', id);
@@ -129,7 +130,7 @@ export default async function handler(req, res) {
 
       const updated = applyEditableFields({ ...existing }, body);
       updated.updatedAt = Date.now();
-      await kv.set(`recipe:${id}`, updated);
+      await saveRecipeRecord(kv, updated);
       return res.status(200).json(updated);
     } catch (e) {
       return sendServerError(res, e);
