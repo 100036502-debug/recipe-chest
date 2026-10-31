@@ -80,7 +80,10 @@ export default async function handler(req, res) {
       },
     });
   } catch (e) {
-    return res.status(400).json({ error: 'Could not fetch page: ' + e.message });
+    // One message for every failure: "not allowed" vs "could not resolve" told
+    // a member which internal names exist. The detail stays in the server log.
+    console.error('URL import fetch failed:', e.message);
+    return res.status(400).json({ error: 'Could not fetch that page.' });
   }
 
   // 1. Structured data first: exact, fast and free. Most recipe sites

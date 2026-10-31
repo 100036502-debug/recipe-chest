@@ -151,7 +151,7 @@ deletes the key and the URL starts returning 404 immediately.
 ## AI tools and limits
 
 Nine transformations (scale, simplify, convert units, summarise, substitute, and
-more) go through `/api/ai-tool`. Limits: 20 requests per hour per IP and
+more) go through `/api/ai-transform`. Limits: 20 requests per hour per IP and
 `AI_DAILY_LIMIT` (default 100) per day overall, counted in Redis. Output is
 sanitised and applied as a replacement that can be undone for 60 seconds. No
 prompt or result is stored server-side; the undo snapshot lives in the browser.
@@ -232,7 +232,15 @@ Do not rename these keys casually; the app relies on them:
 - `recipe_ids` — list of all recipe ids
 - `photo:<id>`, `photothumb:<id>` — a user's dish photo (base64 JPEG)
 - `email_import:<messageId>` — idempotency markers (30-day TTL)
-- `rl:<name>:<ip>` — rate-limit counters (1-hour TTL)
+- `rl:<name>:<ip>` — rate-limit counters (window TTL, renewed if the TTL is lost)
+- `verify_attempts:<ip>` — wrong codes per IP (15-minute window)
+- `verify_failures:global` — wrong codes across all IPs, for the slowdown
+- `share:<token>` — a share link: the token, the recipe id and the expiry
+  (expires on its own; Revoke deletes it)
+- `imgcache:<query>` — Unsplash search results (30-day TTL)
+- `ai_usage:<YYYY-MM-DD>` — AI tool calls today, plus the daily cap
+- `storage_stats` — the cached storage panel answer (10-minute TTL)
+- `email_import_daily:<YYYY-MM-DD>` — the importer's daily counter
 - `shopping_list:<deviceId>`, `meal_plan:<deviceId>` — per-device lists
 - `trash:<id>` — a copy of a recipe (`{recipe, photo?, photothumb?, deletedAt}`)
   written just before it is deleted, so the Undo in the toast can put it back
