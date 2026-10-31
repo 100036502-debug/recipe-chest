@@ -5,6 +5,7 @@ import { resizeImage } from '../lib/image-input.js';
 import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { getKv } from '../lib/redis.js';
+import { bumpCounter } from '../lib/rate-limit.js';
 import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
@@ -61,6 +62,20 @@ export default async function handler(req, res) {
 
   if (!process.env.GROQ_API_KEY) {
     return res.status(500).json({ error: 'Groq API is not configured' });
+  }
+
+  // A daily ceiling for the whole importer. The bearer secret is good enough to
+  // read mail, so a leaked secret should not be able to spend the AI budget.
+  const dailyLimit = Number(process.env.EMAIL_IMPORT_DAILY_LIMIT) || 50;
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const used = await bumpCounter(getKv(), `email_import_daily:${day}`, 2 * 24 * 60 * 60);
+    if (used > dailyLimit) {
+      return res.status(429).json({ error: 'Daily email import limit reached. Try again tomorrow.' });
+    }
+  } catch (e) {
+    // A counter we cannot read must not stop the owner's mail from importing.
+    console.error('Email import daily counter unavailable:', e.message);
   }
 
   try {

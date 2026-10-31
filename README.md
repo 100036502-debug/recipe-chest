@@ -198,10 +198,21 @@ Use the `⋯` menu next to your name in the header.
    - `RECIPE_IMPORT_SECRET` — must equal the `EMAIL_IMPORT_SECRET` above.
 3. Run `installRecipeImportTrigger()` once from the editor (approve the
    permissions). This checks for new mail every 5 minutes.
-4. Gmail: label an email with the label **`recipe-import`** (create it once) —
+4. Optional but recommended: set the script property **`ALLOWED_SENDERS`** to a
+   comma-separated list of exact addresses (case-insensitive). With it set, mail
+   from anyone else is marked read and labelled `recipe-import-failed` without
+   being sent anywhere. **If you create a Gmail filter that auto-labels mail,
+   set `ALLOWED_SENDERS` first**: the label is otherwise the only gate, and a
+   filter turns every sender into a potential importer.
+6. Gmail: label an email with the label **`recipe-import`** (create it once) —
    the script picks up unread emails there, sends text, PDFs and images to the
    API, and replies with what was saved. Failed imports get the label
-   **`recipe-import-failed`** instead of retrying forever.
+   **`recipe-import-failed`** instead of retrying forever. Replies go to the
+   sender's From address only, never to a Reply-To header they control.
+
+The importer also has a daily ceiling: 50 imports per day by default, set with
+`EMAIL_IMPORT_DAILY_LIMIT` on Vercel. A leaked import secret can therefore cost
+at most one day's worth of AI calls.
 
 ## Redis data format
 
