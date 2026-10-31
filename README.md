@@ -37,8 +37,8 @@ with your last saved recipes).
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `ACCESS_CODE` | yes | The unlock code for the app. |
-| `SESSION_SECRET` | yes | Random string; signs the session cookie. |
+| `ACCESS_CODE` | yes | The unlock code for the app. Use 12+ characters; `openssl rand -hex 32`. |
+| `SESSION_SECRET` | yes | Signs the session cookie. 32+ characters; `openssl rand -hex 32`. |
 | `GROQ_API_KEY` | yes | Key from [console.groq.com](https://console.groq.com). |
 | `GROQ_MODEL` | no | Text model. Defaults to `qwen/qwen3.8-27b` (vision-capable reasoning model; reasoning is disabled per request). |
 | `GROQ_VISION_MODEL` | no | Model for image imports. Defaults to `GROQ_MODEL`. |
@@ -57,6 +57,26 @@ All variables are listed with empty values in [`.env.example`](.env.example).
 > **Unsplash demo mode:** without production approval you are limited to ~50 requests/hour.
 > Serious use needs Unsplash production access. Photos are always hotlinked from
 > `images.unsplash.com` with photographer credit, per the API guidelines.
+
+### Choosing the two secrets
+
+`ACCESS_CODE` and `SESSION_SECRET` are the whole lock, so treat them like
+passwords:
+
+```bash
+openssl rand -hex 32   # paste into SESSION_SECRET
+```
+
+Use a 12-character minimum passphrase for `ACCESS_CODE` (a memorable phrase of
+three or four words beats a short scramble). The app logs a warning on cold start
+when `ACCESS_CODE` is shorter than 12 characters or `SESSION_SECRET` shorter than
+32, but it will not refuse to start: a hard failure would take the app down
+during an emergency rollout.
+
+The server also throttles login attempts: 10 wrong codes per IP per 15 minutes,
+plus a delay of about a second and a half on wrong-code answers once there have
+been 100 failures in an hour across all IPs. It never locks everyone out, because
+a global lockout would let one attacker shut the owner out.
 
 ### Limits to keep in mind
 

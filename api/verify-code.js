@@ -2,12 +2,20 @@
 import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
 import { makeSessionValue, getSession, guestCode, guestOpen, guestSigningCode } from '../lib/auth.js';
+import { bumpCounter, failurePenalty, getClientIp, sleep } from '../lib/rate-limit.js';
+import { logError } from '../lib/log.js';
 
 const ACCESS_CODE = process.env.ACCESS_CODE;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 
 if (!ACCESS_CODE) {
   console.error('ACCESS_CODE is not set in environment variables');
+} else if (ACCESS_CODE.length < 12) {
+  // A short code is a guessable code. Warn on cold start, do not refuse to run.
+  logError('weak-access-code', new Error(`ACCESS_CODE is only ${ACCESS_CODE.length} characters; use 12 or more.`));
+}
+if (SESSION_SECRET && SESSION_SECRET.length < 32) {
+  logError('weak-session-secret', new Error(`SESSION_SECRET is only ${SESSION_SECRET.length} characters; use 32 or more.`));
 }
 
 // let, not const: tests swap in a fake store instead of a real connection.
@@ -20,12 +28,6 @@ export function __setKvForTests(store) { kv = store; }
 
 const MAX_ATTEMPTS = 10;
 const WINDOW_SECONDS = 15 * 60;
-
-function clientIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  const ip = forwarded || (req.socket && req.socket.remoteAddress) || 'unknown';
-  return ip.replace(/[^a-zA-Z0-9:._-]/g, '').slice(0, 64) || 'unknown';
-}
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -64,11 +66,10 @@ export default async function handler(req, res) {
     }
 
     // Throttle guesses per IP. If Redis is down, fail open rather than lock everyone out.
-    const attemptsKey = `verify_attempts:${clientIp(req)}`;
+    const attemptsKey = `verify_attempts:${getClientIp(req)}`;
     let attempts = 0;
     try {
-      attempts = await kv.incr(attemptsKey);
-      if (attempts === 1) await kv.expire(attemptsKey, WINDOW_SECONDS);
+      attempts = await bumpCounter(kv, attemptsKey, WINDOW_SECONDS);
     } catch (e) {
       console.error('Rate limit check failed:', e.message);
     }
@@ -93,6 +94,15 @@ export default async function handler(req, res) {
     const guest = guestCode();
     const role = same(ACCESS_CODE) ? 'member' : (guest && same(guest) ? 'guest' : null);
     if (!role) {
+      // Count failures across every IP, and slow the answer down once there are
+      // a lot of them. A hard global lockout would let an attacker shut the
+      // owner out; a delay only makes guessing expensive.
+      let failures = 0;
+      try {
+        failures = await bumpCounter(kv, 'verify_failures:global', WINDOW_SECONDS);
+      } catch (e) { /* a counter we cannot read must not block the answer */ }
+      const penalty = failurePenalty(failures);
+      if (penalty) await sleep(penalty);
       return res.status(401).json({ unlocked: false });
     }
 
