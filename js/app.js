@@ -289,7 +289,16 @@ let offlineMode = false; // true when showing cached recipes (read-only)
 function getDeviceId() {
   let id = localStorage.getItem(DEVICE_KEY);
   if (!id) {
-    id = 'd_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+    // A guessable id would let anyone else address this device's list, so use
+    // the platform's random UUID where it exists and fall back to getRandomValues.
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      id = 'd_' + window.crypto.randomUUID();
+    } else if (window.crypto && window.crypto.getRandomValues) {
+      const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+      id = 'd_' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    } else {
+      id = 'd_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+    }
     localStorage.setItem(DEVICE_KEY, id);
   }
   return id;

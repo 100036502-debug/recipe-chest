@@ -2,11 +2,15 @@ import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { sendServerError } from '../lib/http.js';
 import { cleanItems, decideWrite } from '../lib/shopping-list.js';
+import { refuseGuestWrite } from '../lib/device-buckets.js';
 
-const kv = new Redis({
+// let, not const: tests swap in a fake store.
+let kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
+
+export function __setKvForTests(store) { kv = store; }
 
 function keyFor(deviceId) {
   return `shopping_list:${deviceId}`;
@@ -29,6 +33,10 @@ export default async function handler(req, res) {
   }
 
   const key = keyFor(deviceId);
+
+  // Guests keep their own device list; the household bucket is members only.
+  if (req.method !== 'GET' && req.method !== 'OPTIONS'
+    && await refuseGuestWrite(req, res, kv, { deviceId, name: 'list-write' })) return;
 
   // GET: return the current list for this device
   if (req.method === 'GET') {

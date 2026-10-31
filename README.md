@@ -96,6 +96,15 @@ shopping list and meal plan, which stay writable so a guest can still add to the
 list. The client hides the write buttons as a convenience; the server enforces
 the rule.
 
+### What a guest may write
+
+A guest session (typed code or the Browse as guest button) may edit its **own**
+device's shopping list and meal plan. That is what makes the kitchen tablet
+work. It may not touch the household `shared` bucket: only a member may write or
+delete that one, and a guest attempt gets `403 View-only access`. Guest writes
+are also rate limited to 120 per hour per IP, because a guest cookie costs
+nothing to obtain once `GUEST_OPEN` is on.
+
 ### Browse as guest (no code)
 
 `GUEST_OPEN=1` adds a **Browse as guest** button under the lock screen's Enter
