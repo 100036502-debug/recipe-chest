@@ -6,6 +6,7 @@ import { safeFetchText } from '../lib/safe-fetch.js';
 import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { extractRecipeFromJsonLd } from '../lib/jsonld-recipe.js';
+import { truncateHtml, removeBlocks } from '../lib/html-text.js';
 import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';
 
@@ -16,12 +17,12 @@ const kv = new Redis({
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
 
-function stripHtml(html) {
+function stripHtml(rawHtml) {
+  // Bounded first, then linear block removal: the lazy regexes this replaced
+  // went quadratic on a page full of unclosed script tags.
+  let html = truncateHtml(rawHtml);
+  for (const tag of ['script', 'style', 'noscript', 'svg']) html = removeBlocks(html, tag);
   return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
