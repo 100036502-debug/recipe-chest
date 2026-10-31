@@ -37,8 +37,8 @@ with your last saved recipes).
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `ACCESS_CODE` | yes | The unlock code for the app. |
-| `SESSION_SECRET` | yes | Random string; signs the session cookie. |
+| `ACCESS_CODE` | yes | The unlock code for the app. Use 12+ characters; `openssl rand -hex 32`. |
+| `SESSION_SECRET` | yes | Signs the session cookie. 32+ characters; `openssl rand -hex 32`. |
 | `GROQ_API_KEY` | yes | Key from [console.groq.com](https://console.groq.com). |
 | `GROQ_MODEL` | no | Text model. Defaults to `qwen/qwen3.8-27b` (vision-capable reasoning model; reasoning is disabled per request). |
 | `GROQ_VISION_MODEL` | no | Model for image imports. Defaults to `GROQ_MODEL`. |
@@ -57,6 +57,26 @@ All variables are listed with empty values in [`.env.example`](.env.example).
 > **Unsplash demo mode:** without production approval you are limited to ~50 requests/hour.
 > Serious use needs Unsplash production access. Photos are always hotlinked from
 > `images.unsplash.com` with photographer credit, per the API guidelines.
+
+### Choosing the two secrets
+
+`ACCESS_CODE` and `SESSION_SECRET` are the whole lock, so treat them like
+passwords:
+
+```bash
+openssl rand -hex 32   # paste into SESSION_SECRET
+```
+
+Use a 12-character minimum passphrase for `ACCESS_CODE` (a memorable phrase of
+three or four words beats a short scramble). The app logs a warning on cold start
+when `ACCESS_CODE` is shorter than 12 characters or `SESSION_SECRET` shorter than
+32, but it will not refuse to start: a hard failure would take the app down
+during an emergency rollout.
+
+The server also throttles login attempts: 10 wrong codes per IP per 15 minutes,
+plus a delay of about a second and a half on wrong-code answers once there have
+been 100 failures in an hour across all IPs. It never locks everyone out, because
+a global lockout would let one attacker shut the owner out.
 
 ### Limits to keep in mind
 
@@ -96,6 +116,15 @@ shopping list and meal plan, which stay writable so a guest can still add to the
 list. The client hides the write buttons as a convenience; the server enforces
 the rule.
 
+### What a guest may write
+
+A guest session (typed code or the Browse as guest button) may edit its **own**
+device's shopping list and meal plan. That is what makes the kitchen tablet
+work. It may not touch the household `shared` bucket: only a member may write or
+delete that one, and a guest attempt gets `403 View-only access`. Guest writes
+are also rate limited to 120 per hour per IP, because a guest cookie costs
+nothing to obtain once `GUEST_OPEN` is on.
+
 ### Browse as guest (no code)
 
 `GUEST_OPEN=1` adds a **Browse as guest** button under the lock screen's Enter
@@ -122,7 +151,7 @@ deletes the key and the URL starts returning 404 immediately.
 ## AI tools and limits
 
 Nine transformations (scale, simplify, convert units, summarise, substitute, and
-more) go through `/api/ai-tool`. Limits: 20 requests per hour per IP and
+more) go through `/api/ai-transform`. Limits: 20 requests per hour per IP and
 `AI_DAILY_LIMIT` (default 100) per day overall, counted in Redis. Output is
 sanitised and applied as a replacement that can be undone for 60 seconds. No
 prompt or result is stored server-side; the undo snapshot lives in the browser.
@@ -132,6 +161,16 @@ prompt or result is stored server-side; the undo snapshot lives in the browser.
 An installed Android app shares into the import dialog through the manifest's
 Web Share Target. iOS has no share target: copy the link into **Import from URL**.
 The iOS install hint in the app walks through Share, then Add to Home Screen.
+
+### What a saved recipe may contain
+
+Every write path (POST and PATCH, URL import through JSON-LD or the model, PDF
+import, email import) runs incoming data through `normalizeIncomingRecipe` in
+`lib/recipes.js`: titles are capped at 200 characters, descriptions and notes at
+500 and 1000, times and servings at 40, each ingredient or instruction at 1000
+with at most 100 items, and markup is stripped from all free text. Renderers
+escape as well; the sanitizer exists so one missed escape cannot become stored
+markup.
 
 ## Troubleshooting
 
@@ -169,10 +208,21 @@ Use the `⋯` menu next to your name in the header.
    - `RECIPE_IMPORT_SECRET` — must equal the `EMAIL_IMPORT_SECRET` above.
 3. Run `installRecipeImportTrigger()` once from the editor (approve the
    permissions). This checks for new mail every 5 minutes.
-4. Gmail: label an email with the label **`recipe-import`** (create it once) —
+4. Optional but recommended: set the script property **`ALLOWED_SENDERS`** to a
+   comma-separated list of exact addresses (case-insensitive). With it set, mail
+   from anyone else is marked read and labelled `recipe-import-failed` without
+   being sent anywhere. **If you create a Gmail filter that auto-labels mail,
+   set `ALLOWED_SENDERS` first**: the label is otherwise the only gate, and a
+   filter turns every sender into a potential importer.
+6. Gmail: label an email with the label **`recipe-import`** (create it once) —
    the script picks up unread emails there, sends text, PDFs and images to the
    API, and replies with what was saved. Failed imports get the label
-   **`recipe-import-failed`** instead of retrying forever.
+   **`recipe-import-failed`** instead of retrying forever. Replies go to the
+   sender's From address only, never to a Reply-To header they control.
+
+The importer also has a daily ceiling: 50 imports per day by default, set with
+`EMAIL_IMPORT_DAILY_LIMIT` on Vercel. A leaked import secret can therefore cost
+at most one day's worth of AI calls.
 
 ## Redis data format
 
@@ -182,7 +232,15 @@ Do not rename these keys casually; the app relies on them:
 - `recipe_ids` — list of all recipe ids
 - `photo:<id>`, `photothumb:<id>` — a user's dish photo (base64 JPEG)
 - `email_import:<messageId>` — idempotency markers (30-day TTL)
-- `rl:<name>:<ip>` — rate-limit counters (1-hour TTL)
+- `rl:<name>:<ip>` — rate-limit counters (window TTL, renewed if the TTL is lost)
+- `verify_attempts:<ip>` — wrong codes per IP (15-minute window)
+- `verify_failures:global` — wrong codes across all IPs, for the slowdown
+- `share:<token>` — a share link: the token, the recipe id and the expiry
+  (expires on its own; Revoke deletes it)
+- `imgcache:<query>` — Unsplash search results (30-day TTL)
+- `ai_usage:<YYYY-MM-DD>` — AI tool calls today, plus the daily cap
+- `storage_stats` — the cached storage panel answer (10-minute TTL)
+- `email_import_daily:<YYYY-MM-DD>` — the importer's daily counter
 - `shopping_list:<deviceId>`, `meal_plan:<deviceId>` — per-device lists
 - `trash:<id>` — a copy of a recipe (`{recipe, photo?, photothumb?, deletedAt}`)
   written just before it is deleted, so the Undo in the toast can put it back

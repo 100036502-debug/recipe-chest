@@ -1,5 +1,29 @@
 const IMPORT_LABEL = 'recipe-import';
 const FAILED_LABEL = 'recipe-import-failed';
+
+/**
+ * Sender allowlist, optional. Set the Script Property ALLOWED_SENDERS to a
+ * comma-separated list of exact addresses to stop a Gmail filter that
+ * auto-labels mail from turning every sender into an importer.
+ */
+function allowedSender(address) {
+  const raw = PropertiesService.getScriptProperties().getProperty('ALLOWED_SENDERS');
+  if (!raw) return true; // no allowlist configured: the label is the gate
+  const wanted = String(raw)
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  if (!wanted.length) return true;
+  return wanted.indexOf(String(address || '').trim().toLowerCase()) !== -1;
+}
+
+// Replies go to the envelope From only. Reply-To is set by the sender's own
+// mail client, so trusting it lets a stranger pick who receives our mail.
+function fromAddress(message) {
+  const from = String(message.getFrom() || '');
+  const match = from.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return match ? match[0] : '';
+}
 const MAX_IMPORT_ATTEMPTS = 3;
 const MAX_PDFS_PER_MESSAGE = 3;
 const MAX_IMAGES_PER_MESSAGE = 3; // matches the vision model's limit in api/import-email.js
@@ -37,6 +61,16 @@ function pollRecipeImports() {
   for (const thread of threads) {
     for (const message of thread.getMessages()) {
       if (!message.isUnread()) continue;
+      if (!allowedSender(fromAddress(message))) {
+        // Never send the contents anywhere: mark it read and park it, with no
+        // reply to an address the sender controls.
+        const failedLabel = GmailApp.getUserLabelByName(FAILED_LABEL) || GmailApp.createLabel(FAILED_LABEL);
+        failedLabel.addToThread(thread);
+        const importLabel = GmailApp.getUserLabelByName(IMPORT_LABEL);
+        if (importLabel) importLabel.removeFromThread(thread);
+        message.markRead();
+        continue;
+      }
       try {
         importMessage(message, apiUrl, secret);
       } catch (error) {
@@ -92,11 +126,10 @@ function markFailed(thread, message, reason) {
   if (importLabel) importLabel.removeFromThread(thread);
   message.markRead();
 
-  const sender = message.getReplyTo() || message.getFrom();
-  const recipientMatch = String(sender).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-  if (recipientMatch) {
+  const sender = fromAddress(message);
+  if (sender) {
     GmailApp.sendEmail(
-      recipientMatch[0],
+      sender,
       'Recipe Chest: could not import this email',
       `Could not import this email: ${reason}\n\n` +
       'Check that it contains a recipe (as text, a PDF or a photo) and try sending it again.'
@@ -108,9 +141,8 @@ function markFailed(thread, message, reason) {
  * Sends one email's contents to the Vercel API, including PDF attachments.
  */
 function importMessage(message, apiUrl, secret) {
-  const sender = message.getReplyTo() || message.getFrom();
-  const recipientMatch = sender.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-  if (!recipientMatch) {
+  const sender = fromAddress(message);
+  if (!sender) {
     throw new Error('Could not find the original sender email address.');
   }
 
@@ -160,7 +192,7 @@ function importMessage(message, apiUrl, secret) {
     throw new Error('Recipe API response did not include any saved recipes.');
   }
 
-  sendConfirmation(recipientMatch[0], saved, budget.skipped);
+  sendConfirmation(sender, saved, budget.skipped);
   message.markRead();
 }
 

@@ -1,11 +1,12 @@
 import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
-import sharp from 'sharp';
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { parsePdfText } from '../lib/pdf-text.js';
+import { resizeImage } from '../lib/image-input.js';
 import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { getKv } from '../lib/redis.js';
-import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe } from '../lib/recipes.js';
+import { bumpCounter } from '../lib/rate-limit.js';
+import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
 
@@ -63,6 +64,20 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Groq API is not configured' });
   }
 
+  // A daily ceiling for the whole importer. The bearer secret is good enough to
+  // read mail, so a leaked secret should not be able to spend the AI budget.
+  const dailyLimit = Number(process.env.EMAIL_IMPORT_DAILY_LIMIT) || 50;
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const used = await bumpCounter(getKv(), `email_import_daily:${day}`, 2 * 24 * 60 * 60);
+    if (used > dailyLimit) {
+      return res.status(429).json({ error: 'Daily email import limit reached. Try again tomorrow.' });
+    }
+  } catch (e) {
+    // A counter we cannot read must not stop the owner's mail from importing.
+    console.error('Email import daily counter unavailable:', e.message);
+  }
+
   try {
     const payload = req.body || {};
     const sender = String(payload.from || payload.From || 'Email Import');
@@ -110,17 +125,16 @@ export default async function handler(req, res) {
 
       try {
         const buffer = Buffer.from(base64, 'base64');
-        const parsed = await pdfParse(buffer);
-        const text = (parsed.text || '').trim();
+        const text = await parsePdfText(buffer);
 
-        console.log(`PDF ${filename}: ${parsed.numpages || 1} pages, ${text.length} chars of text`);
+        console.log(`PDF ${filename}: ${text.length} chars of text`);
 
         if (text.length < 50) {
           console.warn(`PDF ${filename} has almost no text (${text.length} chars); skipping`);
           continue;
         }
 
-        const recipe = await recipeFromPdfText(text);
+        const recipe = normalizeIncomingRecipe(await recipeFromPdfText(text));
 
         if (!isUsableRecipe(recipe)) {
           console.warn(`PDF ${filename}: no usable recipe in the model output`, recipe.error || '');
@@ -144,11 +158,7 @@ export default async function handler(req, res) {
         const base64Data = att.content || att.data;
         if (!base64Data) continue;
         try {
-          const resized = await sharp(Buffer.from(base64Data, 'base64'))
-            .rotate()
-            .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
-            .jpeg({ quality: 80 })
-            .toBuffer();
+          const resized = await resizeImage(Buffer.from(base64Data, 'base64'), { width: 1024, height: 1024, quality: 80 });
 
           // Groq expects a data URL: data:image/jpeg;base64,...
           images.push(`data:image/jpeg;base64,${resized.toString('base64')}`);
@@ -164,7 +174,7 @@ export default async function handler(req, res) {
             ...images.map((url) => ({ type: 'image_url', image_url: { url } })),
           ];
 
-          const recipe = await callGroq(contentPayload, { vision: true });
+          const recipe = normalizeIncomingRecipe(await callGroq(contentPayload, { vision: true }));
 
           if (!isUsableRecipe(recipe)) {
             console.warn('Image recipe: no usable recipe in the model output', recipe.error || '');
@@ -194,7 +204,7 @@ export default async function handler(req, res) {
         ]);
 
         if (isUsableRecipe(recipe)) {
-          const saved = await persistRecipe(recipe, senderName);
+          const saved = await persistRecipe(normalizeIncomingRecipe(recipe), senderName);
           savedRecipes.push(saved);
           console.log(`${saved.duplicate ? 'Already had' : 'Saved'} recipe from email body: ${saved.recipe.title}`);
         }

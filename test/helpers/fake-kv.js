@@ -63,6 +63,14 @@ export function createFakeKv() {
       return 1;
     },
 
+    // Redis semantics: -2 when the key is missing, -1 when it has no expiry.
+    async ttl(key) {
+      const entry = data.get(key);
+      if (!entry || (entry.expiresAt && entry.expiresAt <= Date.now())) return -2;
+      if (!entry.expiresAt) return -1;
+      return Math.ceil((entry.expiresAt - Date.now()) / 1000);
+    },
+
     async strlen(key) {
       const value = readString(key);
       if (value === null || value === undefined) return 0;

@@ -48,7 +48,7 @@ function fetchJson_(url, secret) {
     method: 'get',
     headers: { Authorization: 'Bearer ' + secret },
     muteHttpExceptions: true,
-    followRedirects: true,
+    followRedirects: false, // a redirect would replay the Bearer secret to another host
   });
   var code = response.getResponseCode();
   if (code !== 200) {

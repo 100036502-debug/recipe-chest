@@ -3,9 +3,10 @@ import { requireAuth } from '../lib/auth.js';
 import { groqChat } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { safeFetchText } from '../lib/safe-fetch.js';
-import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe } from '../lib/recipes.js';
+import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { extractRecipeFromJsonLd } from '../lib/jsonld-recipe.js';
+import { truncateHtml, removeBlocks } from '../lib/html-text.js';
 import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';
 
@@ -16,12 +17,12 @@ const kv = new Redis({
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
 
-function stripHtml(html) {
+function stripHtml(rawHtml) {
+  // Bounded first, then linear block removal: the lazy regexes this replaced
+  // went quadratic on a page full of unclosed script tags.
+  let html = truncateHtml(rawHtml);
+  for (const tag of ['script', 'style', 'noscript', 'svg']) html = removeBlocks(html, tag);
   return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
@@ -79,7 +80,10 @@ export default async function handler(req, res) {
       },
     });
   } catch (e) {
-    return res.status(400).json({ error: 'Could not fetch page: ' + e.message });
+    // One message for every failure: "not allowed" vs "could not resolve" told
+    // a member which internal names exist. The detail stays in the server log.
+    console.error('URL import fetch failed:', e.message);
+    return res.status(400).json({ error: 'Could not fetch that page.' });
   }
 
   // 1. Structured data first: exact, fast and free. Most recipe sites
@@ -117,6 +121,10 @@ ${pageText}`;
     if (!recipe) return res.status(500).json({ error: 'AI returned invalid JSON' });
     if (recipe.error) return res.status(400).json({ error: recipe.error });
   }
+
+  // JSON-LD and AI output both land here: cap lengths and strip markup before
+  // anything is stored or echoed back.
+  recipe = normalizeIncomingRecipe(recipe);
 
   // Never save an empty shell; the JSON-LD path already guarantees both.
   if (!isUsableRecipe(recipe)) {

@@ -3,7 +3,12 @@
 // safeHref before it reaches the DOM.
 (function () {
   var RC = window.RCUtils || {};
-  var esc = RC.escapeHtml || function (v) { return String(v == null ? '' : v); };
+  // Fallback: if RCUtils did not load, escape here rather than trust the page.
+  var esc = RC.escapeHtml || function (v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
   var safe = RC.safeHref || function () { return ''; };
 
   var root = document.getElementById('share-root');

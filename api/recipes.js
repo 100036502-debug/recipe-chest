@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
-import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, cleanCollections, findDuplicate, getRecipesByIds } from '../lib/recipes.js';
+import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, cleanCollections, findDuplicate, getRecipesByIds, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { TRASH_TTL_SECONDS, buildTrashEntry, trashKey } from '../lib/trash.js';
 import { sendServerError } from '../lib/http.js';
 
@@ -45,6 +45,10 @@ export function applyEditableFields(target, body) {
       target[field] = String(body[field] ?? '').trim();
     }
   }
+  // Lengths, tags and the list caps, the same way an imported recipe is treated.
+  // Assign back into target: this function has always mutated its argument, and
+  // a caller that ignores the return value must not lose the edit.
+  Object.assign(target, normalizeIncomingRecipe(target));
   return target;
 }
 

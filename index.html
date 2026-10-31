@@ -254,7 +254,7 @@ try { var rcTheme = localStorage.getItem('rc_theme'); if (rcTheme === 'light' ||
     <p id="sl-note" style="color:var(--dim);font-size:.82rem;margin-bottom:12px">Saved for this device.</p>
     <div class="sl-controls">
       <label class="sl-toggle"><input type="checkbox" id="sl-group" onchange="setGroupByAisle(this.checked)"> Group by aisle</label>
-      <label class="sl-toggle"><input type="checkbox" id="sl-shared" onchange="setSharedMode(this.checked)"> Share with everyone</label>
+      <label class="sl-toggle write-only"><input type="checkbox" id="sl-shared" onchange="setSharedMode(this.checked)"> Share with everyone</label>
       <button class="btn-secondary sl-merge-btn" onclick="mergeShoppingList()">Merge duplicates</button>
     </div>
     <div class="sl-add">
@@ -274,7 +274,7 @@ try { var rcTheme = localStorage.getItem('rc_theme'); if (rcTheme === 'light' ||
     <h2 id="plan-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Meal Plan</h2>
     <p id="mp-note" style="color:var(--dim);font-size:.82rem;margin-bottom:12px">Saved for this device. Tap a day to add recipes.</p>
     <div class="sl-controls" style="margin-bottom:16px">
-      <label class="sl-toggle"><input type="checkbox" id="mp-shared" onchange="setSharedMode(this.checked)"> Share with everyone</label>
+      <label class="sl-toggle write-only"><input type="checkbox" id="mp-shared" onchange="setSharedMode(this.checked)"> Share with everyone</label>
     </div>
     <div class="mp-week-nav">
       <button class="btn-secondary mp-nav-btn" onclick="changePlanWeek(-1)">← Previous</button>

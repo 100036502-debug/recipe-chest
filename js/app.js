@@ -59,6 +59,7 @@ function requireWrite() {
 async function apiFetch(url, opts = {}) {
   const res = await fetch(url, { credentials: 'same-origin', ...opts });
   if (res.status === 401 && !String(url).includes('/verify-code')) {
+    clearRecipeCache();
     showLockScreen('Session expired. Enter the access code.');
     throw new Error('Session expired');
   }
@@ -74,10 +75,22 @@ async function apiFetch(url, opts = {}) {
   }
   return res;
 }
+// True while the lock screen is up. Guards the offline cache: a recipe load
+// that was already in flight when the user locked must not render or re-cache.
+let sessionLocked = true;
+
+// The offline copy is readable by anyone holding the device, so it must not
+// outlive the session that was allowed to see it.
+function clearRecipeCache() {
+  try { localStorage.removeItem('rc_recipes_cache'); } catch (e) { /* storage blocked */ }
+}
+
 function showLockScreen(message) {
   document.getElementById('lock-screen').style.display = 'flex';
   document.getElementById('app-content').style.display = 'none';
   document.body.classList.add('locked');
+  sessionLocked = true;
+  clearRecipeCache();
   document.getElementById('lock-err').textContent = message || '';
   const input = document.getElementById('lock-input');
   if (input) input.value = '';
@@ -289,7 +302,16 @@ let offlineMode = false; // true when showing cached recipes (read-only)
 function getDeviceId() {
   let id = localStorage.getItem(DEVICE_KEY);
   if (!id) {
-    id = 'd_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+    // A guessable id would let anyone else address this device's list, so use
+    // the platform's random UUID where it exists and fall back to getRandomValues.
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      id = 'd_' + window.crypto.randomUUID();
+    } else if (window.crypto && window.crypto.getRandomValues) {
+      const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+      id = 'd_' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    } else {
+      id = 'd_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+    }
     localStorage.setItem(DEVICE_KEY, id);
   }
   return id;
@@ -334,6 +356,7 @@ function unlockApp() {
   document.getElementById('lock-screen').style.display = 'none';
   document.getElementById('app-content').style.display = 'flex';
   document.body.classList.remove('locked');
+  sessionLocked = false;
   setUser(getUser());
   getDeviceId();
   loadRecipes();
@@ -558,6 +581,7 @@ async function restoreBackupFiles(files) {
 }
 async function lockApp() {
   try { await apiFetch(`${API}/verify-code`, { method: 'DELETE' }); } catch (e) { /* already locked */ }
+  clearRecipeCache();
   showLockScreen('Locked. Enter the access code.');
 }
 function getUser() { return localStorage.getItem('rc_user') || 'Anonymous'; }
@@ -1076,7 +1100,9 @@ async function loadRecipes() {
   try {
     const res = await apiFetch(`${API}/recipes`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error('Failed to load');
-    recipes = await res.json();
+    const loaded = await res.json();
+    if (sessionLocked) return; // locked while this was in flight
+    recipes = loaded;
     setTimeout(checkStorageBanner, 1500);
     offlineMode = false;
     try { localStorage.setItem('rc_recipes_cache', JSON.stringify(recipes)); } catch (e) { /* storage full */ }
@@ -1084,7 +1110,7 @@ async function loadRecipes() {
   } catch (e) {
     // Network failure (not a 401): fall back to the last saved recipes
     // and show them read-only, so offline still works.
-    if (e.message !== 'Session expired') {
+    if (e.message !== 'Session expired' && !sessionLocked) {
       try {
         const cached = JSON.parse(localStorage.getItem('rc_recipes_cache') || '[]');
         if (Array.isArray(cached) && cached.length) {

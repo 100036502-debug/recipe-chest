@@ -2,11 +2,29 @@ import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { ID_PATTERN } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
+import { refuseGuestWrite } from '../lib/device-buckets.js';
 
-const kv = new Redis({
+// let, not const: tests swap in a fake store.
+let kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
+
+export function __setKvForTests(store) { kv = store; }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_DAYS = 400; // keys per plan
+const DATE_WINDOW_DAYS = 400; // how far from today a date may sit
+
+// One plan is one Redis value, so an unbounded number of date keys is both a
+// storage and a read-amplification problem. Keep the window human (a little
+// over a year either way) and cap the key count.
+export function dateAllowed(date, now = Date.now()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const at = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(at)) return false;
+  return Math.abs(at - now) <= DATE_WINDOW_DAYS * DAY_MS;
+}
 
 function keyFor(deviceId) {
   return `meal_plan:${deviceId}`;
@@ -28,6 +46,10 @@ export default async function handler(req, res) {
 
   const key = keyFor(deviceId);
 
+  // Guests keep their own plan; the household plan is members only.
+  if (req.method !== 'GET' && req.method !== 'OPTIONS'
+    && await refuseGuestWrite(req, res, kv, { deviceId, name: 'plan-write' })) return;
+
   // GET: return the whole plan for this device
   if (req.method === 'GET') {
     try {
@@ -45,6 +67,9 @@ export default async function handler(req, res) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Body must include date as YYYY-MM-DD' });
     }
+    if (!dateAllowed(date)) {
+      return res.status(400).json({ error: 'Date is more than 400 days from today' });
+    }
     if (!Array.isArray(body.recipeIds)) {
       return res.status(400).json({ error: 'Body must include a recipeIds array' });
     }
@@ -56,6 +81,10 @@ export default async function handler(req, res) {
 
     try {
       const plan = (await kv.get(key)) || {};
+      const isNewDate = !Object.prototype.hasOwnProperty.call(plan, date);
+      if (ids.length > 0 && isNewDate && Object.keys(plan).length >= MAX_DAYS) {
+        return res.status(400).json({ error: `A plan holds at most ${MAX_DAYS} days` });
+      }
       if (ids.length === 0) {
         delete plan[date];
       } else {

@@ -1,7 +1,7 @@
 // Upload, serve and remove a user's own photo of a finished dish.
 // Photos live in Redis under photo:<id> (1000px) and photothumb:<id> (400px).
 import { Redis } from '@upstash/redis';
-import sharp from 'sharp';
+import { resizeImage } from '../lib/image-input.js';
 import { requireAuth } from '../lib/auth.js';
 import { ID_PATTERN } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
@@ -20,12 +20,9 @@ export const config = {
 const MAX_INPUT_BYTES = 3 * 1024 * 1024; // decoded upload size
 const MAX_MAIN_BYTES = 600 * 1024;       // processed full-size photo
 
+// Decoding goes through one place so the pixel limit cannot be forgotten.
 async function resize(input, size, quality) {
-  return sharp(input)
-    .rotate()
-    .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
-    .jpeg({ quality })
-    .toBuffer();
+  return resizeImage(input, { width: size, height: size, quality });
 }
 
 export default async function handler(req, res) {
@@ -112,6 +109,9 @@ export default async function handler(req, res) {
       if (e && (e.message || '').toLowerCase().includes('input buffer is empty') ||
           e instanceof Error && /sharp|decode|unsupported image|vips/i.test(e.message || '')) {
         return res.status(400).json({ error: 'Could not process that image. Is it a valid photo?' });
+      }
+      if (e && e.code === 'IMAGE_TOO_LARGE') {
+        return res.status(400).json({ error: 'Image too large' });
       }
       return sendServerError(res, e, 'Could not save that photo. Try again.');
     }
