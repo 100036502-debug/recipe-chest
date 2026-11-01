@@ -9,6 +9,7 @@ import { bumpCounter } from '../lib/rate-limit.js';
 import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
+import { listRecipeId } from '../lib/recipe-index.js';
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -336,7 +337,7 @@ async function persistRecipe(parsedRecipe, senderName) {
   };
 
   await redis.set(`recipe:${recipeId}`, recipe);
-  await redis.lpush('recipe_ids', recipeId);
+  await listRecipeId(redis, recipeId);
 
   return { id: recipeId, recipe };
 }
