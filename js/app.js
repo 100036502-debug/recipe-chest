@@ -748,7 +748,10 @@ async function restoreBackupFiles(files) {
   const parsed = [];
   for (const f of files) {
     try {
-      parsed.push(await f.text().then(JSON.parse));
+      const payload = await f.text().then(JSON.parse);
+      // Carried so a mid-way failure can name the file that stopped it.
+      if (payload && typeof payload === 'object') payload.__name = f.name;
+      parsed.push(payload);
     } catch (e) {
       toast(`"${f.name}" is not a valid backup file.`);
       return;
@@ -761,11 +764,14 @@ async function restoreBackupFiles(files) {
   let imported = 0, skipped = 0, photosRestored = 0;
   for (const payload of ordered) {
     try {
+      // __name is for the error message only, never sent to the server.
+      const requestBody = { ...payload };
+      delete requestBody.__name;
       const res = await apiFetch(`${API}/import-backup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestBody),
       });
       const data = await res.json();
       if (!res.ok) throw new Error((data && data.error) || 'Restore failed');
@@ -773,7 +779,22 @@ async function restoreBackupFiles(files) {
       skipped += data.skipped || 0;
       photosRestored += data.photosRestored || 0;
     } catch (e) {
-      toast('Restore failed: ' + e.message);
+      // Stopping on the first bad file is right; pretending nothing happened is
+      // not. Say what already landed and how much is still unread.
+      const left = ordered.length - ordered.indexOf(payload) - 1;
+      const landed = [];
+      if (imported) landed.push(`${imported} recipe${imported === 1 ? '' : 's'}`);
+      if (photosRestored) landed.push(`${photosRestored} photo${photosRestored === 1 ? '' : 's'}`);
+      if (skipped) landed.push(`${skipped} skipped`);
+      const soFar = landed.length
+        ? ` Already restored: ${landed.join(', ')}.`
+        : ' Nothing was restored.';
+      const rest = left > 0
+        ? ` ${left} file${left === 1 ? '' : 's'} not processed - pick them again to finish.`
+        : '';
+      toast(`Restore stopped on ${payload && payload.__name ? payload.__name : 'a file'}: ${e.message}.${soFar}${rest}`);
+      // The partial restore is real, so the grid must show it.
+      await loadRecipes();
       return;
     }
   }

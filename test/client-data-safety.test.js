@@ -96,3 +96,23 @@ test('undoOffer falls back to "no known window" rather than inventing one', () =
   assert.equal(offer.seconds, 0);
   assert.equal(app.undoOffer(true, { undoable: true, undoWindowSeconds: 'abc' }).seconds, 0);
 });
+
+// C5: a restore that stops on a bad file must say what already landed, and the
+// grid has to show the partial restore rather than the state before it.
+test('a failed restore reports what was already restored and what is left', () => {
+  const src = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('async function restoreBackupFiles'));
+  const catchBlock = fn.slice(fn.indexOf('} catch (e) {'), fn.indexOf('async function lockApp'));
+
+  assert.match(catchBlock, /Already restored:/, 'the message names what landed');
+  assert.match(catchBlock, /not processed - pick them again to finish/, 'and what did not');
+  assert.match(catchBlock, /await loadRecipes\(\)/, 'the partial restore is shown');
+  assert.equal(/toast\('Restore failed: ' \+ e\.message\);/.test(catchBlock), false, 'the bare failure is gone');
+});
+
+test('the file name is carried for the message but not sent to the server', () => {
+  const src = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  assert.match(src, /payload\.__name = f\.name/);
+  assert.match(src, /delete requestBody\.__name/);
+  assert.match(src, /body: JSON\.stringify\(requestBody\)/);
+});
