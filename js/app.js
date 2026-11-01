@@ -53,8 +53,8 @@ if (document.documentElement && typeof MutationObserver === 'function') {
 // The markup names an action (data-action, data-change, data-input, data-enter,
 // data-emoji) instead of carrying inline JavaScript, so the CSP no longer needs
 // script-src 'unsafe-inline'. Arguments come from the element: data-id, data-arg
-// and data-index, in that order. window[name] is safe because the name comes
-// from our own markup, and it is shape-checked anyway.
+// and data-index, in that order. The name is looked up in ACTIONS, an explicit
+// list, so injected markup cannot reach an unrelated global.
 const ACTION_NAME = /^[A-Za-z_$][\w$]*$/;
 
 // Actions that do not fit the argument convention.
@@ -89,13 +89,116 @@ const KEYDOWN_ACTIONS = {
   cookStepKey: (el, event) => cookStepKey(event, Number(el.dataset.index)),
 };
 
+// Click actions, listed so the dispatcher can only ever call one of these.
+// Anything else in a data-action attribute does nothing, which keeps injected
+// markup from reaching an unrelated global.
+const ACTIONS = {
+  addCookTimerTime,
+  addPantryItem,
+  addPantryMissing,
+  addRecipeToShoppingList,
+  addShoppingItem,
+  addWeekToShoppingList,
+  browseAsGuest,
+  cancelPhotoUpload,
+  cancelUpload,
+  changeCookScale,
+  changePlanWeek,
+  clearPantry,
+  clearShoppingList,
+  closeAiTools,
+  closeCollectionsManager,
+  closeCookMode,
+  closeCookedModal,
+  closeDetail,
+  closeImport,
+  closeMealPlan,
+  closePantry,
+  closePasteImport,
+  closePicker,
+  closeShareModal,
+  closeShoppingList,
+  closeStorage,
+  confirmPhotoUpload,
+  copyShareLink,
+  createShareLink,
+  cycleTheme,
+  deleteCollection,
+  deleteCookedEntry,
+  deleteRecipe,
+  dismissIosHint,
+  exportBackup,
+  installApp,
+  lockApp,
+  mergeShoppingList,
+  openAiTools,
+  openCollectionsManager,
+  openCookMode,
+  openCookedModal,
+  openDetail,
+  openEditMode,
+  openImport,
+  openMealPlan,
+  openPantry,
+  openPantryResult,
+  openPasteImport,
+  openPicker,
+  openPlannedRecipe,
+  openShareModal,
+  openShoppingList,
+  openStorage,
+  openUpload,
+  pickBackupFiles,
+  pickRecipe,
+  pickRecipePhoto,
+  printCard,
+  printRecipe,
+  processImport,
+  removeCollectionFromRecipe,
+  removeCookTimer,
+  removeFromPlan,
+  removePantryItem,
+  removeRecipePhoto,
+  removeShoppingItem,
+  removeTag,
+  renameCollectionPrompt,
+  replaceWithAi,
+  resetCookList,
+  retryMealPlan,
+  retryShoppingList,
+  revokeShareLink,
+  runAiSubstitute,
+  runAiTool,
+  saveCollectionFromInput,
+  saveCookedEntry,
+  saveEdit,
+  savePastedRecipe,
+  setCollectionFilter,
+  setFilter,
+  setMealFilter,
+  showCollectionInput,
+  showTagInput,
+  startBatch,
+  stopBeep,
+  toggleAppMenu,
+  toggleCookIng,
+  toggleCookStep,
+  toggleCookTimerPause,
+  toggleFavorite,
+  toggleShoppingItem,
+  toggleShowAllTags,
+  tryUnlock,
+  undoAiReplace,
+};
+
 function runClickAction(el, event) {
   if (el.dataset.stop === '1') event.stopPropagation();
   const name = el.dataset.action || '';
   const special = SPECIAL_CLICK[name];
   if (special) return special(el, event);
   if (!ACTION_NAME.test(name)) return;
-  const fn = window[name];
+  if (!Object.prototype.hasOwnProperty.call(ACTIONS, name)) return;
+  const fn = ACTIONS[name];
   if (typeof fn !== 'function') return;
   const args = [];
   if ('bool' in el.dataset) args.push(el.dataset.bool === '1');
@@ -388,6 +491,7 @@ let isProcessing = false;
 let cancelRequested = false;
 let shoppingList = { items: [] };
 let mealPlan = {};
+let mealPlanUpdatedAt = null;
 // 'unknown' until a load actually succeeds. Anything but 'ok' means we do not
 // know what the server holds, so we must not write over it.
 let shoppingListState = 'unknown';
@@ -644,7 +748,10 @@ async function restoreBackupFiles(files) {
   const parsed = [];
   for (const f of files) {
     try {
-      parsed.push(await f.text().then(JSON.parse));
+      const payload = await f.text().then(JSON.parse);
+      // Carried so a mid-way failure can name the file that stopped it.
+      if (payload && typeof payload === 'object') payload.__name = f.name;
+      parsed.push(payload);
     } catch (e) {
       toast(`"${f.name}" is not a valid backup file.`);
       return;
@@ -657,11 +764,14 @@ async function restoreBackupFiles(files) {
   let imported = 0, skipped = 0, photosRestored = 0;
   for (const payload of ordered) {
     try {
+      // __name is for the error message only, never sent to the server.
+      const requestBody = { ...payload };
+      delete requestBody.__name;
       const res = await apiFetch(`${API}/import-backup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestBody),
       });
       const data = await res.json();
       if (!res.ok) throw new Error((data && data.error) || 'Restore failed');
@@ -669,7 +779,22 @@ async function restoreBackupFiles(files) {
       skipped += data.skipped || 0;
       photosRestored += data.photosRestored || 0;
     } catch (e) {
-      toast('Restore failed: ' + e.message);
+      // Stopping on the first bad file is right; pretending nothing happened is
+      // not. Say what already landed and how much is still unread.
+      const left = ordered.length - ordered.indexOf(payload) - 1;
+      const landed = [];
+      if (imported) landed.push(`${imported} recipe${imported === 1 ? '' : 's'}`);
+      if (photosRestored) landed.push(`${photosRestored} photo${photosRestored === 1 ? '' : 's'}`);
+      if (skipped) landed.push(`${skipped} skipped`);
+      const soFar = landed.length
+        ? ` Already restored: ${landed.join(', ')}.`
+        : ' Nothing was restored.';
+      const rest = left > 0
+        ? ` ${left} file${left === 1 ? '' : 's'} not processed - pick them again to finish.`
+        : '';
+      toast(`Restore stopped on ${payload && payload.__name ? payload.__name : 'a file'}: ${e.message}.${soFar}${rest}`);
+      // The partial restore is real, so the grid must show it.
+      await loadRecipes();
       return;
     }
   }
@@ -1754,7 +1879,10 @@ async function replaceWithAi() {
   const data = window.__aiPending;
   if (!data) return;
   if (!confirm('Replace the ingredients and steps of this recipe?')) return;
-  aiPrevious = data.before;
+  // The AI read the recipe a while ago; say which version was read so a slow
+  // generation cannot overwrite an edit made in the meantime.
+  const seen = recipes.find((r) => r.id === aiRecipeId);
+  const baseRev = seen && typeof seen.rev === 'number' ? seen.rev : undefined;
   try {
     const res = await apiFetch(`${API}/recipes?id=${encodeURIComponent(aiRecipeId)}`, {
       method: 'PATCH',
@@ -1763,9 +1891,24 @@ async function replaceWithAi() {
         ingredients: data.after.ingredients,
         instructions: data.after.instructions,
         notes: data.after.notes,
+        baseRev,
       }),
     });
+    if (res.status === 409) {
+      await loadRecipes();
+      toast('That recipe changed while the AI was working. Your newer edits were kept; run it again.');
+      return;
+    }
     if (!res.ok) throw new Error('Could not update that recipe');
+    const updated = await res.json().catch(() => null);
+    // The undo needs the version this replacement produced, not the one the AI
+    // was given: that is what tells us whether anything changed afterwards.
+    aiPrevious = {
+      ingredients: data.before.ingredients,
+      instructions: data.before.instructions,
+      notes: data.before.notes,
+      rev: updated && typeof updated.rev === 'number' ? updated.rev : undefined,
+    };
     await loadRecipes();
     toast('Recipe updated');
     showAiUndo();
@@ -1798,11 +1941,23 @@ async function undoAiReplace() {
   const previous = aiPrevious;
   clearAiUndo();
   try {
+    // Reverting onto a recipe that has been edited since the AI replacement
+    // would throw those edits away, so the base is sent and a 409 respected.
     const res = await apiFetch(`${API}/recipes?id=${encodeURIComponent(aiRecipeId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ingredients: previous.ingredients, instructions: previous.instructions, notes: previous.notes }),
+      body: JSON.stringify({
+        ingredients: previous.ingredients,
+        instructions: previous.instructions,
+        notes: previous.notes,
+        baseRev: previous.rev,
+      }),
     });
+    if (res.status === 409) {
+      await loadRecipes();
+      toast('This recipe changed after the AI edit, so the undo was refused. Your newer edits are safe.');
+      return;
+    }
     if (!res.ok) throw new Error('Could not undo that change');
     await loadRecipes();
     toast('Change undone');
@@ -2049,7 +2204,8 @@ async function renameCollectionPrompt(from) {
     if (currentCollection === from) currentCollection = name;
     await refreshRecipesFromServer();
     renderCollectionsManager();
-    toast(`Renamed in ${data.changed} recipe${data.changed === 1 ? '' : 's'}`);
+    toast(`Renamed in ${data.changed} recipe${data.changed === 1 ? '' : 's'}`
+      + (data.truncated ? ` (partial pass: ${data.total} recipes, not all checked)` : ''));
   } catch (e) {
     toast('Could not rename: ' + e.message);
   }
@@ -2062,7 +2218,8 @@ async function deleteCollection(name) {
     if (currentCollection === name) currentCollection = 'all';
     await refreshRecipesFromServer();
     renderCollectionsManager();
-    toast(`Removed from ${data.changed} recipe${data.changed === 1 ? '' : 's'}`);
+    toast(`Removed from ${data.changed} recipe${data.changed === 1 ? '' : 's'}`
+      + (data.truncated ? ` (partial pass: ${data.total} recipes, not all checked)` : ''));
   } catch (e) {
     toast('Could not delete: ' + e.message);
   }
@@ -3353,7 +3510,10 @@ async function loadMealPlan() {
   const out = loadOutcome(ok, data);
   if (out.status === 'ok') {
     mealPlanState = 'ok';
-    mealPlan = out.data && typeof out.data === 'object' && !Array.isArray(out.data) ? out.data : {};
+    // The plan is { days, updatedAt } now; an older server sent a bare map.
+    const payload = out.data && typeof out.data === 'object' && !Array.isArray(out.data) ? out.data : {};
+    mealPlan = payload.days && typeof payload.days === 'object' ? payload.days : payload;
+    mealPlanUpdatedAt = typeof payload.updatedAt === 'number' ? payload.updatedAt : null;
   } else {
     // Same rule as the shopping list: a failed load leaves the plan unknown,
     // and writing a day from a guessed plan would wipe it.
@@ -3361,6 +3521,19 @@ async function loadMealPlan() {
   }
   return mealPlanState;
 }
+function applyPlanPayload(payload) {
+  mealPlan = payload && payload.days && typeof payload.days === 'object' ? payload.days : (payload || {});
+  mealPlanUpdatedAt = payload && typeof payload.updatedAt === 'number' ? payload.updatedAt : mealPlanUpdatedAt;
+}
+
+// Someone else moved the plan while this tab was editing it: take their version
+// and say so, rather than writing over it.
+async function conflictReloadPlan() {
+  await loadMealPlan();
+  renderMealPlan();
+  toast('The plan changed on another device. Reloaded it, try again.');
+}
+
 async function retryMealPlan() {
   await loadMealPlan();
   renderMealPlan();
@@ -3447,10 +3620,11 @@ async function addToPlan(date, recipeId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ deviceId: listDeviceId(), date, recipeIds: updated }),
+      body: JSON.stringify({ deviceId: listDeviceId(), date, recipeIds: updated, baseUpdatedAt: mealPlanUpdatedAt }),
     });
+    if (res.status === 409) { await conflictReloadPlan(); return; }
     if (!res.ok) throw new Error('Save failed');
-    mealPlan = await res.json();
+    applyPlanPayload(await res.json());
     renderMealPlan();
     toast('Added to plan');
   } catch (e) {
@@ -3466,10 +3640,11 @@ async function removeFromPlan(date, recipeId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ deviceId: getDeviceId(), date, recipeIds: updated }),
+      body: JSON.stringify({ deviceId: getDeviceId(), date, recipeIds: updated, baseUpdatedAt: mealPlanUpdatedAt }),
     });
+    if (res.status === 409) { await conflictReloadPlan(); return; }
     if (!res.ok) throw new Error('Save failed');
-    mealPlan = await res.json();
+    applyPlanPayload(await res.json());
     renderMealPlan();
   } catch (e) {
     toast('Could not save: ' + e.message);

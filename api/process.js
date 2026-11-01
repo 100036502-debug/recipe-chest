@@ -7,6 +7,7 @@ import { findDuplicate, isUsableRecipe } from '../lib/recipes.js';
 import { parseAiOutput } from '../lib/parse.js';
 import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';
+import { saveRecipeRecord } from '../lib/save-recipe.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -21,7 +22,7 @@ export const config = {
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  if (!requireAuth(req, res)) return;
+  if (!(await requireAuth(req, res))) return;
 
   if (await rateLimited(kv, req, 'process', 60)) {
     res.setHeader('Retry-After', '3600');
@@ -140,7 +141,7 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
       addedBy: String(addedBy || 'Anonymous').slice(0, 40),
     };
 
-    await kv.set(`recipe:${id}`, finalRecipe);
+    await saveRecipeRecord(kv, finalRecipe);
     await kv.lpush('recipe_ids', id);
     return res.status(200).json(finalRecipe);
   } catch (error) {

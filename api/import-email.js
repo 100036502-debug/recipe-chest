@@ -19,6 +19,7 @@ export const config = { maxDuration: 60 };
 
 const MAX_EMAIL_TEXT_CHARACTERS = 6000;
 const MAX_IMAGES_PER_REQUEST = 3; // Groq's hard limit for the vision model
+const MAX_PDFS_PER_REQUEST = 3; // Apps Script caps at 3, the API must not trust it
 
 const IMAGE_PROMPT = `You are a recipe parser. The image(s) below show a recipe (or parts of one recipe). Read everything together and extract ONE recipe.
 
@@ -64,18 +65,34 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Groq API is not configured' });
   }
 
-  // A daily ceiling for the whole importer. The bearer secret is good enough to
-  // read mail, so a leaked secret should not be able to spend the AI budget.
+  // A daily ceiling for the whole importer, counted per AI call rather than per
+  // request: one mail with three PDFs costs three calls, and the old counter let
+  // it look like one. The bearer secret is good enough to read mail, so a leaked
+  // secret should not be able to spend more than a day's budget either way.
   const dailyLimit = Number(process.env.EMAIL_IMPORT_DAILY_LIMIT) || 50;
+  const day = new Date().toISOString().slice(0, 10);
+  const spendOneCall = async (calls) => {
+    try {
+      for (let i = 0; i < calls; i += 1) {
+        const used = await bumpCounter(getKv(), `email_import_daily:${day}`, 2 * 24 * 60 * 60);
+        if (used > dailyLimit) return false;
+      }
+      return true;
+    } catch (e) {
+      // A counter we cannot read must not stop the owner's mail from importing.
+      console.error('Email import daily counter unavailable:', e.message);
+      return true;
+    }
+  };
+
+  // Refuse before spending anything when today is already spent.
   try {
-    const day = new Date().toISOString().slice(0, 10);
-    const used = await bumpCounter(getKv(), `email_import_daily:${day}`, 2 * 24 * 60 * 60);
-    if (used > dailyLimit) {
+    const already = Number(await getKv().get(`email_import_daily:${day}`)) || 0;
+    if (already >= dailyLimit) {
       return res.status(429).json({ error: 'Daily email import limit reached. Try again tomorrow.' });
     }
-  } catch (e) {
-    // A counter we cannot read must not stop the owner's mail from importing.
-    console.error('Email import daily counter unavailable:', e.message);
+  } catch {
+    // unknown: the per-call check below still applies
   }
 
   try {
@@ -110,12 +127,32 @@ export default async function handler(req, res) {
       `${imageAttachments.length} image(s), ${pdfAttachments.length} PDF(s)`
     );
 
+    // Each attachment is an AI call, so the server sets its own ceiling instead
+    // of trusting the sender's script to have capped them.
+    if (pdfAttachments.length > MAX_PDFS_PER_REQUEST) {
+      return res.status(400).json({
+        error: `At most ${MAX_PDFS_PER_REQUEST} PDFs per email.`,
+        received: pdfAttachments.length,
+      });
+    }
+    if (imageAttachments.length > MAX_IMAGES_PER_REQUEST) {
+      return res.status(400).json({
+        error: `At most ${MAX_IMAGES_PER_REQUEST} images per email.`,
+        received: imageAttachments.length,
+      });
+    }
+
     const savedRecipes = [];
 
     // -----------------------------------------------------------------
     // 1. Process each PDF as its own recipe (all pages together)
     // -----------------------------------------------------------------
+    const budgetExhausted = [];
     for (const pdf of pdfAttachments) {
+      if (!(await spendOneCall(1))) {
+        budgetExhausted.push('PDF skipped: daily limit reached');
+        break;
+      }
       const filename = pdf.filename || pdf.name || 'attachment.pdf';
       const base64 = pdf.content || pdf.data;
       if (!base64) {
@@ -154,7 +191,7 @@ export default async function handler(req, res) {
     // -----------------------------------------------------------------
     if (imageAttachments.length > 0) {
       const images = [];
-      for (const att of imageAttachments.slice(0, MAX_IMAGES_PER_REQUEST)) {
+      for (const att of imageAttachments) {
         const base64Data = att.content || att.data;
         if (!base64Data) continue;
         try {
@@ -167,7 +204,7 @@ export default async function handler(req, res) {
         }
       }
 
-      if (images.length > 0) {
+      if (images.length > 0 && (await spendOneCall(1))) {
         try {
           const contentPayload = [
             { type: 'text', text: IMAGE_PROMPT },

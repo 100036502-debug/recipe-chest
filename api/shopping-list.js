@@ -1,8 +1,9 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { sendServerError } from '../lib/http.js';
-import { cleanItems, decideWrite } from '../lib/shopping-list.js';
-import { refuseGuestWrite } from '../lib/device-buckets.js';
+import { cleanItems } from '../lib/shopping-list.js';
+import { writeBucket, missingBaseForShared } from '../lib/bucket-store.js';
+import { refuseGuestWrite, resolveBucketId, bucketSetOptions } from '../lib/device-buckets.js';
 
 // let, not const: tests swap in a fake store.
 let kv = new Redis({
@@ -23,20 +24,23 @@ function cleanDeviceId(raw) {
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (!requireAuth(req, res, { allowGuestWrite: true })) return;
+  if (!(await requireAuth(req, res, { allowGuestWrite: true }))) return;
 
   // deviceId can arrive via query (?deviceId=...) or body
   const rawId = req.query?.deviceId || (req.body && req.body.deviceId);
-  const deviceId = cleanDeviceId(rawId);
-  if (!deviceId) {
+  const requested = cleanDeviceId(rawId);
+  if (!requested) {
     return res.status(400).json({ error: 'Missing or invalid deviceId' });
   }
 
+  // A guest is pinned to the bucket derived from its session, whatever id it
+  // asked for; a member may use any device id (including 'shared').
+  const deviceId = resolveBucketId(req, requested);
   const key = keyFor(deviceId);
 
   // Guests keep their own device list; the household bucket is members only.
   if (req.method !== 'GET' && req.method !== 'OPTIONS'
-    && await refuseGuestWrite(req, res, kv, { deviceId, name: 'list-write' })) return;
+    && await refuseGuestWrite(req, res, kv, { deviceId: requested, name: 'list-write' })) return;
 
   // GET: return the current list for this device
   if (req.method === 'GET') {
@@ -59,14 +63,21 @@ export default async function handler(req, res) {
 
     try {
       // Two people sharing one list must not silently overwrite each other.
+      // A member's shared bucket needs to say which version it edited.
       const stored = await kv.get(key);
-      const verdict = decideWrite({ stored, baseUpdatedAt: body.baseUpdatedAt });
-      if (!verdict.write) {
-        return res.status(409).json({ error: 'conflict', current: verdict.current });
+      const hasItems = Boolean(stored && Array.isArray(stored.items) && stored.items.length);
+      if (missingBaseForShared({ deviceId, stored, baseUpdatedAt: body.baseUpdatedAt, hasData: hasItems })) {
+        return res.status(409).json({ error: 'conflict', current: stored });
       }
 
       const payload = { items: clean, updatedAt: Date.now() };
-      await kv.set(key, payload);
+      // Compare-and-set in one step: the check and the write cannot be split by
+      // the other device's write any more.
+      const written = await writeBucket(kv, key, payload, {
+        baseUpdatedAt: body.baseUpdatedAt,
+        setOptions: bucketSetOptions(req),
+      });
+      if (!written.ok) return res.status(409).json({ error: 'conflict', current: written.current });
       return res.status(200).json(payload);
     } catch (e) {
       return sendServerError(res, e);

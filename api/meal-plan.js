@@ -2,7 +2,8 @@ import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { ID_PATTERN } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
-import { refuseGuestWrite } from '../lib/device-buckets.js';
+import { refuseGuestWrite, resolveBucketId, bucketSetOptions } from '../lib/device-buckets.js';
+import { writeBucket, missingBaseForShared } from '../lib/bucket-store.js';
 
 // let, not const: tests swap in a fake store.
 let kv = new Redis({
@@ -26,6 +27,16 @@ export function dateAllowed(date, now = Date.now()) {
   return Math.abs(at - now) <= DATE_WINDOW_DAYS * DAY_MS;
 }
 
+// A plan is { days, updatedAt } now. Plans written before this change are a
+// bare date map, so reading tolerates both and the client never sees a break.
+export function readPlan(stored) {
+  if (!stored || typeof stored !== 'object') return { days: {}, updatedAt: null };
+  if (stored.days && typeof stored.days === 'object') {
+    return { days: stored.days, updatedAt: typeof stored.updatedAt === 'number' ? stored.updatedAt : null };
+  }
+  return { days: stored, updatedAt: null };
+}
+
 function keyFor(deviceId) {
   return `meal_plan:${deviceId}`;
 }
@@ -36,25 +47,26 @@ function cleanDeviceId(raw) {
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (!requireAuth(req, res, { allowGuestWrite: true })) return;
+  if (!(await requireAuth(req, res, { allowGuestWrite: true }))) return;
 
   const rawId = req.query?.deviceId || (req.body && req.body.deviceId);
-  const deviceId = cleanDeviceId(rawId);
-  if (!deviceId) {
+  const requested = cleanDeviceId(rawId);
+  if (!requested) {
     return res.status(400).json({ error: 'Missing or invalid deviceId' });
   }
 
+  const deviceId = resolveBucketId(req, requested);
   const key = keyFor(deviceId);
 
   // Guests keep their own plan; the household plan is members only.
   if (req.method !== 'GET' && req.method !== 'OPTIONS'
-    && await refuseGuestWrite(req, res, kv, { deviceId, name: 'plan-write' })) return;
+    && await refuseGuestWrite(req, res, kv, { deviceId: requested, name: 'plan-write' })) return;
 
   // GET: return the whole plan for this device
   if (req.method === 'GET') {
     try {
-      const plan = await kv.get(key);
-      return res.status(200).json(plan || {});
+      const stored = await kv.get(key);
+      return res.status(200).json(readPlan(stored));
     } catch (e) {
       return sendServerError(res, e);
     }
@@ -80,18 +92,39 @@ export default async function handler(req, res) {
       .slice(0, 10);
 
     try {
-      const plan = (await kv.get(key)) || {};
-      const isNewDate = !Object.prototype.hasOwnProperty.call(plan, date);
-      if (ids.length > 0 && isNewDate && Object.keys(plan).length >= MAX_DAYS) {
+      const stored = await kv.get(key);
+      const current = readPlan(stored);
+      const days = { ...(current.days || {}) };
+
+      const isNewDate = !Object.prototype.hasOwnProperty.call(days, date);
+      if (ids.length > 0 && isNewDate && Object.keys(days).length >= MAX_DAYS) {
         return res.status(400).json({ error: `A plan holds at most ${MAX_DAYS} days` });
       }
-      if (ids.length === 0) {
-        delete plan[date];
-      } else {
-        plan[date] = ids;
+
+      // The cap above is a limit, not a conflict, so it answers first. Then a
+      // shared bucket with data needs to say which version it edited.
+      if (missingBaseForShared({
+        deviceId,
+        stored: Object.keys(days).length ? stored : null,
+        baseUpdatedAt: body.baseUpdatedAt,
+        hasData: Object.keys(days).length > 0,
+      })) {
+        return res.status(409).json({ error: 'conflict', current });
       }
-      await kv.set(key, plan);
-      return res.status(200).json(plan);
+      if (ids.length === 0) {
+        delete days[date];
+      } else {
+        days[date] = ids;
+      }
+
+      const payload = { days, updatedAt: Date.now() };
+      // Compare-and-set, exactly as the shopping list does.
+      const written = await writeBucket(kv, key, payload, {
+        baseUpdatedAt: body.baseUpdatedAt,
+        setOptions: bucketSetOptions(req),
+      });
+      if (!written.ok) return res.status(409).json({ error: 'conflict', current: readPlan(written.current) });
+      return res.status(200).json(payload);
     } catch (e) {
       return sendServerError(res, e);
     }

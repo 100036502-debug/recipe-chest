@@ -29,6 +29,10 @@ function scriptProps_() {
   var url = (props.getProperty('BACKUP_API_URL') || '').trim();
   var secret = (props.getProperty('BACKUP_SECRET') || '').trim();
   if (!url) throw new Error('BACKUP_API_URL is not set in Script properties.');
+  // The bearer secret goes to this URL: refuse anything but https.
+  if (!/^https:\/\//i.test(url)) {
+    throw new Error('BACKUP_API_URL must start with https:// before a bearer secret is sent to it.');
+  }
   if (!secret) throw new Error('BACKUP_SECRET is not set in Script properties.');
   return {
     url: url,
@@ -66,10 +70,15 @@ function weeklyBackup() {
   var config = scriptProps_();
   var stamp = todayStamp_();
   var summary = { recipes: 0, photoFiles: 0, bytes: 0 };
+  var root = null;
+  var dayFolder = null;
 
   try {
-    var root = backupFolder_(config);
-    var dayFolder = root.createFolder(stamp);
+    root = backupFolder_(config);
+    // Built under a name retention ignores. A folder only becomes a backup once
+    // every slice has landed, so a failure half way cannot leave something that
+    // looks like a good backup of that day.
+    dayFolder = root.createFolder('incomplete-' + stamp);
 
     // 1. The recipes themselves.
     var recipesJson = fetchJson_(config.url, config.secret);
@@ -100,8 +109,10 @@ function weeklyBackup() {
       throw new Error('Stopped after ' + MAX_SLICES + ' photo slices; the backup may be incomplete.');
     }
 
-    // 3. Keep the folder tidy.
-    trashOldFolders_(root, config.keepWeeks);
+    // 3. The day is complete: give the folder its real name, which is what makes
+    // retention treat it as a backup.
+    dayFolder.setName(stamp);
+    dayFolder = null;
 
     MailApp.sendEmail(
       config.notify,
@@ -111,6 +122,15 @@ function weeklyBackup() {
     );
     return summary;
   } catch (error) {
+    // The half-written folder goes to the trash: leaving it would keep an
+    // unreadable backup around for keepWeeks, and a restore could pick it.
+    if (dayFolder) {
+      try {
+        dayFolder.setTrashed(true);
+      } catch (cleanupError) {
+        Logger.log('Could not trash the incomplete folder: ' + cleanupError);
+      }
+    }
     try {
       MailApp.sendEmail(
         config.notify,
@@ -122,6 +142,16 @@ function weeklyBackup() {
       Logger.log('Could not send the failure email: ' + mailError);
     }
     throw error;
+  } finally {
+    // Retention ran only after a success, so a run of failures let folders pile
+    // up for ever. It runs either way now.
+    if (root) {
+      try {
+        trashOldFolders_(root, config.keepWeeks);
+      } catch (retentionError) {
+        Logger.log('Could not trim old backups: ' + retentionError);
+      }
+    }
   }
 }
 
@@ -131,6 +161,16 @@ function trashOldFolders_(root, keepWeeks) {
   while (folders.hasNext()) {
     var folder = folders.next();
     var name = folder.getName();
+
+    // An incomplete folder means a run died without cleaning up. Give it a day
+    // (the current run is seconds old) and then stop it looking like progress.
+    if (name.indexOf('incomplete-') === 0) {
+      if (folder.getDateCreated().getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+        folder.setTrashed(true);
+      }
+      continue;
+    }
+
     if (!/^\d{4}-\d{2}-\d{2}$/.test(name)) continue; // only our own date folders
     var parts = name.split('-');
     var when = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();

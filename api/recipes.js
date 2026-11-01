@@ -1,13 +1,15 @@
-import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, cleanCollections, findDuplicate, getRecipesByIds, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { TRASH_TTL_SECONDS, buildTrashEntry, trashKey } from '../lib/trash.js';
 import { sendServerError } from '../lib/http.js';
+import { updateRecipe, sendUpdateResult, revOf } from '../lib/update-recipe.js';
+import { saveRecipeRecord } from '../lib/save-recipe.js';
+import { revokeShareLinks } from '../lib/actions/share.js';
+import { getKv } from '../lib/redis.js';
 
-const kv = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
-});
+// One shared client from lib/redis.js, created on first use: a module-level
+// client here threw during a cold start if the env was missing, and it could
+// not be replaced in tests.
 
 // Fields the client is allowed to set or edit
 const EDITABLE_FIELDS = [
@@ -54,7 +56,8 @@ export function applyEditableFields(target, body) {
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (!requireAuth(req, res)) return;
+  const kv = getKv();
+  if (!(await requireAuth(req, res))) return;
 
   // ---- GET: list every recipe, newest first ----
   if (req.method === 'GET') {
@@ -94,6 +97,20 @@ export default async function handler(req, res) {
         ? rawId
         : 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
+      // An id that already exists is never overwritten from here: that used to
+      // wipe cookLog, the dish photo and the image of a recipe the client had
+      // not read. A restore is the one explicit exception.
+      const wantsRestore = body.restore === true && skipDuplicateCheck === true;
+      if (!wantsRestore && ID_PATTERN.test(rawId)) {
+        const sameId = await kv.get(`recipe:${id}`);
+        if (sameId) {
+          return res.status(409).json({
+            error: 'A recipe with that id already exists.',
+            existing: { id: sameId.id, title: sameId.title },
+          });
+        }
+      }
+
       const recipe = applyEditableFields({
         id,
         ingredients: [],
@@ -106,11 +123,9 @@ export default async function handler(req, res) {
         createdAt: Number.isFinite(body.createdAt) ? body.createdAt : Date.now(),
       }, body);
 
-      await kv.set(`recipe:${id}`, recipe);
-      const existingIds = await kv.lrange('recipe_ids', 0, -1);
-      if (!existingIds.includes(id)) {
-        await kv.lpush('recipe_ids', id);
-      }
+      await saveRecipeRecord(kv, recipe);
+      const added = await kv.sadd('recipe_id_set', id);
+      if (Number(added) === 1) await kv.lpush('recipe_ids', id);
       return res.status(200).json(recipe);
     } catch (e) {
       return sendServerError(res, e);
@@ -124,13 +139,12 @@ export default async function handler(req, res) {
     if (!id) return res.status(400).json({ error: 'Missing recipe id' });
 
     try {
-      const existing = await kv.get(`recipe:${id}`);
-      if (!existing) return res.status(404).json({ error: 'Recipe not found' });
-
-      const updated = applyEditableFields({ ...existing }, body);
-      updated.updatedAt = Date.now();
-      await kv.set(`recipe:${id}`, updated);
-      return res.status(200).json(updated);
+      // Compare-and-set: the client may send the rev it read. A stale baseRev is
+      // refused, so text typed against an older version never overwrites it.
+      const result = await updateRecipe(kv, id, (existing) => applyEditableFields(existing, body), {
+        baseRev: body.baseRev,
+      });
+      return sendUpdateResult(res, result);
     } catch (e) {
       return sendServerError(res, e);
     }
@@ -142,16 +156,33 @@ export default async function handler(req, res) {
     if (!ID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid or missing id' });
     try {
       const [recipe, photo, photothumb] = await kv.mget(`recipe:${id}`, `photo:${id}`, `photothumb:${id}`);
+
+      // A delete based on a stale view would destroy edits made since. When the
+      // client says which revision it was looking at, honour it.
+      const baseRev = req.query && req.query.baseRev;
+      if (recipe && baseRev !== undefined && baseRev !== '' && Number(baseRev) !== revOf(recipe)) {
+        return res.status(409).json({
+          error: 'This recipe changed since you opened it. Reload before deleting.',
+          current: recipe,
+          rev: revOf(recipe),
+        });
+      }
       // Copy first, delete second: if keeping the copy fails we have not
       // destroyed anything, so a failed delete is safe to retry.
       const entry = buildTrashEntry(recipe, photo, photothumb);
       if (entry) await kv.set(trashKey(id), entry, { ex: TRASH_TTL_SECONDS });
       await kv.del(`recipe:${id}`, `photo:${id}`, `photothumb:${id}`);
+      // A share link must not outlive the recipe it points at: the token is
+      // still valid for anyone who has the URL, and a re-created id would make
+      // it point at something new.
+      const revoked = await revokeShareLinks(kv, id);
       await kv.lrem('recipe_ids', 0, id);
+      await kv.srem('recipe_id_set', id);
       return res.status(200).json({
         success: true,
         undoable: Boolean(entry),
         undoWindowSeconds: entry ? TRASH_TTL_SECONDS : 0,
+        shareLinksRevoked: revoked,
       });
     } catch (e) {
       return sendServerError(res, e);

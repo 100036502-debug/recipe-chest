@@ -11,6 +11,7 @@ import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { ID_PATTERN, restoreDecision, sanitizeStoredRecipe } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
+import { saveRecipeRecord } from '../lib/save-recipe.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -52,7 +53,7 @@ async function readStoredRecipes(ids) {
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  if (!requireAuth(req, res)) return;
+  if (!(await requireAuth(req, res))) return;
 
   try {
     const body = req.body || {};
@@ -96,7 +97,7 @@ export default async function handler(req, res) {
         clean.userPhoto = { updatedAt: Date.now() };
       }
 
-      await kv.set(`recipe:${clean.id}`, clean);
+      await saveRecipeRecord(kv, clean);
       // An id that is listed with no recipe behind it is repaired here rather
       // than pushed a second time.
       if (decision.addToList) {
@@ -124,7 +125,7 @@ export default async function handler(req, res) {
         const pair = validPhotoPair(photos[id]);
         if (!pair) continue;
         recipe.userPhoto = { updatedAt: Date.now() };
-        await kv.set(`recipe:${id}`, recipe);
+        await saveRecipeRecord(kv, recipe);
         await kv.set(`photo:${id}`, pair.main);
         await kv.set(`photothumb:${id}`, pair.photothumb);
         photosRestored++;
