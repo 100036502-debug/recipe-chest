@@ -12,20 +12,41 @@ const { makeReq, makeRes } = await import('./helpers/fake-http.js');
 
 const auth = { authorization: 'Bearer import-secret' };
 
-test('the importer stops at the daily cap', async () => {
+test('the importer refuses once today is spent, before doing any work', async () => {
   const kv = createFakeKv();
   __setKvForTests(kv);
 
-  // The first request is allowed past the cap and fails later on the body, which
-  // is fine: what matters is that the second one is refused by the counter.
-  const first = makeRes();
-  await importEmail(makeReq({ method: 'POST', headers: auth, body: {} }), first);
-  assert.notEqual(first.statusCode, 429);
+  const day = new Date().toISOString().slice(0, 10);
+  await kv.set(`email_import_daily:${day}`, 1); // limit is 1 in this file
 
-  const second = makeRes();
-  await importEmail(makeReq({ method: 'POST', headers: auth, body: {} }), second);
-  assert.equal(second.statusCode, 429);
-  assert.match(String(second.body.error), /Daily email import limit/);
+  const res = makeRes();
+  await importEmail(makeReq({ method: 'POST', headers: auth, body: {} }), res);
+  assert.equal(res.statusCode, 429);
+  assert.match(String(res.body.error), /Daily email import limit/);
+});
+
+test('the cap counts AI calls, so a mail with PDFs costs more than one', async () => {
+  const kv = createFakeKv();
+  __setKvForTests(kv);
+
+  // Four PDFs would be four calls: refused outright before any of them runs.
+  const res = makeRes();
+  await importEmail(makeReq({
+    method: 'POST',
+    headers: auth,
+    body: { attachments: [1, 2, 3, 4].map((n) => ({ type: 'application/pdf', filename: `r${n}.pdf`, content: 'AA==' })) },
+  }), res);
+  assert.equal(res.statusCode, 400);
+  assert.match(String(res.body.error), /At most 3 PDFs/);
+
+  const images = makeRes();
+  await importEmail(makeReq({
+    method: 'POST',
+    headers: auth,
+    body: { attachments: [1, 2, 3, 4].map((n) => ({ type: 'image/jpeg', filename: `p${n}.jpg`, content: 'AA==' })) },
+  }), images);
+  assert.equal(images.statusCode, 400);
+  assert.match(String(images.body.error), /At most 3 images/);
 });
 
 test('a counter outage lets the mail through instead of blocking it', async () => {
