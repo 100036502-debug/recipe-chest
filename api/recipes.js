@@ -2,6 +2,7 @@ import { requireAuth } from '../lib/auth.js';
 import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, cleanCollections, findDuplicate, getRecipesByIds, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { TRASH_TTL_SECONDS, buildTrashEntry, trashKey } from '../lib/trash.js';
 import { sendServerError } from '../lib/http.js';
+import { updateRecipe, sendUpdateResult, revOf } from '../lib/update-recipe.js';
 import { saveRecipeRecord } from '../lib/save-recipe.js';
 import { revokeShareLinks } from '../lib/actions/share.js';
 import { getKv } from '../lib/redis.js';
@@ -138,13 +139,12 @@ export default async function handler(req, res) {
     if (!id) return res.status(400).json({ error: 'Missing recipe id' });
 
     try {
-      const existing = await kv.get(`recipe:${id}`);
-      if (!existing) return res.status(404).json({ error: 'Recipe not found' });
-
-      const updated = applyEditableFields({ ...existing }, body);
-      updated.updatedAt = Date.now();
-      await saveRecipeRecord(kv, updated);
-      return res.status(200).json(updated);
+      // Compare-and-set: the client may send the rev it read. A stale baseRev is
+      // refused, so text typed against an older version never overwrites it.
+      const result = await updateRecipe(kv, id, (existing) => applyEditableFields(existing, body), {
+        baseRev: body.baseRev,
+      });
+      return sendUpdateResult(res, result);
     } catch (e) {
       return sendServerError(res, e);
     }
@@ -156,6 +156,17 @@ export default async function handler(req, res) {
     if (!ID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid or missing id' });
     try {
       const [recipe, photo, photothumb] = await kv.mget(`recipe:${id}`, `photo:${id}`, `photothumb:${id}`);
+
+      // A delete based on a stale view would destroy edits made since. When the
+      // client says which revision it was looking at, honour it.
+      const baseRev = req.query && req.query.baseRev;
+      if (recipe && baseRev !== undefined && baseRev !== '' && Number(baseRev) !== revOf(recipe)) {
+        return res.status(409).json({
+          error: 'This recipe changed since you opened it. Reload before deleting.',
+          current: recipe,
+          rev: revOf(recipe),
+        });
+      }
       // Copy first, delete second: if keeping the copy fails we have not
       // destroyed anything, so a failed delete is safe to retry.
       const entry = buildTrashEntry(recipe, photo, photothumb);

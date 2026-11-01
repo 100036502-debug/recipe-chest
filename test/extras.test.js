@@ -112,7 +112,8 @@ test.describe('undo-delete action', () => {
     assert.equal(res.body.title, 'Lemon Pasta');
     assert.equal(res.body.alreadyThere, false);
 
-    assert.deepEqual(await kv.get('recipe:r1'), RECIPE);
+    // C1: a restored recipe starts a fresh revision.
+    assert.deepEqual(await kv.get('recipe:r1'), { ...RECIPE, rev: 1 });
     assert.equal(await kv.get('photo:r1'), 'data:image/jpeg;base64,AAA');
     assert.equal(await kv.get('photothumb:r1'), 'data:image/jpeg;base64,BBB');
     assert.deepEqual(await kv.lrange('recipe_ids', 0, -1), ['r1', 'other1']);

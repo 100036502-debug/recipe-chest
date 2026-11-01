@@ -3,7 +3,7 @@
 import { Redis } from '@upstash/redis';
 import { resizeImage } from '../lib/image-input.js';
 import { cleanText } from '../lib/recipes.js';
-import { saveRecipeRecord } from '../lib/save-recipe.js';
+import { updateRecipe, sendUpdateResult } from '../lib/update-recipe.js';
 import { requireAuth } from '../lib/auth.js';
 import { ID_PATTERN } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
@@ -93,18 +93,20 @@ export default async function handler(req, res) {
       await kv.set(`photo:${id}`, main.toString('base64'));
       await kv.set(`photothumb:${id}`, thumb.toString('base64'));
 
-      // Re-read right before writing so edits made in the meantime aren't lost
-      const fresh = await kv.get(`recipe:${id}`);
-      if (!fresh) {
-        await kv.del(`photo:${id}`, `photothumb:${id}`);
-        return res.status(404).json({ error: 'Recipe was deleted' });
-      }
       const credit = typeof body.credit === 'string' ? cleanText(body.credit, 100) : '';
       const userPhoto = { updatedAt: Date.now() };
       if (credit) userPhoto.credit = credit;
-      const updated = { ...fresh, userPhoto };
-      await saveRecipeRecord(kv, updated);
-      return res.status(200).json(updated);
+
+      // Compare-and-set instead of read-then-write: a tag edit landing between
+      // the two is retried against the fresh copy rather than overwritten.
+      const result = await updateRecipe(kv, id, (fresh) => ({ ...fresh, userPhoto }), {
+        baseRev: body.baseRev,
+      });
+      if (result.status === 404) {
+        await kv.del(`photo:${id}`, `photothumb:${id}`);
+        return res.status(404).json({ error: 'Recipe was deleted' });
+      }
+      return sendUpdateResult(res, result);
     } catch (e) {
       // sharp throws for invalid/corrupt images; those are user errors (400).
       // Anything else (Redis, network) is our failure (500).
@@ -125,14 +127,14 @@ export default async function handler(req, res) {
     if (!ID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid id' });
 
     try {
-      await kv.del(`photo:${id}`, `photothumb:${id}`);
-      const recipe = await kv.get(`recipe:${id}`);
-      if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
-
-      const rest = { ...recipe };
-      delete rest.userPhoto;
-      await saveRecipeRecord(kv, rest);
-      return res.status(200).json(rest);
+      const result = await updateRecipe(kv, id, (recipe) => {
+        const rest = { ...recipe };
+        delete rest.userPhoto;
+        return rest;
+      }, { baseRev: req.query && req.query.baseRev });
+      // Only drop the bytes once the recipe no longer points at them.
+      if (result.status === 200) await kv.del(`photo:${id}`, `photothumb:${id}`);
+      return sendUpdateResult(res, result);
     } catch (e) {
       return sendServerError(res, e);
     }
