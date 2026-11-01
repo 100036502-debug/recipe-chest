@@ -71,3 +71,14 @@ test('the client no longer relies on the query id for PATCH', async () => {
   const src = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
   assert.equal(/recipes\?id=\$\{encodeURIComponent\(aiRecipeId\)\}/.test(src), false);
 });
+
+test('PATCH refuses an id that is not shaped like a recipe id', async () => {
+  const kv = await seeded();
+  // A key that merely starts with recipe: and holds a recipe-looking value.
+  await kv.set('recipe:r1:shadow', { id: 'r1:shadow', title: 'Planted', rev: 0 });
+  for (const bad of ['r1:shadow', '../r1', 'r1 ', 'r1\n', 'a'.repeat(65)]) {
+    const res = await patch({ body: { id: bad, notes: 'x' } });
+    assert.equal(res.statusCode, 400, `refused ${JSON.stringify(bad)}`);
+  }
+  assert.equal((await kv.get('recipe:r1:shadow')).notes, undefined, 'the shadow key was never touched');
+});

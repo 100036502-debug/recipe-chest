@@ -190,3 +190,14 @@ test('a recipe written before revisions reports rev 0', async () => {
     assert.equal(res.body.rev, 0);
   } finally { ctx.restore(); }
 });
+
+test('an id that is not recipe shaped is refused before any lookup or model call', async () => {
+  const ctx = await setup();
+  try {
+    for (const bad of ['r1:shadow', '../r1', 'a b']) {
+      const res = await run(ctx.handler, { id: bad, kind: 'metric' });
+      assert.equal(res.statusCode, 400, JSON.stringify(bad));
+    }
+    assert.equal(ctx.calls.length, 0);
+  } finally { ctx.restore(); }
+});

@@ -141,6 +141,9 @@ export default async function handler(req, res) {
     const queryId = req.query && typeof req.query.id === 'string' ? req.query.id : '';
     const id = typeof body.id === 'string' && body.id ? body.id : queryId;
     if (!id) return res.status(400).json({ error: 'Missing recipe id' });
+    // Every other route checks this; PATCH did not, so an id like "r1:x" reached
+    // Redis as recipe:r1:x and could edit any key that merely started with recipe:.
+    if (!ID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid recipe id' });
 
     try {
       // Compare-and-set: the client may send the rev it read. A stale baseRev is
