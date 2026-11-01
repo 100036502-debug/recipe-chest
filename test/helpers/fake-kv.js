@@ -126,6 +126,11 @@ export function createFakeKv() {
       return added;
     },
 
+    async sismember(key, member) {
+      const set = sets.get(key);
+      return set ? set.has(member) : false;
+    },
+
     async srem(key, ...members) {
       const set = sets.get(key);
       if (!set) return 0;
