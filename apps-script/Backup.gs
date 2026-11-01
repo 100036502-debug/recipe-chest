@@ -29,6 +29,10 @@ function scriptProps_() {
   var url = (props.getProperty('BACKUP_API_URL') || '').trim();
   var secret = (props.getProperty('BACKUP_SECRET') || '').trim();
   if (!url) throw new Error('BACKUP_API_URL is not set in Script properties.');
+  // The bearer secret goes to this URL: refuse anything but https.
+  if (!/^https:\/\//i.test(url)) {
+    throw new Error('BACKUP_API_URL must start with https:// before a bearer secret is sent to it.');
+  }
   if (!secret) throw new Error('BACKUP_SECRET is not set in Script properties.');
   return {
     url: url,

@@ -2,18 +2,22 @@ const IMPORT_LABEL = 'recipe-import';
 const FAILED_LABEL = 'recipe-import-failed';
 
 /**
- * Sender allowlist, optional. Set the Script Property ALLOWED_SENDERS to a
- * comma-separated list of exact addresses to stop a Gmail filter that
- * auto-labels mail from turning every sender into an importer.
+ * Sender allowlist, REQUIRED. Set the Script Property ALLOWED_SENDERS to a
+ * comma-separated list of exact addresses. An empty list refuses everything:
+ * the From header can be spoofed, so the label alone cannot be the gate, and an
+ * open importer both spends the AI budget and replies to whoever wrote in.
  */
 function allowedSender(address) {
   const raw = PropertiesService.getScriptProperties().getProperty('ALLOWED_SENDERS');
-  if (!raw) return true; // no allowlist configured: the label is the gate
+  if (!raw) {
+    console.error('ALLOWED_SENDERS is not set: refusing every import until it is configured.');
+    return false;
+  }
   const wanted = String(raw)
     .split(',')
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
-  if (!wanted.length) return true;
+  if (!wanted.length) return false;
   return wanted.indexOf(String(address || '').trim().toLowerCase()) !== -1;
 }
 
@@ -53,6 +57,9 @@ function pollRecipeImports() {
   const secret = properties.getProperty('RECIPE_IMPORT_SECRET');
   if (!apiUrl || !secret) {
     throw new Error('Set RECIPE_IMPORT_API_URL and RECIPE_IMPORT_SECRET in Script Properties.');
+  }
+  if (!/^https:\/\//i.test(String(apiUrl))) {
+    throw new Error('RECIPE_IMPORT_API_URL must start with https:// before a bearer secret is sent to it.');
   }
 
   // 50 threads per poll so a burst of imports cannot be blocked by
@@ -127,13 +134,41 @@ function markFailed(thread, message, reason) {
   message.markRead();
 
   const sender = fromAddress(message);
-  if (sender) {
+  if (sender && canReplyToday()) {
+    // Never the server's own words: the reason quotes up to 300 characters of
+    // the API response, and this mail goes to whoever the From header named.
+    console.error('Import failure reason (not sent to the sender):', reason);
     GmailApp.sendEmail(
       sender,
       'Recipe Chest: could not import this email',
-      `Could not import this email: ${reason}\n\n` +
-      'Check that it contains a recipe (as text, a PDF or a photo) and try sending it again.'
+      'Could not import this email. Check that it contains a recipe ' +
+      '(as text, a PDF or a photo) and try sending it again.'
     );
+  }
+}
+
+/**
+ * (c) Replies are capped per day, so a mail loop cannot turn the script into a
+ * sender of unlimited mail. The counter lives in Script Properties because that
+ * is the only store available to a trigger.
+ */
+const MAX_REPLIES_PER_DAY = 20;
+
+function canReplyToday() {
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    const key = `replies_on:${today}`;
+    const used = Number(properties.getProperty(key) || 0);
+    if (used >= MAX_REPLIES_PER_DAY) {
+      console.warn(`Reply cap reached (${used}); not sending another today.`);
+      return false;
+    }
+    properties.setProperty(key, String(used + 1));
+    return true;
+  } catch (e) {
+    console.error('Reply counter unavailable:', e && e.message);
+    return false; // no counter, no mail
   }
 }
 
@@ -176,6 +211,8 @@ function importMessage(message, apiUrl, secret) {
     headers: { Authorization: `Bearer ${secret}` },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
+    // A redirect would carry the bearer secret to wherever it points.
+    followRedirects: false,
   });
 
   const status = response.getResponseCode();
@@ -192,7 +229,13 @@ function importMessage(message, apiUrl, secret) {
     throw new Error('Recipe API response did not include any saved recipes.');
   }
 
-  sendConfirmation(sender, saved, budget.skipped);
+  // A confirmation that cannot be sent (mail quota, a bad address) must not
+  // turn a successful import into a failed one.
+  try {
+    if (sender && canReplyToday()) sendConfirmation(sender, saved, budget.skipped);
+  } catch (e) {
+    console.error('Confirmation could not be sent:', e && e.message);
+  }
   message.markRead();
 }
 
