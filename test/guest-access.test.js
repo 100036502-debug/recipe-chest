@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHmac } from 'node:crypto';
 import assert from 'node:assert';
 
 import { makeSessionValue, getSession, hasValidSession, requireAuth, guestCode } from '../lib/auth.js';
@@ -14,13 +15,22 @@ function withEnv(env, fn) {
     if (env[key] === undefined) delete process.env[key];
     else process.env[key] = env[key];
   }
-  try {
-    return fn();
-  } finally {
+  const restore = () => {
     for (const key of Object.keys(saved)) {
       if (saved[key] === undefined) delete process.env[key];
       else process.env[key] = saved[key];
     }
+  };
+  try {
+    const out = fn();
+    // An async body must keep the environment until it settles, not just until
+    // the promise is created.
+    if (out && typeof out.then === 'function') return out.finally(restore);
+    restore();
+    return out;
+  } catch (error) {
+    restore();
+    throw error;
   }
 }
 
@@ -31,20 +41,31 @@ function cookies(token) {
   return { cookie: `rc_session=${token}` };
 }
 
-test('a member cookie keeps the original format', () => {
+test('a member cookie carries an expiry, an epoch and a signature', () => {
   withEnv(MEMBER_ENV, () => {
     const token = makeSessionValue(MEMBER);
-    assert.match(token, /^\d+\.[0-9a-f]{64}$/);
+    assert.match(token, /^\d+\.\d+\.[0-9a-f]{64}$/);
     const session = getSession(makeReq({ headers: cookies(token) }));
     assert.equal(session.role, 'member');
     assert.equal(hasValidSession(makeReq({ headers: cookies(token) })), true);
   });
 });
 
+test('a cookie issued before the epoch existed still verifies, as epoch 0', () => {
+  withEnv(MEMBER_ENV, () => {
+    // The old shape: "<expiry>.<sig over code.expiry>", with no epoch segment.
+    const expiry = Date.now() + 86400000;
+    const legacy = `${expiry}.${createHmac('sha256', process.env.SESSION_SECRET).update(`${MEMBER}.${expiry}`).digest('hex')}`;
+    const session = getSession(makeReq({ headers: cookies(legacy) }));
+    assert.equal(session.role, 'member');
+    assert.equal(session.epoch, 0, 'an old cookie counts as epoch 0');
+  });
+});
+
 test('a guest cookie carries the guest mark and verifies separately', () => {
   withEnv(MEMBER_ENV, () => {
     const token = makeSessionValue(GUEST, undefined, 'guest');
-    assert.match(token, /^\d+\.guest\.[0-9a-f]{64}$/);
+    assert.match(token, /^\d+\.guest\.\d+\.[0-9a-f]{64}$/);
     const session = getSession(makeReq({ headers: cookies(token) }));
     assert.equal(session.role, 'guest');
   });
@@ -95,50 +116,50 @@ test('GUEST_CODE equal to ACCESS_CODE is ignored', () => {
   });
 });
 
-test('requireAuth answers for each role and method', () => {
-  withEnv(MEMBER_ENV, () => {
+test('requireAuth answers for each role and method', async () => {
+  await withEnv(MEMBER_ENV, async () => {
     const memberToken = makeSessionValue(MEMBER);
     const guestToken = makeSessionValue(GUEST, undefined, 'guest');
 
-    const run = (token, method, opts) => {
+    const run = async (token, method, opts) => {
       const res = makeRes();
       const req = makeReq({ method, headers: token ? cookies(token) : {} });
-      const allowed = requireAuth(req, res, opts);
+      const allowed = await requireAuth(req, res, opts);
       return { allowed, status: res.statusCode, body: res.body };
     };
 
     // no session at all
-    assert.equal(run(null, 'GET').status, 401);
+    assert.equal((await run(null, 'GET')).status, 401);
 
     // a member may do everything
-    assert.equal(run(memberToken, 'GET').allowed, true);
-    assert.equal(run(memberToken, 'POST').allowed, true);
-    assert.equal(run(memberToken, 'DELETE', { memberOnly: true }).allowed, true);
+    assert.equal((await run(memberToken, 'GET')).allowed, true);
+    assert.equal((await run(memberToken, 'POST')).allowed, true);
+    assert.equal((await run(memberToken, 'DELETE', { memberOnly: true })).allowed, true);
 
     // a guest may read
-    assert.equal(run(guestToken, 'GET').allowed, true);
-    assert.equal(run(guestToken, 'HEAD').allowed, true);
+    assert.equal((await run(guestToken, 'GET')).allowed, true);
+    assert.equal((await run(guestToken, 'HEAD')).allowed, true);
 
     // but not write
-    const write = run(guestToken, 'POST');
+    const write = await run(guestToken, 'POST');
     assert.equal(write.allowed, false);
     assert.equal(write.status, 403);
     assert.deepEqual(write.body, { error: 'View-only access' });
 
     // unless the route says so
-    assert.equal(run(guestToken, 'POST', { allowGuestWrite: true }).allowed, true);
+    assert.equal((await run(guestToken, 'POST', { allowGuestWrite: true })).allowed, true);
 
     // and never on a member-only route
-    const memberOnly = run(guestToken, 'GET', { memberOnly: true });
+    const memberOnly = await run(guestToken, 'GET', { memberOnly: true });
     assert.equal(memberOnly.allowed, false);
     assert.equal(memberOnly.status, 403);
   });
 });
 
-test('a missing ACCESS_CODE is still a server error, not a 401', () => {
-  withEnv({ ACCESS_CODE: undefined, SESSION_SECRET: 'secret' }, () => {
+test('a missing ACCESS_CODE is still a server error, not a 401', async () => {
+  await withEnv({ ACCESS_CODE: undefined, SESSION_SECRET: 'secret' }, async () => {
     const res = makeRes();
-    assert.equal(requireAuth(makeReq({ method: 'GET', headers: {} }), res), false);
+    assert.equal(await requireAuth(makeReq({ method: 'GET', headers: {} }), res), false);
     assert.equal(res.statusCode, 500);
   });
 });

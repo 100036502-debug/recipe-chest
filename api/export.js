@@ -71,7 +71,7 @@ export default async function handler(req, res) {
   // The weekly backup calls this with a bearer secret; a browser still uses a
   // session. The secret is checked first so a machine caller never needs a cookie.
   const viaSecret = hasBearerSecret(req, process.env.BACKUP_SECRET);
-  if (!viaSecret && !requireAuth(req, res, { memberOnly: true })) return;
+  if (!viaSecret && !(await requireAuth(req, res, { memberOnly: true }))) return;
 
   try {
     const ids = (await kv.lrange('recipe_ids', 0, -1)).filter(isId);

@@ -23,7 +23,7 @@ function cleanDeviceId(raw) {
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (!requireAuth(req, res, { allowGuestWrite: true })) return;
+  if (!(await requireAuth(req, res, { allowGuestWrite: true }))) return;
 
   // deviceId can arrive via query (?deviceId=...) or body
   const rawId = req.query?.deviceId || (req.body && req.body.deviceId);

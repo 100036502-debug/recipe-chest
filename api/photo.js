@@ -29,7 +29,7 @@ async function resize(input, size, quality) {
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (!requireAuth(req, res)) return;
+  if (!(await requireAuth(req, res))) return;
 
   // ---- GET: serve a photo (?id=...&size=thumb optional) ----
   if (req.method === 'GET') {

@@ -58,6 +58,23 @@ All variables are listed with empty values in [`.env.example`](.env.example).
 > Serious use needs Unsplash production access. Photos are always hotlinked from
 > `images.unsplash.com` with photographer credit, per the API guidelines.
 
+### Ending every session
+
+Clearing the cookie on one device is the Lock button. To invalidate every
+cookie everywhere (a lost phone, a shared laptop), bump the session epoch:
+
+```bash
+curl -X PUT https://your-deployment/api/verify-code \
+  -H 'Cookie: rc_session=<a member cookie>'
+```
+
+The signed cookie carries an epoch number, and a cookie whose epoch is behind
+the stored `session_epoch` key is refused with 401, so every device has to
+unlock again. Cookies issued before this existed verify as epoch 0, so deploying
+it does not log anyone out. If Redis cannot be read the check **fails open**, on
+purpose: the app's data lives in the same store, so an outage already breaks
+every route, and logging the household out on a blip would be the worse failure.
+
 ### Choosing the two secrets
 
 `ACCESS_CODE` and `SESSION_SECRET` are the whole lock, so treat them like

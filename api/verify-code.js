@@ -1,7 +1,11 @@
 // api/verify-code.js
 import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
-import { makeSessionValue, getSession, guestCode, guestOpen, guestSigningCode } from '../lib/auth.js';
+import {
+  makeSessionValue, getSession, guestCode, guestOpen, guestSigningCode,
+  sessionEpoch, revokeAllSessions, requireAuth,
+} from '../lib/auth.js';
+import { getKv } from '../lib/redis.js';
 import { bumpCounter, failurePenalty, getClientIp, sleep } from '../lib/rate-limit.js';
 import { logError } from '../lib/log.js';
 
@@ -37,6 +41,24 @@ export default async function handler(req, res) {
   }
 
   // GET: check if the caller already has a valid session cookie
+  // One helper: the epoch a new cookie should carry.
+  const currentEpoch = async () => {
+    const epoch = await sessionEpoch(getKv());
+    return epoch === null ? 0 : epoch;
+  };
+
+  // Revocation: only a member may end every session, including their own.
+  if (req.method === 'PUT') {
+    if (!(await requireAuth(req, res, { memberOnly: true }))) return;
+    try {
+      const epoch = await revokeAllSessions(getKv());
+      res.setHeader('Set-Cookie', 'rc_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure');
+      return res.status(200).json({ ok: true, epoch });
+    } catch (e) {
+      return res.status(503).json({ error: 'Could not end the sessions. Try again.' });
+    }
+  }
+
   if (req.method === 'GET') {
     const cur = getSession(req);
     return res.status(200).json({ unlocked: cur !== null, role: cur ? cur.role : null, guestOpen: guestOpen() });
@@ -55,7 +77,7 @@ export default async function handler(req, res) {
       if (!guestSecret) return res.status(403).json({ unlocked: false });
       const guestHttps = (req.headers['x-forwarded-proto'] || '').includes('https');
       res.setHeader('Set-Cookie', [
-        `rc_session=${makeSessionValue(guestSecret, undefined, 'guest')}`,
+        `rc_session=${makeSessionValue(guestSecret, undefined, 'guest', await currentEpoch())}`,
         'Path=/',
         'HttpOnly',
         'SameSite=Lax',
@@ -111,7 +133,7 @@ export default async function handler(req, res) {
     // Set an HttpOnly cookie so the browser doesn't send the code again
     const isHttps = (req.headers['x-forwarded-proto'] || '').includes('https');
     const cookie = [
-      `rc_session=${makeSessionValue(role === 'guest' ? guest : ACCESS_CODE, undefined, role)}`,
+      `rc_session=${makeSessionValue(role === 'guest' ? guest : ACCESS_CODE, undefined, role, await currentEpoch())}`,
       'Path=/',
       'HttpOnly',
       'SameSite=Lax',

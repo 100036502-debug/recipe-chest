@@ -55,7 +55,7 @@ export function applyEditableFields(target, body) {
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (!requireAuth(req, res)) return;
+  if (!(await requireAuth(req, res))) return;
 
   // ---- GET: list every recipe, newest first ----
   if (req.method === 'GET') {

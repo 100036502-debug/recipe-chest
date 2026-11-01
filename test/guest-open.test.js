@@ -83,7 +83,8 @@ test('with the flag on and no guest code, browsing as guest works', async () => 
     assert.deepEqual(res.body, { unlocked: true, role: 'guest' });
 
     const token = cookieValue(cookie);
-    assert.match(token, /^\d+\.guest\.[0-9a-f]{64}$/, 'the guest cookie format is unchanged');
+    assert.match(token, /^\d+\.guest\.\d+\.[0-9a-f]{64}$/, 'expiry, guest mark, epoch, signature');
+    assert.match(token, /\.guest\.0\./, 'a fresh cookie starts at epoch 0');
     assert.match(String(cookie), /HttpOnly/);
     assert.match(String(cookie), /SameSite=Lax/);
     assert.match(String(cookie), /Secure/, 'Secure on https');
@@ -185,15 +186,15 @@ test('an open-guest session is still read-only everywhere', async () => {
     const headers = { cookie: `rc_session=${cookieValue(cookie)}` };
 
     const write = makeRes();
-    assert.equal(requireAuth(makeReq({ method: 'POST', headers }), write), false);
+    assert.equal(await requireAuth(makeReq({ method: 'POST', headers }), write), false);
     assert.equal(write.statusCode, 403);
 
     const memberOnly = makeRes();
-    assert.equal(requireAuth(makeReq({ method: 'GET', headers }), memberOnly, { memberOnly: true }), false);
+    assert.equal(await requireAuth(makeReq({ method: 'GET', headers }), memberOnly, { memberOnly: true }), false);
     assert.equal(memberOnly.statusCode, 403);
 
     const read = makeRes();
-    assert.equal(requireAuth(makeReq({ method: 'GET', headers }), read), true);
+    assert.equal(await requireAuth(makeReq({ method: 'GET', headers }), read), true);
   });
 });
 
