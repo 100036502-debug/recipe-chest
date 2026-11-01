@@ -1881,13 +1881,17 @@ async function replaceWithAi() {
   if (!confirm('Replace the ingredients and steps of this recipe?')) return;
   // The AI read the recipe a while ago; say which version was read so a slow
   // generation cannot overwrite an edit made in the meantime.
+  // Prefer the revision the server says the AI read; fall back to the local
+  // copy for an older server that does not send one.
   const seen = recipes.find((r) => r.id === aiRecipeId);
-  const baseRev = seen && typeof seen.rev === 'number' ? seen.rev : undefined;
+  const baseRev = typeof data.rev === 'number' ? data.rev
+    : (seen && typeof seen.rev === 'number' ? seen.rev : undefined);
   try {
-    const res = await apiFetch(`${API}/recipes?id=${encodeURIComponent(aiRecipeId)}`, {
+    const res = await apiFetch(`${API}/recipes`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        id: aiRecipeId,
         ingredients: data.after.ingredients,
         instructions: data.after.instructions,
         notes: data.after.notes,
@@ -1943,10 +1947,11 @@ async function undoAiReplace() {
   try {
     // Reverting onto a recipe that has been edited since the AI replacement
     // would throw those edits away, so the base is sent and a 409 respected.
-    const res = await apiFetch(`${API}/recipes?id=${encodeURIComponent(aiRecipeId)}`, {
+    const res = await apiFetch(`${API}/recipes`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        id: aiRecipeId,
         ingredients: previous.ingredients,
         instructions: previous.instructions,
         notes: previous.notes,
@@ -2472,15 +2477,23 @@ async function removeTag(recipeId, tag) {
   if (!r) return;
   await patchRecipe(recipeId, { tags: (r.tags || []).filter(t => t !== tag) }, 'Tag removed');
 }
-async function patchRecipe(recipeId, fields, successMsg) {
+async function patchRecipe(recipeId, fields, successMsg, opts = {}) {
   try {
     const res = await apiFetch(`${API}/recipes`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ id: recipeId, ...fields }),
+      body: JSON.stringify({ id: recipeId, ...fields, ...(opts.baseRev !== undefined ? { baseRev: opts.baseRev } : {}) }),
     });
     const data = await res.json();
+    if (res.status === 409 && opts.keepOnConflict) {
+      // The text on screen is the user's work: leave the form alone and tell
+      // them the stored recipe moved on, rather than reloading over it.
+      const idx = recipes.findIndex(x => x.id === recipeId);
+      if (idx !== -1 && data && data.current) recipes[idx] = data.current;
+      toast('This recipe was changed elsewhere. Copy what you typed, then reopen it to see the latest.');
+      return null;
+    }
     if (!res.ok) throw new Error(data.error || 'Could not save');
     const idx = recipes.findIndex(x => x.id === recipeId);
     if (idx !== -1) recipes[idx] = data;
@@ -2495,9 +2508,13 @@ async function patchRecipe(recipeId, fields, successMsg) {
   }
 }
 
+// The rev each open edit form was built from, so Save can name it later.
+const editBaseRev = new Map();
+
 function openEditMode(id) {
   const r = recipes.find(x => x.id === id);
   if (!r) return;
+  if (typeof r.rev === 'number') editBaseRev.set(id, r.rev); else editBaseRev.delete(id);
   const mealOptions = ['default','breakfast','lunch','dinner','dessert','snack','drink']
     .map(m => `<option value="${m}"${r.mealType === m ? ' selected' : ''}>${m}</option>`)
     .join('');
@@ -2570,8 +2587,13 @@ async function saveEdit(id) {
     const guess = detectMealType(r ? r.tags : []);
     if (guess) fields.mealType = guess;
   }
-  const updated = await patchRecipe(id, fields, 'Recipe updated');
-  if (updated) openDetail(id);
+  // The form was opened against this version; if the stored one has moved on
+  // since, the save is refused instead of overwriting the newer text.
+  // Pinned when the form opened, not read now: after a refused save the local
+  // copy becomes the newer one, and a second click must not quietly adopt it.
+  const baseRev = editBaseRev.get(id);
+  const updated = await patchRecipe(id, fields, 'Recipe updated', { baseRev, keepOnConflict: true });
+  if (updated) { editBaseRev.delete(id); openDetail(id); }
 }
 
 // ---- Cook mode (fullscreen) ----
