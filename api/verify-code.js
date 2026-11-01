@@ -54,7 +54,7 @@ export default async function handler(req, res) {
       const epoch = await revokeAllSessions(getKv());
       res.setHeader('Set-Cookie', 'rc_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure');
       return res.status(200).json({ ok: true, epoch });
-    } catch (e) {
+    } catch {
       return res.status(503).json({ error: 'Could not end the sessions. Try again.' });
     }
   }

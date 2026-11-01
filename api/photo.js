@@ -129,7 +129,8 @@ export default async function handler(req, res) {
       const recipe = await kv.get(`recipe:${id}`);
       if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
 
-      const { userPhoto, ...rest } = recipe;
+      const rest = { ...recipe };
+      delete rest.userPhoto;
       await saveRecipeRecord(kv, rest);
       return res.status(200).json(rest);
     } catch (e) {
