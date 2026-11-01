@@ -116,3 +116,24 @@ test('the file name is carried for the message but not sent to the server', () =
   assert.match(src, /delete requestBody\.__name/);
   assert.match(src, /body: JSON\.stringify\(requestBody\)/);
 });
+
+// B21: the AI replacement and its undo both name the version they were based
+// on, so a slow generation or a late undo cannot overwrite newer edits.
+test('the AI replacement sends the revision it read', () => {
+  const src = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('async function replaceWithAi'), src.indexOf('function showAiUndo'));
+  assert.match(fn, /const baseRev = seen && typeof seen\.rev === 'number'/, 'it reads the loaded rev');
+  assert.match(fn, /baseRev,/, 'and sends it with the edit');
+  assert.match(fn, /res\.status === 409/, 'a conflict is handled, not treated as success');
+});
+
+test('the undo carries the revision the replacement produced', () => {
+  const src = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('async function undoAiReplace'), src.indexOf('// Line diff for the AI'));
+  assert.match(fn, /baseRev: previous\.rev/, 'the undo is anchored to that version');
+  assert.match(fn, /res\.status === 409/, 'and refuses when the recipe moved on');
+  assert.match(fn, /await loadRecipes\(\)/, 'showing the newer version instead of reverting it');
+
+  const replace = src.slice(src.indexOf('async function replaceWithAi'), src.indexOf('function showAiUndo'));
+  assert.match(replace, /rev: updated && typeof updated\.rev === 'number'/, 'the rev comes from the server answer');
+});

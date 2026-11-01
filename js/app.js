@@ -1879,7 +1879,10 @@ async function replaceWithAi() {
   const data = window.__aiPending;
   if (!data) return;
   if (!confirm('Replace the ingredients and steps of this recipe?')) return;
-  aiPrevious = data.before;
+  // The AI read the recipe a while ago; say which version was read so a slow
+  // generation cannot overwrite an edit made in the meantime.
+  const seen = recipes.find((r) => r.id === aiRecipeId);
+  const baseRev = seen && typeof seen.rev === 'number' ? seen.rev : undefined;
   try {
     const res = await apiFetch(`${API}/recipes?id=${encodeURIComponent(aiRecipeId)}`, {
       method: 'PATCH',
@@ -1888,9 +1891,24 @@ async function replaceWithAi() {
         ingredients: data.after.ingredients,
         instructions: data.after.instructions,
         notes: data.after.notes,
+        baseRev,
       }),
     });
+    if (res.status === 409) {
+      await loadRecipes();
+      toast('That recipe changed while the AI was working. Your newer edits were kept; run it again.');
+      return;
+    }
     if (!res.ok) throw new Error('Could not update that recipe');
+    const updated = await res.json().catch(() => null);
+    // The undo needs the version this replacement produced, not the one the AI
+    // was given: that is what tells us whether anything changed afterwards.
+    aiPrevious = {
+      ingredients: data.before.ingredients,
+      instructions: data.before.instructions,
+      notes: data.before.notes,
+      rev: updated && typeof updated.rev === 'number' ? updated.rev : undefined,
+    };
     await loadRecipes();
     toast('Recipe updated');
     showAiUndo();
@@ -1923,11 +1941,23 @@ async function undoAiReplace() {
   const previous = aiPrevious;
   clearAiUndo();
   try {
+    // Reverting onto a recipe that has been edited since the AI replacement
+    // would throw those edits away, so the base is sent and a 409 respected.
     const res = await apiFetch(`${API}/recipes?id=${encodeURIComponent(aiRecipeId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ingredients: previous.ingredients, instructions: previous.instructions, notes: previous.notes }),
+      body: JSON.stringify({
+        ingredients: previous.ingredients,
+        instructions: previous.instructions,
+        notes: previous.notes,
+        baseRev: previous.rev,
+      }),
     });
+    if (res.status === 409) {
+      await loadRecipes();
+      toast('This recipe changed after the AI edit, so the undo was refused. Your newer edits are safe.');
+      return;
+    }
     if (!res.ok) throw new Error('Could not undo that change');
     await loadRecipes();
     toast('Change undone');
