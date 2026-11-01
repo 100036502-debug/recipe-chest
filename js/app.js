@@ -2153,7 +2153,8 @@ async function renameCollectionPrompt(from) {
     if (currentCollection === from) currentCollection = name;
     await refreshRecipesFromServer();
     renderCollectionsManager();
-    toast(`Renamed in ${data.changed} recipe${data.changed === 1 ? '' : 's'}`);
+    toast(`Renamed in ${data.changed} recipe${data.changed === 1 ? '' : 's'}`
+      + (data.truncated ? ` (partial pass: ${data.total} recipes, not all checked)` : ''));
   } catch (e) {
     toast('Could not rename: ' + e.message);
   }
@@ -2166,7 +2167,8 @@ async function deleteCollection(name) {
     if (currentCollection === name) currentCollection = 'all';
     await refreshRecipesFromServer();
     renderCollectionsManager();
-    toast(`Removed from ${data.changed} recipe${data.changed === 1 ? '' : 's'}`);
+    toast(`Removed from ${data.changed} recipe${data.changed === 1 ? '' : 's'}`
+      + (data.truncated ? ` (partial pass: ${data.total} recipes, not all checked)` : ''));
   } catch (e) {
     toast('Could not delete: ' + e.message);
   }

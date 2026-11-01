@@ -55,7 +55,9 @@ test('rename is case insensitive and reports the count', async () => {
   ]);
   const res = await call(kv, { rename: { from: 'DINNER', to: 'Weeknight' } });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body, { changed: 2 });
+  assert.equal(res.body.changed, 2);
+  assert.equal(res.body.total, 3);
+  assert.equal(res.body.truncated, false);
   assert.deepEqual((await kv.get('recipe:a')).collections, ['Weeknight', 'Quick']);
   assert.deepEqual((await kv.get('recipe:b')).collections, ['Weeknight']);
   assert.deepEqual((await kv.get('recipe:c')).collections, ['Baking']);
@@ -76,7 +78,8 @@ test('delete removes the collection from every recipe', async () => {
     { ...BASE, id: 'b', collections: ['Dinner'] },
   ]);
   const res = await call(kv, { delete: 'dinner' });
-  assert.deepEqual(res.body, { changed: 2 });
+  assert.equal(res.body.changed, 2);
+  assert.equal(res.body.total, 2);
   assert.deepEqual((await kv.get('recipe:a')).collections, ['Quick']);
   assert.deepEqual((await kv.get('recipe:b')).collections, []);
 });
@@ -84,7 +87,8 @@ test('delete removes the collection from every recipe', async () => {
 test('recipes without the collection are left alone', async () => {
   const kv = await seed([{ ...BASE, id: 'a', collections: ['Baking'] }]);
   const res = await call(kv, { delete: 'Dinner' });
-  assert.deepEqual(res.body, { changed: 0 });
+  assert.equal(res.body.changed, 0);
+  assert.equal(res.body.examined, 1, 'it read the one recipe and left it alone');
   assert.deepEqual((await kv.get('recipe:a')).collections, ['Baking']);
 });
 
@@ -94,5 +98,38 @@ test('a recipe deleted between listing and writing is skipped', async () => {
   await kv.set('recipe:a', { ...BASE, id: 'a', collections: ['Dinner'] });
   await kv.lpush('recipe_ids', 'a', 'b');
   const res = await call(kv, { delete: 'Dinner' });
-  assert.deepEqual(res.body, { changed: 1 });
+  assert.equal(res.body.changed, 1);
+  assert.equal(res.body.examined, 1, 'the missing one was not counted');
+});
+
+test('a large chest is read in batches and every recipe is still reached', async () => {
+  const recipes = [];
+  for (let i = 0; i < 120; i += 1) recipes.push({ ...BASE, id: `r${i}`, collections: ['Dinner'] });
+  const kv = await seed(recipes);
+
+  let mgetCalls = 0;
+  const realMget = kv.mget.bind(kv);
+  kv.mget = (...keys) => { mgetCalls += 1; return realMget(...keys); };
+
+  const res = await call(kv, { rename: { from: 'Dinner', to: 'Supper' } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.changed, 120);
+  assert.equal(res.body.total, 120);
+  assert.equal(res.body.truncated, false);
+  assert.equal(mgetCalls, 3, '120 recipes go out as three mget calls of 50, 50 and 20');
+  assert.deepEqual((await kv.get('recipe:r119')).collections, ['Supper']);
+});
+
+test('crossing the cap is reported instead of silently dropped', async () => {
+  const kv = createFakeKv();
+  // Only the list is long; the values are absent, so this stays fast.
+  const ids = [];
+  for (let i = 0; i < 2005; i += 1) ids.push(`x${i}`);
+  await kv.lpush('recipe_ids', ...ids);
+
+  const res = await call(kv, { delete: 'Dinner' });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.total, 2005);
+  assert.equal(res.body.truncated, true, 'the caller can see the pass was partial');
+  assert.equal(res.body.changed, 0);
 });
