@@ -491,6 +491,7 @@ let isProcessing = false;
 let cancelRequested = false;
 let shoppingList = { items: [] };
 let mealPlan = {};
+let mealPlanUpdatedAt = null;
 // 'unknown' until a load actually succeeds. Anything but 'ok' means we do not
 // know what the server holds, so we must not write over it.
 let shoppingListState = 'unknown';
@@ -3456,7 +3457,10 @@ async function loadMealPlan() {
   const out = loadOutcome(ok, data);
   if (out.status === 'ok') {
     mealPlanState = 'ok';
-    mealPlan = out.data && typeof out.data === 'object' && !Array.isArray(out.data) ? out.data : {};
+    // The plan is { days, updatedAt } now; an older server sent a bare map.
+    const payload = out.data && typeof out.data === 'object' && !Array.isArray(out.data) ? out.data : {};
+    mealPlan = payload.days && typeof payload.days === 'object' ? payload.days : payload;
+    mealPlanUpdatedAt = typeof payload.updatedAt === 'number' ? payload.updatedAt : null;
   } else {
     // Same rule as the shopping list: a failed load leaves the plan unknown,
     // and writing a day from a guessed plan would wipe it.
@@ -3464,6 +3468,19 @@ async function loadMealPlan() {
   }
   return mealPlanState;
 }
+function applyPlanPayload(payload) {
+  mealPlan = payload && payload.days && typeof payload.days === 'object' ? payload.days : (payload || {});
+  mealPlanUpdatedAt = payload && typeof payload.updatedAt === 'number' ? payload.updatedAt : mealPlanUpdatedAt;
+}
+
+// Someone else moved the plan while this tab was editing it: take their version
+// and say so, rather than writing over it.
+async function conflictReloadPlan() {
+  await loadMealPlan();
+  renderMealPlan();
+  toast('The plan changed on another device. Reloaded it, try again.');
+}
+
 async function retryMealPlan() {
   await loadMealPlan();
   renderMealPlan();
@@ -3550,10 +3567,11 @@ async function addToPlan(date, recipeId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ deviceId: listDeviceId(), date, recipeIds: updated }),
+      body: JSON.stringify({ deviceId: listDeviceId(), date, recipeIds: updated, baseUpdatedAt: mealPlanUpdatedAt }),
     });
+    if (res.status === 409) { await conflictReloadPlan(); return; }
     if (!res.ok) throw new Error('Save failed');
-    mealPlan = await res.json();
+    applyPlanPayload(await res.json());
     renderMealPlan();
     toast('Added to plan');
   } catch (e) {
@@ -3569,10 +3587,11 @@ async function removeFromPlan(date, recipeId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ deviceId: getDeviceId(), date, recipeIds: updated }),
+      body: JSON.stringify({ deviceId: getDeviceId(), date, recipeIds: updated, baseUpdatedAt: mealPlanUpdatedAt }),
     });
+    if (res.status === 409) { await conflictReloadPlan(); return; }
     if (!res.ok) throw new Error('Save failed');
-    mealPlan = await res.json();
+    applyPlanPayload(await res.json());
     renderMealPlan();
   } catch (e) {
     toast('Could not save: ' + e.message);

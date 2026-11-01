@@ -128,14 +128,20 @@ test('a meal plan holds at most 400 days', async () => {
   const over = await call(mealPlan, setPlanKv, {
     headers: memberHeaders(),
     kv,
-    body: { date: new Date(Date.now() + 300 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), recipeIds: ['r1'] },
+    body: {
+      date: new Date(Date.now() + 300 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      recipeIds: ['r1'],
+      baseUpdatedAt: Date.now(),
+    },
   });
   assert.equal(over.res.statusCode, 400);
   assert.match(String(over.res.body.error), /at most 400 days/);
 
   // Updating a day already in the plan is still allowed at the cap.
   const existing = Object.keys(plan)[0];
-  const update = await call(mealPlan, setPlanKv, { headers: memberHeaders(), kv, body: { date: existing, recipeIds: ['r2'] } });
+  const update = await call(mealPlan, setPlanKv, {
+    headers: memberHeaders(), kv, body: { date: existing, recipeIds: ['r2'], baseUpdatedAt: Date.now() },
+  });
   assert.equal(update.res.statusCode, 200);
 });
 

@@ -1,7 +1,8 @@
 import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { sendServerError } from '../lib/http.js';
-import { cleanItems, decideWrite } from '../lib/shopping-list.js';
+import { cleanItems } from '../lib/shopping-list.js';
+import { writeBucket, missingBaseForShared } from '../lib/bucket-store.js';
 import { refuseGuestWrite, resolveBucketId, bucketSetOptions } from '../lib/device-buckets.js';
 
 // let, not const: tests swap in a fake store.
@@ -62,14 +63,21 @@ export default async function handler(req, res) {
 
     try {
       // Two people sharing one list must not silently overwrite each other.
+      // A member's shared bucket needs to say which version it edited.
       const stored = await kv.get(key);
-      const verdict = decideWrite({ stored, baseUpdatedAt: body.baseUpdatedAt });
-      if (!verdict.write) {
-        return res.status(409).json({ error: 'conflict', current: verdict.current });
+      const hasItems = Boolean(stored && Array.isArray(stored.items) && stored.items.length);
+      if (missingBaseForShared({ deviceId, stored, baseUpdatedAt: body.baseUpdatedAt, hasData: hasItems })) {
+        return res.status(409).json({ error: 'conflict', current: stored });
       }
 
       const payload = { items: clean, updatedAt: Date.now() };
-      await kv.set(key, payload, bucketSetOptions(req));
+      // Compare-and-set in one step: the check and the write cannot be split by
+      // the other device's write any more.
+      const written = await writeBucket(kv, key, payload, {
+        baseUpdatedAt: body.baseUpdatedAt,
+        setOptions: bucketSetOptions(req),
+      });
+      if (!written.ok) return res.status(409).json({ error: 'conflict', current: written.current });
       return res.status(200).json(payload);
     } catch (e) {
       return sendServerError(res, e);
