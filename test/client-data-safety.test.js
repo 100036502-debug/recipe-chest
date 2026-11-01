@@ -122,7 +122,8 @@ test('the file name is carried for the message but not sent to the server', () =
 test('the AI replacement sends the revision it read', () => {
   const src = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
   const fn = src.slice(src.indexOf('async function replaceWithAi'), src.indexOf('function showAiUndo'));
-  assert.match(fn, /const baseRev = seen && typeof seen\.rev === 'number'/, 'it reads the loaded rev');
+  assert.match(fn, /typeof data\.rev === 'number' \? data\.rev/, 'it prefers the rev the AI actually read');
+  assert.match(fn, /seen && typeof seen\.rev === 'number'/, 'and falls back to the loaded copy');
   assert.match(fn, /baseRev,/, 'and sends it with the edit');
   assert.match(fn, /res\.status === 409/, 'a conflict is handled, not treated as success');
 });
@@ -136,4 +137,24 @@ test('the undo carries the revision the replacement produced', () => {
 
   const replace = src.slice(src.indexOf('async function replaceWithAi'), src.indexOf('function showAiUndo'));
   assert.match(replace, /rev: updated && typeof updated\.rev === 'number'/, 'the rev comes from the server answer');
+});
+
+// The edit form is the one write that replaces typed text wholesale, so it is
+// pinned to the revision it was opened at.
+test('the edit form names the revision it opened at and keeps typed text on conflict', () => {
+  const src = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  assert.match(src, /const editBaseRev = new Map\(\)/);
+  assert.match(src, /editBaseRev\.set\(id, r\.rev\)/, 'recorded when the form opens');
+  const save = src.slice(src.indexOf('async function saveEdit'), src.indexOf('// ---- Cook mode'));
+  assert.match(save, /const baseRev = editBaseRev\.get\(id\)/, 'read from the pinned value, not the live list');
+  assert.match(save, /keepOnConflict: true/);
+  const patch = src.slice(src.indexOf('async function patchRecipe'), src.indexOf('function openEditMode') );
+  assert.match(patch, /res\.status === 409 && opts\.keepOnConflict/);
+  assert.match(patch, /return null;/, 'a refused save does not look like a success');
+});
+
+test('small one-field edits stay unconditional so they merge on the server', () => {
+  const src = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  const fav = src.slice(src.indexOf('async function toggleFavorite'), src.indexOf('function openDetail'));
+  assert.equal(/baseRev/.test(fav), false);
 });
