@@ -42,3 +42,31 @@ test('the bearer secret only goes to an https URL, without following redirects',
   assert.match(backup, /BACKUP_API_URL must start with https/);
   assert.match(code, /followRedirects: false/);
 });
+
+// C4: a folder only counts as a backup once every slice has landed.
+test('the day folder is built under a name retention ignores', () => {
+  assert.match(backup, /root\.createFolder\('incomplete-' \+ stamp\)/);
+  assert.equal(/root\.createFolder\(stamp\)/.test(backup), false, 'the date folder is not created up front');
+});
+
+test('a finished run renames the folder to the date', () => {
+  const finish = backup.indexOf('dayFolder.setName(stamp)');
+  const created = backup.indexOf("createFolder('incomplete-' + stamp)");
+  assert.ok(created > -1 && finish > created, 'the rename happens after the fetches');
+});
+
+test('a failed run trashes the folder it was building', () => {
+  const catchBlock = backup.slice(backup.indexOf('} catch (error) {'), backup.indexOf('} finally {'));
+  assert.match(catchBlock, /if \(dayFolder\) \{/, 'it only cleans up what it created');
+  assert.match(catchBlock, /dayFolder\.setTrashed\(true\)/);
+});
+
+test('retention runs whether the run succeeded or not', () => {
+  const final = backup.slice(backup.indexOf('} finally {'));
+  assert.match(final, /trashOldFolders_\(root, config\.keepWeeks\)/, 'trimming is not success-only');
+});
+
+test('an abandoned incomplete folder is cleaned up later', () => {
+  assert.match(backup, /name\.indexOf\('incomplete-'\) === 0/);
+  assert.match(backup, /getDateCreated\(\)\.getTime\(\) < Date\.now\(\) - 24 \* 60 \* 60 \* 1000/, 'with a day of grace');
+});
