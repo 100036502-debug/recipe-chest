@@ -172,3 +172,21 @@ test('a model failure is a 502 and a missing key a 500', async () => {
   assert.equal((await run(unset.handler, { id: 'r1', kind: 'metric' })).statusCode, 500);
   unset.restore();
 });
+
+test('the response names the revision the model read', async () => {
+  const ctx = await setup({ recipe: { ...RECIPE, rev: 5 } });
+  try {
+    const res = await run(ctx.handler, { id: 'r1', kind: 'metric' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.rev, 5);
+  } finally { ctx.restore(); }
+});
+
+test('a recipe written before revisions reports rev 0', async () => {
+  const ctx = await setup();
+  try {
+    const res = await run(ctx.handler, { id: 'r1', kind: 'metric' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.rev, 0);
+  } finally { ctx.restore(); }
+});
