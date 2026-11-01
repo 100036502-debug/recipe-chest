@@ -57,3 +57,28 @@ test('unclosed script runs do not stall the JSON-LD scan', () => {
   assert.ok(Date.now() - started < 500);
   assert.equal(found, null); // truncated JSON is not a recipe
 });
+
+test('a tag whose name only starts with the block name is left alone', () => {
+  // "<stylesheet" and "<navigation" are not <style> or <nav> blocks: the old
+  // prefix match deleted real content.
+  const page = '<p>Bring <styleless> water</p><navigation>keep me</navigation>';
+  const out = removeBlocks(page, 'style');
+  assert.match(out, /styleless/);
+  const nav = removeBlocks(page, 'nav');
+  assert.match(nav, /keep me|navigation/);
+});
+
+test('a 500 KB run of unclosed script tags finishes in well under a second', () => {
+  const hostile = '<script'.repeat(83_000); // ~500k
+  const started = Date.now();
+  const out = removeBlocks(hostile, 'script');
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 1000, `took ${elapsed} ms`);
+  assert.equal(/<script/i.test(out), false);
+});
+
+test('an unclosed tag in the middle does not swallow the text before it', () => {
+  const out = removeBlocks('<h1>Soup</h1><script>alert(1)', 'script');
+  assert.match(out, /Soup/);
+  assert.equal(/<script/i.test(out), false);
+});
