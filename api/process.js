@@ -112,7 +112,9 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
 
     if (!isUsableRecipe(recipe)) {
       if (!recipe || !recipe.title) {
-        console.error('Could not parse AI output. RAW (first 1800 chars):', raw.substring(0, 1800));
+        // Enough to tell what went wrong without copying a whole page of the
+        // user's recipe into the logs; DEBUG_AI=1 above prints more on purpose.
+        console.error(`Could not parse AI output (${String(raw).length} chars). Start:`, String(raw).substring(0, 200));
       }
       return res.status(400).json({ error: 'Could not read a recipe from that image. Try a clearer photo.' });
     }
