@@ -70,3 +70,25 @@ test('an abandoned incomplete folder is cleaned up later', () => {
   assert.match(backup, /name\.indexOf\('incomplete-'\) === 0/);
   assert.match(backup, /getDateCreated\(\)\.getTime\(\) < Date\.now\(\) - 24 \* 60 \* 60 \* 1000/, 'with a day of grace');
 });
+
+// Script Properties has a fixed quota; counters that are never removed fill it,
+// and then every setProperty throws.
+test('a message that is imported clears its retry counter', () => {
+  const poll = code.slice(code.indexOf('function pollRecipeImports'), code.indexOf('function handleImportError'));
+  const okPath = poll.slice(poll.indexOf('importMessage(message, apiUrl, secret);'), poll.indexOf('} catch (error)'));
+  assert.match(okPath, /deleteProperty\('import_attempts:' \+ message\.getId\(\)\)/);
+});
+
+test('old daily reply counters are pruned when a new day starts', () => {
+  assert.match(code, /function pruneOldReplyCounters_\(properties, todayKey\)/);
+  assert.match(code, /indexOf\('replies_on:'\) === 0 && all\[i\] !== todayKey/, 'only reply counters, never today\'s');
+  assert.match(code, /pruneOldReplyCounters_\(properties, key\);/, 'and it is actually called');
+  assert.match(code, /Number\(properties\.getProperty\(todayKey\) \|\| 0\) !== 1\) return;/, 'only on the first reply of a day');
+});
+
+test('an attachment is claimed by the PDF pass or the image pass, never both', () => {
+  const images = code.slice(code.indexOf('function extractImageAttachments'), code.indexOf('function sendConfirmation'));
+  assert.match(images, /contentType === 'application\/pdf' \|\| name\.toLowerCase\(\)\.endsWith\('\.pdf'\)\) continue;/);
+  // and the guard sits after the image test, before any bytes are read
+  assert.ok(images.indexOf("endsWith('.pdf')) continue;") < images.indexOf('att.getBytes()'), 'checked before the bytes are read');
+});

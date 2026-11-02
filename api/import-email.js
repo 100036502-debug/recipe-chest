@@ -9,6 +9,8 @@ import { bumpCounter } from '../lib/rate-limit.js';
 import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
+import { listRecipeId } from '../lib/recipe-index.js';
+import { saveRecipeRecord } from '../lib/save-recipe.js';
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -112,15 +114,15 @@ export default async function handler(req, res) {
     }
 
     const allAttachments = Array.isArray(payload.attachments) ? payload.attachments : [];
-    const imageAttachments = allAttachments.filter((a) => {
-      const mime = a.type || a.contentType || '';
-      return mime.startsWith('image/');
-    });
-    const pdfAttachments = allAttachments.filter((a) => {
-      const mime = a.type || a.contentType || '';
-      const name = (a.filename || a.name || '').toLowerCase();
-      return mime === 'application/pdf' || name.endsWith('.pdf');
-    });
+    // The payload is JSON from outside, so a field can be any type. A number
+    // where a string belongs used to throw here, which answered 500, and the
+    // mail script retries a 500 as transient.
+    const text = (v) => (typeof v === 'string' ? v : '');
+    const mimeOf = (a) => text(a && (a.type || a.contentType)).toLowerCase();
+    const nameOf = (a) => text(a && (a.filename || a.name)).toLowerCase();
+    const usable = allAttachments.filter((a) => a && typeof a === 'object');
+    const imageAttachments = usable.filter((a) => mimeOf(a).startsWith('image/'));
+    const pdfAttachments = usable.filter((a) => mimeOf(a) === 'application/pdf' || nameOf(a).endsWith('.pdf'));
 
     console.log(
       `Received: bodyText=${bodyText.length} chars, ` +
@@ -153,8 +155,8 @@ export default async function handler(req, res) {
         budgetExhausted.push('PDF skipped: daily limit reached');
         break;
       }
-      const filename = pdf.filename || pdf.name || 'attachment.pdf';
-      const base64 = pdf.content || pdf.data;
+      const filename = text(pdf.filename || pdf.name) || 'attachment.pdf';
+      const base64 = text(pdf.content || pdf.data);
       if (!base64) {
         console.warn(`PDF ${filename} has no content; skipping`);
         continue;
@@ -192,7 +194,7 @@ export default async function handler(req, res) {
     if (imageAttachments.length > 0) {
       const images = [];
       for (const att of imageAttachments) {
-        const base64Data = att.content || att.data;
+        const base64Data = text(att.content || att.data);
         if (!base64Data) continue;
         try {
           const resized = await resizeImage(Buffer.from(base64Data, 'base64'), { width: 1024, height: 1024, quality: 80 });
@@ -335,8 +337,11 @@ async function persistRecipe(parsedRecipe, senderName) {
     createdAt: Date.now(),
   };
 
-  await redis.set(`recipe:${recipeId}`, recipe);
-  await redis.lpush('recipe_ids', recipeId);
+  // The shared writer, like every other import: it caps lengths and strips
+  // markup. The text here comes from a model reading a stranger's email, so it
+  // is the last place that should reach Redis unsanitised.
+  const saved = await saveRecipeRecord(redis, recipe);
+  await listRecipeId(redis, recipeId);
 
-  return { id: recipeId, recipe };
+  return { id: recipeId, recipe: saved };
 }

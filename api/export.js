@@ -39,10 +39,21 @@ async function readPhotoPair(id) {
  * Collects photos for ids[offset..] until the limit count or the byte
  * budget would be exceeded. Returns { photos, nextOffset, done }.
  */
-async function collectPhotoSlice(ids, offset, limit) {
+async function collectPhotoSlice(ids, offset, limit, after) {
   const photos = {};
   let bytes = 0;
-  let i = offset;
+  // A cursor wins over a number. recipe_ids is a list new recipes are pushed
+  // onto the front of, so a numeric offset slides whenever anything is added or
+  // deleted between two slices, and a live recipe's photo is skipped. Resuming
+  // after the last id we sent does not depend on where it sits any more.
+  let start = offset;
+  if (after) {
+    const at = ids.indexOf(after);
+    // An id that has since been deleted cannot anchor the cursor; fall back to
+    // the number rather than restarting, which would repeat everything.
+    start = at === -1 ? offset : at + 1;
+  }
+  let i = start;
   let served = 0;
 
   for (; i < ids.length; i++) {
@@ -59,9 +70,13 @@ async function collectPhotoSlice(ids, offset, limit) {
     served++;
   }
 
+  const lastSent = Object.keys(photos).pop() || null;
   return {
     photos,
     nextOffset: i >= ids.length ? null : i,
+    // Where to resume, immune to the list changing underneath the next request.
+    // When this slice sent nothing, the cursor it was given is still the anchor.
+    nextAfter: i >= ids.length ? null : (lastSent || after || null),
     done: i >= ids.length,
   };
 }
@@ -82,12 +97,14 @@ export default async function handler(req, res) {
     if (req.query.photos === '1' && ('offset' in req.query)) {
       const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
-      const { photos, nextOffset, done } = await collectPhotoSlice(ids, offset, limit);
+      const after = typeof req.query.after === 'string' && isId(req.query.after) ? req.query.after : '';
+      const { photos, nextOffset, nextAfter, done } = await collectPhotoSlice(ids, offset, limit, after);
       return res.status(200).json({
         app: 'recipe-chest',
         exportedAt: new Date().toISOString(),
         offset,
         nextOffset,
+        nextAfter,
         done,
         photos,
       });

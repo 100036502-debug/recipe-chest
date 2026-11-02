@@ -165,3 +165,37 @@ test('share-photo serves the photo bytes only for a live token', async () => {
   assert.equal(bad.statusCode, 404);
   assert.deepEqual(bad.body, GONE);
 });
+
+// A key is never built from input that has not been shaped first.
+test('share management refuses ids and tokens that are not the right shape', async () => {
+  const kv = await seed();
+  await kv.sadd('share_tokens:r1:shadow', 'a'.repeat(32));
+  const handler = createShare({ kv, now: () => 1000 });
+
+  for (const bad of ['r1:shadow', '../r1', 'x y', 'a'.repeat(65)]) {
+    const create = await call(handler, req({ method: 'POST', body: { id: bad, days: 7 } }));
+    assert.equal(create.statusCode, 400, `create refused ${JSON.stringify(bad)}`);
+    const list = await call(handler, req({ method: 'GET', query: { id: bad } }));
+    assert.equal(list.statusCode, 400, `list refused ${JSON.stringify(bad)}`);
+  }
+});
+
+test('revoking a malformed token answers like a revoked one and touches nothing', async () => {
+  const kv = await seed();
+  await kv.set('share:planted', { recipeId: 'r1' });
+  const handler = createShare({ kv, now: () => 1000 });
+
+  const res = await call(handler, req({ method: 'DELETE', query: { token: 'planted' } }));
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { ok: true });
+  assert.ok(await kv.get('share:planted'), 'a key that is not one of our tokens is left alone');
+});
+
+test('a real token still revokes', async () => {
+  const kv = await seed();
+  const handler = createShare({ kv, now: () => 1000 });
+  const made = await call(handler, req({ method: 'POST', body: { id: 'r1', days: 7 } }));
+  const gone = await call(handler, req({ method: 'DELETE', query: { token: made.body.token } }));
+  assert.equal(gone.statusCode, 200);
+  assert.equal(await kv.get(`share:${made.body.token}`), null);
+});

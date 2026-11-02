@@ -12,11 +12,16 @@ import { requireAuth } from '../lib/auth.js';
 import { ID_PATTERN, restoreDecision, sanitizeStoredRecipe } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
 import { saveRecipeRecord } from '../lib/save-recipe.js';
+import { listRecipeId } from '../lib/recipe-index.js';
+import { updateRecipe } from '../lib/update-recipe.js';
 
-const kv = new Redis({
+// let, not const: tests swap in a fake store.
+let kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
+
+export function __setKvForTests(store) { kv = store; }
 
 export const config = {
   api: { bodyParser: { sizeLimit: '4mb' } },
@@ -101,8 +106,11 @@ export default async function handler(req, res) {
       // An id that is listed with no recipe behind it is repaired here rather
       // than pushed a second time.
       if (decision.addToList) {
-        await kv.lpush('recipe_ids', clean.id);
+        await listRecipeId(kv, clean.id);
         listedIds.add(clean.id);
+      } else {
+        // Already in the list, so only make sure the set agrees with it.
+        await kv.sadd('recipe_id_set', clean.id);
       }
       stored.set(clean.id, clean);
       imported++;
@@ -118,14 +126,16 @@ export default async function handler(req, res) {
     let photosRestored = 0;
     if (!incoming.length) {
       const photoIds = Object.keys(photos).filter((id) => ID_PATTERN.test(id));
-      const storedRecipes = await readStoredRecipes(photoIds);
       for (const id of photoIds) {
-        const recipe = storedRecipes.get(id);
-        if (!recipe) continue; // nothing to attach it to
         const pair = validPhotoPair(photos[id]);
         if (!pair) continue;
-        recipe.userPhoto = { updatedAt: Date.now() };
-        await saveRecipeRecord(kv, recipe);
+        // Compare-and-set, like every other writer of an existing recipe: a
+        // read-then-write here threw away an edit made while the slice restored.
+        const result = await updateRecipe(kv, id, (recipe) => ({
+          ...recipe,
+          userPhoto: { updatedAt: Date.now() },
+        }));
+        if (result.status !== 200) continue; // nothing to attach it to
         await kv.set(`photo:${id}`, pair.main);
         await kv.set(`photothumb:${id}`, pair.photothumb);
         photosRestored++;

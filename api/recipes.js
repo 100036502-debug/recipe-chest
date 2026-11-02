@@ -3,6 +3,7 @@ import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, cleanCollections, findDuplicat
 import { TRASH_TTL_SECONDS, buildTrashEntry, trashKey } from '../lib/trash.js';
 import { sendServerError } from '../lib/http.js';
 import { updateRecipe, sendUpdateResult, revOf } from '../lib/update-recipe.js';
+import { listRecipeId, unlistRecipeId } from '../lib/recipe-index.js';
 import { saveRecipeRecord } from '../lib/save-recipe.js';
 import { revokeShareLinks } from '../lib/actions/share.js';
 import { getKv } from '../lib/redis.js';
@@ -124,8 +125,7 @@ export default async function handler(req, res) {
       }, body);
 
       await saveRecipeRecord(kv, recipe);
-      const added = await kv.sadd('recipe_id_set', id);
-      if (Number(added) === 1) await kv.lpush('recipe_ids', id);
+      await listRecipeId(kv, id);
       return res.status(200).json(recipe);
     } catch (e) {
       return sendServerError(res, e);
@@ -135,8 +135,15 @@ export default async function handler(req, res) {
   // ---- PATCH: update any editable field on an existing recipe ----
   if (req.method === 'PATCH') {
     const body = req.body || {};
-    const id = typeof body.id === 'string' ? body.id : '';
+    // The id normally rides in the body, but the AI replace and its undo have
+    // always sent it in the query string, and those calls came back 400. Accept
+    // both, so a client cached before this fix keeps working.
+    const queryId = req.query && typeof req.query.id === 'string' ? req.query.id : '';
+    const id = typeof body.id === 'string' && body.id ? body.id : queryId;
     if (!id) return res.status(400).json({ error: 'Missing recipe id' });
+    // Every other route checks this; PATCH did not, so an id like "r1:x" reached
+    // Redis as recipe:r1:x and could edit any key that merely started with recipe:.
+    if (!ID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid recipe id' });
 
     try {
       // Compare-and-set: the client may send the rev it read. A stale baseRev is
@@ -176,8 +183,7 @@ export default async function handler(req, res) {
       // still valid for anyone who has the URL, and a re-created id would make
       // it point at something new.
       const revoked = await revokeShareLinks(kv, id);
-      await kv.lrem('recipe_ids', 0, id);
-      await kv.srem('recipe_id_set', id);
+      await unlistRecipeId(kv, id);
       return res.status(200).json({
         success: true,
         undoable: Boolean(entry),

@@ -8,6 +8,7 @@ import { parseAiOutput } from '../lib/parse.js';
 import { rateLimited } from '../lib/rate-limit.js';
 import { sendServerError } from '../lib/http.js';
 import { saveRecipeRecord } from '../lib/save-recipe.js';
+import { listRecipeId } from '../lib/recipe-index.js';
 
 const kv = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
@@ -111,7 +112,9 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
 
     if (!isUsableRecipe(recipe)) {
       if (!recipe || !recipe.title) {
-        console.error('Could not parse AI output. RAW (first 1800 chars):', raw.substring(0, 1800));
+        // Enough to tell what went wrong without copying a whole page of the
+        // user's recipe into the logs; DEBUG_AI=1 above prints more on purpose.
+        console.error(`Could not parse AI output (${String(raw).length} chars). Start:`, String(raw).substring(0, 200));
       }
       return res.status(400).json({ error: 'Could not read a recipe from that image. Try a clearer photo.' });
     }
@@ -142,7 +145,7 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
     };
 
     await saveRecipeRecord(kv, finalRecipe);
-    await kv.lpush('recipe_ids', id);
+    await listRecipeId(kv, id);
     return res.status(200).json(finalRecipe);
   } catch (error) {
     return sendServerError(res, error, 'Failed to save that recipe.');
