@@ -78,6 +78,7 @@ const CHANGE_ACTIONS = {
 
 const INPUT_ACTIONS = {
   updatePasteCount: () => updatePasteCount(),
+  filterPicker: () => renderPicker(),
 };
 
 const ENTER_ACTIONS = {
@@ -143,6 +144,7 @@ const ACTIONS = {
   openPantryResult,
   openPasteImport,
   openPicker,
+  openPlanPickerForRecipe,
   openPlannedRecipe,
   openShareModal,
   openShoppingList,
@@ -150,6 +152,7 @@ const ACTIONS = {
   openUpload,
   pickBackupFiles,
   pickRecipe,
+  pickPlanDay,
   pickRecipePhoto,
   printCard,
   printRecipe,
@@ -2307,6 +2310,7 @@ function openDetail(id) {
         <button class="action-btn" data-action="openAiTools" data-id="${r.id}">✨ AI tools</button>
         <button class="action-btn ${r.favorite === true ? 'primary' : ''}" data-action="toggleFavorite" data-id="${r.id}" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥ Favorited' : '♡ Favorite'}</button>
         <button class="action-btn" data-action="addRecipeToShoppingList" data-id="${r.id}">🛒 Add to list</button>
+        <button class="action-btn" data-action="openPlanPickerForRecipe" data-id="${r.id}">📅 Add to meal plan</button>
         <button class="action-btn" data-action="openEditMode" data-id="${r.id}">✎ Edit</button>
         <button class="action-btn" data-action="pickRecipePhoto" data-id="${r.id}">📷 ${r.userPhoto ? 'Replace my photo' : 'Add my photo'}</button>
         ${r.userPhoto ? `<button class="action-btn" data-action="removeRecipePhoto" data-id="${r.id}">🗑 Remove my photo</button>` : ''}
@@ -3697,28 +3701,116 @@ async function addWeekToShoppingList() {
   else toast('Everything is already on the list');
 }
 
+// The picker serves two directions. From a day on the plan it lists recipes
+// (pickerMode 'recipe'); from a recipe it lists the next two weeks of days
+// (pickerMode 'day'). Both use the same dialog so back, Escape and focus work
+// the same way.
 let pickerDate = null;
+let pickerRecipeId = null;
+let pickerMode = 'recipe';
+const PICKER_DAYS = 14;
+
+function setPickerSearch(visible) {
+  const box = document.getElementById('picker-search');
+  if (!box) return;
+  box.style.display = visible ? '' : 'none';
+  box.value = '';
+}
+
 function openPicker(date) {
+  pickerMode = 'recipe';
   pickerDate = date;
-  const title = document.getElementById('picker-title');
-  title.textContent = 'Pick a recipe for ' + new Date(date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-  const list = document.getElementById('picker-list');
-  if (!recipes.length) {
-    list.innerHTML = '<div style="text-align:center;color:var(--dim);padding:20px">No recipes yet</div>';
-  } else {
-    list.innerHTML = recipes.map(r => {
-      const ms = mealStyle(r.mealType);
-      return `<button class="mp-pick" data-action="pickRecipe" data-id="${r.id}"><span style="font-size:1.3rem">${ms.emoji}</span><span>${escapeHtml(r.title)}</span></button>`;
-    }).join('');
-  }
+  pickerRecipeId = null;
+  document.getElementById('picker-title').textContent = 'Pick a recipe for ' +
+    new Date(date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  setPickerSearch(true);
+  renderPicker();
+  document.getElementById('picker-overlay').classList.add('on');
+  overlayOpened('picker-overlay');
+  const box = document.getElementById('picker-search');
+  if (box) box.focus();
+}
+
+// From a recipe: choose which day it goes on. The plan can be opened in the
+// background without loading, so it is loaded here before days are shown.
+async function openPlanPickerForRecipe(id) {
+  const r = recipes.find((x) => x.id === id);
+  if (!r) return;
+  if (mealPlanState !== 'ok') await loadMealPlan();
+  if (!mealPlanReady()) return;
+  pickerMode = 'day';
+  pickerRecipeId = id;
+  pickerDate = null;
+  document.getElementById('picker-title').textContent = 'Add "' + r.title + '" to which day?';
+  setPickerSearch(false);
+  renderPicker();
   document.getElementById('picker-overlay').classList.add('on');
   overlayOpened('picker-overlay');
 }
-function closePicker() { document.getElementById('picker-overlay').classList.remove('on'); overlayClosed('picker-overlay'); }
+
+function renderPicker() {
+  const list = document.getElementById('picker-list');
+  if (!list) return;
+
+  if (pickerMode === 'day') {
+    const names = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const today = new Date();
+    let html = '';
+    for (let i = 0; i < PICKER_DAYS; i += 1) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const key = ymd(d);
+      const label = i === 0 ? 'Today' : (i === 1 ? 'Tomorrow' : names[d.getDay()]);
+      const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const already = (mealPlan[key] || []).includes(pickerRecipeId);
+      const count = (mealPlan[key] || []).length;
+      html += `<button class="mp-pick${already ? ' planned' : ''}" data-action="pickPlanDay" data-id="${key}">` +
+        `<span style="font-size:1.3rem">${already ? '✅' : '📅'}</span>` +
+        `<span class="mp-pick-text"><span>${label}, ${date}</span>` +
+        `<span class="mp-pick-sub">${already ? 'Already planned' : (count ? count + ' meal' + (count === 1 ? '' : 's') + ' planned' : 'Nothing planned yet')}</span></span></button>`;
+    }
+    list.innerHTML = html;
+    return;
+  }
+
+  if (!recipes.length) {
+    list.innerHTML = '<div class="mp-empty">No recipes yet</div>';
+    return;
+  }
+  const box = document.getElementById('picker-search');
+  const query = box ? box.value : '';
+  const matches = RCUtils.searchRecipes(recipes, query);
+  if (!matches.length) {
+    list.innerHTML = `<div class="mp-empty">No recipes match "${escapeHtml(query.trim())}"</div>`;
+    return;
+  }
+  const planned = new Set(pickerDate ? (mealPlan[pickerDate] || []) : []);
+  list.innerHTML = matches.map((r) => {
+    const ms = mealStyle(r.mealType);
+    const done = planned.has(r.id);
+    return `<button class="mp-pick${done ? ' planned' : ''}" data-action="pickRecipe" data-id="${r.id}">` +
+      `<span style="font-size:1.3rem">${ms.emoji}</span>` +
+      `<span class="mp-pick-text"><span>${escapeHtml(r.title)}</span>` +
+      (done ? '<span class="mp-pick-sub">Already on this day</span>' : '') + '</span></button>';
+  }).join('');
+}
+
+function closePicker() {
+  document.getElementById('picker-overlay').classList.remove('on');
+  overlayClosed('picker-overlay');
+}
 function pickRecipe(id) {
   if (!pickerDate) return;
   addToPlan(pickerDate, id);
   closePicker();
+}
+// A day chosen from the recipe's own button.
+async function pickPlanDay(date) {
+  const id = pickerRecipeId;
+  if (!id || !date) return;
+  closePicker();
+  await addToPlan(date, id);
+  // The plan overlay may be closed; the toast from addToPlan is the feedback.
 }
 
 async function deleteRecipe(id) {

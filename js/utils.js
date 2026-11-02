@@ -675,8 +675,38 @@
     return rows;
   }
 
+  // Recipes matching a search, best first. Every word has to appear somewhere
+  // (title, description, ingredients, tags), so "chicken soup" narrows as you
+  // type instead of widening; a title hit ranks above an ingredient hit, then
+  // the original order is kept. An empty query returns everything untouched.
+  function searchRecipes(list, query) {
+    var all = Array.isArray(list) ? list : [];
+    var words = String(query == null ? '' : query).toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return all.slice();
+    var scored = [];
+    all.forEach(function (r, index) {
+      if (!r) return;
+      var title = String(r.title || '').toLowerCase();
+      var rest = [
+        r.description,
+        Array.isArray(r.ingredients) ? r.ingredients.join(' ') : '',
+        Array.isArray(r.tags) ? r.tags.join(' ') : '',
+      ].join(' ').toLowerCase();
+      var score = 0;
+      for (var i = 0; i < words.length; i += 1) {
+        if (title.indexOf(words[i]) !== -1) score += 2;
+        else if (rest.indexOf(words[i]) !== -1) score += 1;
+        else return; // a word that appears nowhere rules the recipe out
+      }
+      scored.push({ r: r, score: score, index: index });
+    });
+    scored.sort(function (a, b) { return b.score - a.score || a.index - b.index; });
+    return scored.map(function (x) { return x.r; });
+  }
+
   root.RCUtils = {
     diffLines,
+    searchRecipes: searchRecipes,
     parseIngredientLine: parseIngredientLine,
     formatQty: formatQty,
     classifyAisle: classifyAisle,
