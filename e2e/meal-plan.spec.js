@@ -32,7 +32,8 @@ test('a recipe can be added to a day from its own page', async ({ page, api }) =
 
 function assert(ok, message) { if (!ok) throw new Error(message); }
 
-test('the recipe picker on a plan day searches as you type', async ({ page }) => {
+test('the recipe picker on a plan day searches as you type', async ({ page, api }) => {
+  assert(Array.isArray(api.recipes), 'the mock API is installed');
   await unlock(page);
   await page.locator('[data-action="openMealPlan"]').first().click();
   await expect(page.locator('#plan-overlay')).toHaveClass(/on/);
@@ -61,7 +62,8 @@ test('the recipe picker on a plan day searches as you type', async ({ page }) =>
   await expect(page.locator('.mp-day').first()).toContainText('Bean Stew');
 });
 
-test('the search box starts empty each time the picker opens', async ({ page }) => {
+test('the search box starts empty each time the picker opens', async ({ page, api }) => {
+  assert(Array.isArray(api.recipes), 'the mock API is installed');
   await unlock(page);
   await page.locator('[data-action="openMealPlan"]').first().click();
   const add = page.locator('.mp-day').first().getByRole('button', { name: /Add recipe/ });
