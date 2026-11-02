@@ -256,13 +256,20 @@ export const test = base.extend({
           if (body.baseUpdatedAt != null && stored && stored.updatedAt > body.baseUpdatedAt) {
             return json(route, 409, { error: 'conflict', current: stored });
           }
-          const payload = path === '/api/meal-plan'
-            ? { ...body, updatedAt: Date.now() }
-            : { items: Array.isArray(body.items) ? body.items : [], updatedAt: Date.now() };
+          // The real route stores { days: { <date>: [ids] }, updatedAt }; the
+          // mock used to echo the request, which hid how the client reads it.
+          let payload;
+          if (path === '/api/meal-plan') {
+            const days = { ...((stored && stored.days) || {}) };
+            if (body.date) days[body.date] = Array.isArray(body.recipeIds) ? body.recipeIds : [];
+            payload = { days, updatedAt: Date.now() };
+          } else {
+            payload = { items: Array.isArray(body.items) ? body.items : [], updatedAt: Date.now() };
+          }
           state.lists[key] = payload;
           return json(route, 200, payload);
         }
-        return json(route, 200, state.lists[key] || (path === '/api/meal-plan' ? {} : { items: [], updatedAt: null }));
+        return json(route, 200, state.lists[key] || (path === '/api/meal-plan' ? { days: {}, updatedAt: null } : { items: [], updatedAt: null }));
       }
 
       return json(route, 404, { error: 'No mock for ' + method + ' ' + path });
