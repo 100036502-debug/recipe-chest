@@ -89,10 +89,15 @@ function weeklyBackup() {
 
     // 2. Photos, slice by slice, until the API says it is done.
     var offset = 0;
+    var after = '';
     var slices = 0;
     var done = false;
     while (!done && slices < MAX_SLICES) {
-      var sliceUrl = config.url + '?photos=1&offset=' + offset + '&limit=' + SLICE_LIMIT;
+      // The cursor, not the number, decides where the next slice starts: a recipe
+      // added or deleted while this runs shifts every numeric offset, and a
+      // photo was silently left out of a backup that looked complete.
+      var sliceUrl = config.url + '?photos=1&offset=' + offset + '&limit=' + SLICE_LIMIT +
+        (after ? '&after=' + encodeURIComponent(after) : '');
       var sliceJson = fetchJson_(sliceUrl, config.secret);
       var slice = JSON.parse(sliceJson);
       summary.bytes += sliceJson.length;
@@ -103,6 +108,7 @@ function weeklyBackup() {
       if (!done) {
         if (slice.nextOffset === null || slice.nextOffset === undefined) break;
         offset = slice.nextOffset;
+        after = slice.nextAfter || after;
       }
     }
     if (!done && slices >= MAX_SLICES) {
