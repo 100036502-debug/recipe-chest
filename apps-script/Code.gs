@@ -80,6 +80,10 @@ function pollRecipeImports() {
       }
       try {
         importMessage(message, apiUrl, secret);
+        // It got through, so any retry counter from an earlier 5xx is finished
+        // with. Left behind, these pile up in Script Properties, which has a
+        // fixed quota: once full, every setProperty throws.
+        PropertiesService.getScriptProperties().deleteProperty('import_attempts:' + message.getId());
       } catch (error) {
         handleImportError(thread, message, error);
       }
@@ -154,6 +158,22 @@ function markFailed(thread, message, reason) {
  */
 const MAX_REPLIES_PER_DAY = 20;
 
+// Only today's counter matters. Without this, one property was added per day
+// for ever. Runs only on a day's first reply, so it costs nothing in the loop.
+function pruneOldReplyCounters_(properties, todayKey) {
+  try {
+    if (Number(properties.getProperty(todayKey) || 0) !== 1) return;
+    const all = properties.getKeys();
+    for (let i = 0; i < all.length; i += 1) {
+      if (all[i].indexOf('replies_on:') === 0 && all[i] !== todayKey) {
+        properties.deleteProperty(all[i]);
+      }
+    }
+  } catch (e) {
+    console.warn('Could not prune old reply counters:', e && e.message);
+  }
+}
+
 function canReplyToday() {
   try {
     const properties = PropertiesService.getScriptProperties();
@@ -165,6 +185,7 @@ function canReplyToday() {
       return false;
     }
     properties.setProperty(key, String(used + 1));
+    pruneOldReplyCounters_(properties, key);
     return true;
   } catch (e) {
     console.error('Reply counter unavailable:', e && e.message);
@@ -316,6 +337,12 @@ function extractImageAttachments(message, budget) {
        contentType.startsWith('image/webp')) ||
       IMAGE_EXTENSIONS.includes(ext);
     if (!isImage) continue;
+
+    // The PDF pass runs first and claims anything that is a PDF by type or by
+    // name. A file whose name and type disagree (scan.png sent as a PDF) matched
+    // both, so it was uploaded twice, counted twice against the size budget and
+    // cost two AI calls. One attachment is one thing.
+    if (contentType === 'application/pdf' || name.toLowerCase().endsWith('.pdf')) continue;
 
     try {
       const bytes = att.getBytes();
