@@ -92,3 +92,26 @@ test('an attachment is claimed by the PDF pass or the image pass, never both', (
   // and the guard sits after the image test, before any bytes are read
   assert.ok(images.indexOf("endsWith('.pdf')) continue;") < images.indexOf('att.getBytes()'), 'checked before the bytes are read');
 });
+
+// A link shared from a phone is often an HTML-only mail. The API reads links out
+// of either form, so the script hands it the HTML when the plain text has none.
+test('the script falls back to the HTML body when the plain text holds no link', () => {
+  const fn = code.slice(code.indexOf('function importMessage'), code.indexOf('const payload = {'));
+  assert.match(fn, /let bodyText = message\.getPlainBody\(\) \|\| ''/);
+  assert.match(fn, /if \(!\/https\?:\\\/\\\/\/i\.test\(bodyText\)\)/, 'only when the plain text has no link');
+  assert.match(fn, /message\.getBody\(\)/);
+  assert.match(fn, /substring\(0, 100000\)/, 'and the size is bounded');
+});
+
+test('a mail with a plain-text link is sent exactly as before', () => {
+  const fn = code.slice(code.indexOf('function importMessage'), code.indexOf('const payload = {'));
+  // the HTML is read inside the guard, never unconditionally
+  const before = fn.slice(0, fn.indexOf('message.getBody()'));
+  assert.match(before, /if \(!\/https\?:/);
+});
+
+test('the confirmation says which page a recipe came from', () => {
+  const fn = code.slice(code.indexOf('function sendConfirmation'));
+  assert.match(fn, /if \(entry\.sourceUrl\) lines\.push\(`From: \$\{entry\.sourceUrl\}`\)/);
+  assert.equal((fn.match(/entry\.sourceUrl/g) || []).length >= 4, true, 'for both new and already-saved recipes');
+});

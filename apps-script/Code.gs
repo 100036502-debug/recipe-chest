@@ -202,7 +202,15 @@ function importMessage(message, apiUrl, secret) {
     throw new Error('Could not find the original sender email address.');
   }
 
-  const bodyText = message.getPlainBody() || '';
+  let bodyText = message.getPlainBody() || '';
+  // A link shared from a phone is often an HTML-only mail whose plain part is
+  // empty, or whose address lives only in an anchor. The API reads links out of
+  // either form, so hand it the HTML when the plain text has none. Capped, and
+  // only used in that case, so an ordinary mail is sent exactly as before.
+  if (!/https?:\/\//i.test(bodyText)) {
+    const html = message.getBody() || '';
+    if (/https?:\/\//i.test(html)) bodyText = (bodyText + '\n' + html).substring(0, 100000);
+  }
 
   // One shared size budget per email so the attachments in one message
   // can never exceed what the serverless function will accept.
@@ -381,10 +389,12 @@ function sendConfirmation(email, recipes, skippedFiles) {
 
     if (entry.duplicate) {
       lines.push(`Already in your Recipe Chest: ${recipe.title}`);
+      if (entry.sourceUrl) lines.push(`From: ${entry.sourceUrl}`);
       return;
     }
 
     lines.push(`Added to Recipe Chest: ${recipe.title}`);
+    if (entry.sourceUrl) lines.push(`From: ${entry.sourceUrl}`);
     if (recipe.description) lines.push('', recipe.description);
     if (recipe.ingredients && recipe.ingredients.length) {
       lines.push('', 'Ingredients');

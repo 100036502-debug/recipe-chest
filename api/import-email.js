@@ -11,11 +11,21 @@ import { tryParseJson } from '../lib/parse.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
 import { listRecipeId } from '../lib/recipe-index.js';
 import { saveRecipeRecord } from '../lib/save-recipe.js';
+import { importRecipeFromUrl } from '../lib/url-recipe.js';
+import { extractRecipeLinks, isMostlyLinks, bareOfProse } from '../lib/email-links.js';
 
-const redis = new Redis({
+// let, not const: tests swap in a fake store and a fake page fetcher instead of
+// reaching Redis and the network.
+let redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
+let linkDeps = {};
+
+export function __setImportDepsForTests({ store, link } = {}) {
+  if (store) redis = store;
+  linkDeps = link || {};
+}
 
 export const config = { maxDuration: 60 };
 
@@ -229,10 +239,52 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------
-    // 3. If nothing else worked but there's body text, fall back to that
+    // 3. Links in the mail: follow each one and import the page it points to.
+    //    Attachments win when there are any; a link is for the mail that is
+    //    just "check this out" with an address in it.
     // -----------------------------------------------------------------
-    if (savedRecipes.length === 0 && bodyText.trim().length > 0) {
+    const linkFailures = [];
+    const linksFound = savedRecipes.length === 0 ? extractRecipeLinks(bodyText) : [];
+    for (const url of linksFound) {
+      const result = await importRecipeFromUrl({
+        ...linkDeps,
+        kv: redis,
+        url,
+        addedBy: senderName,
+        // Only a page that needs the model spends the day's budget; a page with
+        // structured data is free, so a mail of recipe links is not throttled.
+        beforeAi: () => spendOneCall(1),
+      });
+      if (result.ok) {
+        savedRecipes.push({ id: result.recipe.id, recipe: result.recipe, sourceUrl: url });
+        console.log(`Saved recipe from link ${new URL(url).hostname}: ${result.recipe.title}`);
+      } else if (result.status === 409 && result.duplicate) {
+        savedRecipes.push({ id: result.duplicate.id, recipe: result.duplicate, duplicate: true, sourceUrl: url });
+        console.log(`Already had recipe from link ${new URL(url).hostname}: ${result.duplicate.title}`);
+      } else {
+        // Not a recipe, unreachable, or over budget. Remember which, so the
+        // sender is told about the link rather than sent a silent nothing.
+        linkFailures.push({ url, status: result.status, error: result.error });
+        console.warn(`Link not imported (${result.status}) ${new URL(url).hostname}: ${result.error}`);
+        if (result.status === 429) break; // the day is spent: stop following links
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // 4. If nothing else worked but there's body text, fall back to that.
+    //    A mail that is only a link has no recipe text for a model to read, and
+    //    asking one anyway would invent a recipe from "Check this out!".
+    // -----------------------------------------------------------------
+    //
+    // "Mostly links" is a guess from length, so it is only trusted when there is
+    // nothing else to go on. A short written recipe that happens to carry a link
+    // still gets read as text if that link turned out not to be a recipe page.
+    const textIsJustLinks = linksFound.length > 0 && isMostlyLinks(bodyText) && bareOfProse(bodyText);
+    if (savedRecipes.length === 0 && bodyText.trim().length > 0 && !textIsJustLinks) {
+      const withinBudget = await spendOneCall(1);
+      if (!withinBudget) budgetExhausted.push('Email text skipped: daily limit reached');
       try {
+        if (!withinBudget) throw new Error('daily limit reached');
         const recipe = await callGroq([
           {
             type: 'text',
@@ -258,6 +310,11 @@ export default async function handler(req, res) {
       // the sender; a 422 fails fast and cleanly.
       return res.status(422).json({
         error: 'No recipes could be extracted from this email',
+        // What happened to each link, so the reply can say "that page had no
+        // recipe" instead of a bare failure. Statuses and our own short
+        // messages only; nothing from the remote page is echoed back.
+        ...(linkFailures.length ? { links: linkFailures.map((f) => ({ url: f.url, status: f.status, error: f.error })) } : {}),
+        ...(budgetExhausted.length ? { budgetExhausted } : {}),
       });
     }
 
@@ -284,7 +341,7 @@ export default async function handler(req, res) {
  * Send content parts to Groq and parse the JSON recipe response.
  */
 async function callGroq(contentPayload, { vision = false } = {}) {
-  const rawContent = await groqChat({
+  const rawContent = await (linkDeps.chat || groqChat)({
     messages: [{ role: 'user', content: contentPayload }],
     temperature: 0.2,
     maxTokens: 3500,
