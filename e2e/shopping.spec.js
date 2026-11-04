@@ -1,13 +1,12 @@
-import { test, expect, unlock } from './helpers.js';
+import { test, expect, unlock, openShoppingPage } from './helpers.js';
 
 async function openList(page) {
-  await page.getByRole('button', { name: /List/ }).click();
-  await expect(page.locator('#shopping-overlay')).toHaveClass(/on/);
+  await openShoppingPage(page);
 }
 
 async function addItem(page, text) {
   await page.fill('#sl-input', text);
-  await page.locator('#shopping-overlay').getByRole('button', { name: 'Add', exact: true }).click();
+  await page.locator('#view-shopping').getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.locator('#sl-list')).toContainText(text);
 }
 
@@ -69,7 +68,7 @@ test.describe('shopping list', () => {
     await unlock(page);
     await openList(page);
     await addItem(page, '1 cup flour');
-    await page.locator('#shopping-overlay .modal-close').click();
+    await page.locator('.sidebar-nav').getByRole('link', { name: 'All recipes', exact: true }).click();
 
     // Call the action directly: the detail modal is covered by other specs, and
     // this one is about the merge bookkeeping.

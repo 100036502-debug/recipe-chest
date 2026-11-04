@@ -704,6 +704,69 @@
     return scored.map(function (x) { return x.r; });
   }
 
+  // ---- Calendar ----------------------------------------------------------
+  // Dates are plain 'YYYY-MM-DD' strings in the person's own time zone, the same
+  // keys the meal plan is stored under. They are built from a Date's local parts,
+  // never from toISOString (which is UTC and would put an evening on tomorrow).
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function ymdOf(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+
+  // 'YYYY-MM-DD' to a local Date at noon (noon, so a daylight-saving shift can
+  // never move it to another day). Null for anything that is not a real date.
+  function parseYmd(text) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(text == null ? '' : text));
+    if (!m) return null;
+    var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
+    return ymdOf(d) === text ? d : null;
+  }
+
+  // The weeks of a month as rows of seven days, Sunday first, padded with the
+  // neighbouring months' days so every row is full. Always 5 or 6 rows.
+  //   [{ date: 'YYYY-MM-DD', day: 14, inMonth: true }, ...]
+  function monthGrid(year, month) {
+    var first = new Date(year, month, 1, 12, 0, 0, 0);
+    var start = new Date(year, month, 1 - first.getDay(), 12, 0, 0, 0);
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var rows = Math.ceil((first.getDay() + daysInMonth) / 7);
+    var out = [];
+    for (var r = 0; r < rows; r += 1) {
+      var row = [];
+      for (var c = 0; c < 7; c += 1) {
+        var d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + r * 7 + c, 12, 0, 0, 0);
+        row.push({ date: ymdOf(d), day: d.getDate(), inMonth: d.getMonth() === month && d.getFullYear() === year });
+      }
+      out.push(row);
+    }
+    return out;
+  }
+
+  // Step a { year, month } by whole months, rolling the year over.
+  function shiftMonth(year, month, delta) {
+    var d = new Date(year, month + delta, 1, 12, 0, 0, 0);
+    return { year: d.getFullYear(), month: d.getMonth() };
+  }
+
+  // Step a date key by whole days (for the arrow keys).
+  function shiftDay(dateKey, delta) {
+    var d = parseYmd(dateKey);
+    if (!d) return null;
+    return ymdOf(new Date(d.getFullYear(), d.getMonth(), d.getDate() + delta, 12, 0, 0, 0));
+  }
+
+  // What a day cell shows from the plan: the first `limit` recipes by title and
+  // how many more there are. A recipe that has since been deleted is skipped, so
+  // the cell never shows an empty chip. `plan` is the stored { date: [ids] } map.
+  function dayChips(plan, dateKey, recipesById, limit) {
+    var max = limit == null ? 2 : limit;
+    var ids = plan && Array.isArray(plan[dateKey]) ? plan[dateKey] : [];
+    var titles = [];
+    for (var i = 0; i < ids.length; i += 1) {
+      var r = recipesById && recipesById[ids[i]];
+      if (r && r.title) titles.push(String(r.title));
+    }
+    return { shown: titles.slice(0, max), more: Math.max(0, titles.length - max), total: titles.length };
+  }
+
   // ---- "Tonight" cards ----------------------------------------------------
   // Free-text times ("20 min", "1 hr 15 mins", "1h30", "45") as whole minutes,
   // or null when the text does not say. A caption is only shown for a number
@@ -778,15 +841,34 @@
     return (when || 'Cooked before') + tail;
   }
 
-  // "Dinner · vegetarian": the meal type, then one more fact if there is one
-  // (the first tag, else the time). Nothing is added that the recipe lacks.
-  function cardMeta(recipe, mealLabel) {
+  // The line under a title, built one way everywhere a recipe appears (cards,
+  // search results, the calendar, the picker): the category, then at most ONE
+  // tag, then "by Author" only if somebody actually entered one.
+  //
+  // A tag that says the same thing as the category is skipped (compared without
+  // case or surrounding spaces), so "Dinner" with a "dinner" tag reads "Dinner",
+  // not "Dinner · dinner". The first tag that remains is the one shown. With no
+  // category the first tag stands alone. Parts are joined with a separator only
+  // where both sides exist, and a recipe with nothing to show gives ''.
+  // Display only: nothing here changes the stored tags.
+  function sameText(a, b) {
+    return String(a == null ? '' : a).trim().toLowerCase() === String(b == null ? '' : b).trim().toLowerCase();
+  }
+  function cardMeta(recipe, category) {
     if (!recipe) return '';
+    var cat = String(category == null ? '' : category).trim();
     var parts = [];
-    if (mealLabel) parts.push(mealLabel);
-    var tag = Array.isArray(recipe.tags) ? recipe.tags.filter(function (t) { return t && String(t).trim(); })[0] : '';
-    if (tag) parts.push(String(tag));
-    else if (recipe.prepTime && String(recipe.prepTime).trim()) parts.push(String(recipe.prepTime).trim());
+    if (cat) parts.push(cat);
+    var tags = Array.isArray(recipe.tags) ? recipe.tags : [];
+    for (var i = 0; i < tags.length; i += 1) {
+      var tag = String(tags[i] == null ? '' : tags[i]).trim();
+      if (!tag) continue;
+      if (cat && sameText(tag, cat)) continue;
+      parts.push(tag);
+      break;
+    }
+    var by = String(recipe.addedBy == null ? '' : recipe.addedBy).trim();
+    if (by && by.toLowerCase() !== 'anonymous') parts.push('by ' + by);
     return parts.join(' \u00b7 ');
   }
 
@@ -845,6 +927,12 @@
     cardCaption: cardCaption,
     cardMeta: cardMeta,
     pickSuggestions: pickSuggestions,
+    ymdOf: ymdOf,
+    parseYmd: parseYmd,
+    monthGrid: monthGrid,
+    shiftMonth: shiftMonth,
+    shiftDay: shiftDay,
+    dayChips: dayChips,
     searchRecipes: searchRecipes,
     parseIngredientLine: parseIngredientLine,
     formatQty: formatQty,

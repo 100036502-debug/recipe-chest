@@ -1,5 +1,5 @@
 /* eslint-disable no-undef -- the callbacks below run in the browser, not in Node. */
-import { test, expect, unlock } from './helpers.js';
+import { test, expect, unlock, openShoppingPage } from './helpers.js';
 import AxeBuilder from '@axe-core/playwright';
 
 // Serious and critical only: those are the ones that actually stop somebody
@@ -84,7 +84,7 @@ for (const theme of ['light', 'dark']) {
 
   test(`the shopping list passes axe (${theme})`, async ({ page, api }) => {
     await unlock(page);
-    await page.locator('button.list-btn').click();
+    await openShoppingPage(page);
     await setTheme(page, theme);
     await scan(page, `shopping list ${theme}`);
   });

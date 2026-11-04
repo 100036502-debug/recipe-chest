@@ -3,13 +3,14 @@ import { test, expect, unlock, openAllRecipes } from './helpers.js';
 
 // The "Tonight" design: sidebar, home screen, search, cards, footer, drawer.
 
-test('the home screen asks what is cooking and shows suggestions, not the whole chest', async ({ page, api }) => {
+test('the home screen is All recipes: the heading, search, filters and the whole chest', async ({ page, api }) => {
   api.recipes.push(...[3, 4, 5, 6].map((n) => ({ id: 'x' + n, title: 'Extra ' + n, tags: [], mealType: 'dinner', ingredients: ['salt'], addedBy: 'Sam' })));
   await unlock(page);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('What’s cooking?');
-  await expect(page.locator('#grid .card')).toHaveCount(3);
-  await expect(page.locator('#stats')).toBeHidden();
-  await expect(page.locator('.sidebar-nav a[aria-current="page"]')).toHaveText('Tonight');
+  await expect(page.locator('#grid .card')).toHaveCount(6);
+  await expect(page.locator('#stats')).toBeVisible();
+  await expect(page.locator('#stats .sort-select')).toBeVisible();
+  await expect(page.locator('.sidebar-nav a[aria-current="page"]')).toHaveText('All recipes');
 });
 
 test('search has a visible label and filters by name, ingredient and tag', async ({ page, api }) => {
@@ -28,7 +29,7 @@ test('search has a visible label and filters by name, ingredient and tag', async
   await page.fill('#search-input', 'stew');            // a tag
   await expect(page.locator('#grid .card')).toHaveCount(1);
 
-  await page.fill('#search-input', '');                // empty: suggestions are back
+  await page.fill('#search-input', '');                // empty: everything is back
   await expect(page.locator('#grid .card')).toHaveCount(2);
 });
 
@@ -112,9 +113,8 @@ test('every sidebar action opens the dialog it opened before', async ({ page, ap
   await unlock(page);
   const nav = page.locator('.sidebar-nav');
   const cases = [
-    ['What can I make?', '#pantry-overlay'], ['List', '#shopping-overlay'], ['Plan', '#plan-overlay'],
-    ['Import URL', '#import-overlay'], ['Paste text', '#paste-overlay'], ['Add Photos', '#upload-overlay'],
-    ['Meal plan', '#plan-overlay'], ['Shopping list', '#shopping-overlay'],
+    ['What can I make?', '#pantry-overlay'], ['Import URL', '#import-overlay'],
+    ['Paste text', '#paste-overlay'], ['Add Photos', '#upload-overlay'],
   ];
   for (const [label, overlay] of cases) {
     await nav.getByText(label, { exact: true }).click();
@@ -228,9 +228,9 @@ test.describe('on a phone', () => {
   test('choosing a link closes the drawer and shows that page', async ({ page, api }) => {
     await unlock(page);
     await page.locator('#drawer-btn').click();
-    await page.locator('.sidebar-nav').getByRole('link', { name: 'All recipes' }).click();
+    await page.locator('.sidebar-nav').getByRole('link', { name: 'Calendar' }).click();
     await expect(page.locator('.sidebar')).toBeHidden();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('All recipes');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(/\d{4}/);
   });
 
   test('one column, a 36px heading, and no sideways scroll', async ({ page, api }) => {

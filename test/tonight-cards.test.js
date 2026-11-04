@@ -64,7 +64,9 @@ test('last month is last month across a year boundary', () => {
 
 test('the meta line is the meal type then one more true fact', () => {
   assert.equal(RC.cardMeta(recipe('a', { tags: ['vegetarian', 'quick'] }), 'Dinner'), 'Dinner · vegetarian');
-  assert.equal(RC.cardMeta(recipe('a', { prepTime: '20 min' }), 'Dinner'), 'Dinner · 20 min');
+  // The meta line is category, one tag, author. Prep time is no longer a
+  // fallback there: it belongs to the card caption ("Ready in 20 minutes").
+  assert.equal(RC.cardMeta(recipe('a', { prepTime: '20 min' }), 'Dinner'), 'Dinner');
   assert.equal(RC.cardMeta(recipe('a'), 'Dinner'), 'Dinner');
   assert.equal(RC.cardMeta(recipe('a', { tags: ['', '  '] }), 'Dinner'), 'Dinner');
   assert.equal(RC.cardMeta(null, 'Dinner'), '');

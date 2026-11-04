@@ -61,8 +61,10 @@ test('regex characters in a search are plain text', () => {
 
 // ---- wiring ----
 
-test('the recipe has an Add to meal plan button that opens the day chooser', () => {
-  assert.match(app, /data-action="openPlanPickerForRecipe" data-id="\$\{r\.id\}">📅 Add to meal plan/);
+test('the recipe has an Add to calendar button that opens the day chooser', () => {
+  // Renamed from "Add to meal plan" and stripped of its emoji, but the same
+  // action and the same day chooser behind it.
+  assert.match(app, /data-action="openPlanPickerForRecipe" data-id="\$\{r\.id\}">Add to calendar</);
   assert.match(app, /^\s+openPlanPickerForRecipe,$/m, 'registered as a click handler');
   assert.match(app, /^\s+pickPlanDay,$/m);
 });
@@ -93,5 +95,6 @@ test('guests can still plan meals: none of the new actions are write-only', () =
 
 test('every recipe id placed in the picker markup is one the server accepts', () => {
   // ids go into data-id unescaped; they are [A-Za-z0-9_-] by the server's rule.
-  assert.match(app, /data-action="pickRecipe" data-id="\$\{r\.id\}"/);
+  // The id is escaped now; the action and the row are the same.
+  assert.match(app, /data-action="pickRecipe" data-id="\$\{escapeHtml\(r\.id\)\}"/);
 });

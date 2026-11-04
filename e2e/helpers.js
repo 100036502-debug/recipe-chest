@@ -307,3 +307,22 @@ export async function openAllRecipes(page) {
   await page.locator('.sidebar-nav').getByRole('link', { name: 'All recipes' }).click();
   await expect(page.locator('#view-recipes')).toBeVisible();
 }
+
+// An action in the recipe window's "..." menu (Share link, AI tools, Add my
+// photo, Print, Print card). Opens the menu, then picks the item.
+export async function pickMoreAction(page, name) {
+  await page.locator('#more-actions-btn').click();
+  await page.locator('#more-actions-menu').getByRole('menuitem', { name }).click();
+}
+
+// The Shopping list page, reached from the sidebar like a person would.
+export async function openShoppingPage(page) {
+  await page.locator('.sidebar-nav').getByRole('link', { name: 'Shopping list', exact: true }).click();
+  await expect(page.locator('#view-shopping')).toBeVisible();
+}
+
+// The Calendar page.
+export async function openCalendar(page) {
+  await page.locator('.sidebar-nav').getByRole('link', { name: 'Calendar', exact: true }).click();
+  await expect(page.locator('#view-calendar')).toBeVisible();
+}
