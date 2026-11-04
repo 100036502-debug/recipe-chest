@@ -62,6 +62,8 @@ const SPECIAL_CLICK = {
   selectAll: (el) => el.select(),
   saveAiAsNew: (el) => saveAiAsNew(el),
   startCookTimerAt: (el) => startCookTimerAt(Number(el.dataset.index), Number(el.dataset.arg)),
+  // Takes a recipe off one day of the plan. It never touches the recipe itself.
+  removeFromPlanBtn: (el) => removeFromPlan(el.dataset.id, el.dataset.rid),
 };
 
 // Change/input handlers take the element, because most of them read its value.
@@ -100,11 +102,14 @@ const ACTIONS = {
   addRecipeToShoppingList,
   addShoppingItem,
   addWeekToShoppingList,
+  calStepMonth,
+  calSelect,
+  calToday,
+  goToCalendarToday,
   browseAsGuest,
   cancelPhotoUpload,
   cancelUpload,
   changeCookScale,
-  changePlanWeek,
   clearPantry,
   clearShoppingList,
   closeAiTools,
@@ -114,7 +119,6 @@ const ACTIONS = {
   closeDetail,
   closeDrawer,
   closeImport,
-  closeMealPlan,
   closePantry,
   closePasteImport,
   closePicker,
@@ -140,7 +144,6 @@ const ACTIONS = {
   openDetail,
   openEditMode,
   openImport,
-  openMealPlan,
   openPantry,
   openPantryResult,
   openPasteImport,
@@ -187,6 +190,7 @@ const ACTIONS = {
   stopBeep,
   toggleAppMenu,
   toggleDrawer,
+  toggleMoreActions,
   toggleCookIng,
   toggleCookStep,
   toggleCookTimerPause,
@@ -425,12 +429,10 @@ function closeOverlayById(id) {
     case 'import-overlay': closeImport(); break;
     case 'detail-overlay': closeDetail(); break;
     case 'cook-overlay': closeCookMode(); break;
-    case 'shopping-overlay': closeShoppingList(); break;
     case 'pantry-overlay': closePantry(); break;
     case 'paste-overlay': closePasteImport(); break;
     case 'coll-overlay': closeCollectionsManager(); break;
     case 'cooked-overlay': closeCookedModal(); break;
-    case 'plan-overlay': closeMealPlan(); break;
     case 'picker-overlay': closePicker(); break;
     case 'credit-overlay': cancelPhotoUpload(); break;
   }
@@ -465,14 +467,14 @@ function cardPhotoSrc(r) {
 // credit), then the Unsplash photo (with attribution), then the emoji.
 function heroPhotoHtml(r, ms) {
   if (r.userPhoto) {
-    return `<img class="hero-img" src="/api/photo?id=${encodeURIComponent(r.id)}&amp;v=${r.userPhoto.updatedAt}" alt="${escapeHtml(r.title)}" data-emoji="${ms.emoji}">` +
+    return `<img class="hero-img" src="/api/photo?id=${encodeURIComponent(r.id)}&amp;v=${r.userPhoto.updatedAt}" alt="${escapeHtml(r.title)}">` +
       (r.userPhoto.credit ? `<div class="img-credit">${escapeHtml(r.userPhoto.credit)}</div>` : '');
   }
   if (r.image && r.image.url) {
-    return `<img class="hero-img" src="${escapeHtml(r.image.url)}" alt="${escapeHtml(r.image.alt || r.title)}" data-emoji="${ms.emoji}">` +
+    return `<img class="hero-img" src="${escapeHtml(r.image.url)}" alt="${escapeHtml(r.image.alt || r.title)}">` +
       `<div class="img-credit">Photo by ${(r.image.photographerUrl && safeHref(r.image.photographerUrl)) ? `<a href="${escapeHtml(safeHref(r.image.photographerUrl))}" target="_blank" rel="noopener">${escapeHtml(r.image.photographer || 'Unknown')}</a>` : escapeHtml(r.image.photographer || 'Unknown')} on <a href="https://unsplash.com/?utm_source=recipe_chest&amp;utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></div>`;
   }
-  return `<span>${ms.emoji}</span>`;
+  return '';
 }
 // Scales the leading amount of one ingredient line (shared by the detail
 // view and cook mode). Returns the full line text, HTML-escaped.
@@ -503,7 +505,7 @@ let showAllTags = false;
 let currentSearch = '';
 // Which screen is showing: 'tonight' (home), 'recipes' (every recipe) or
 // 'pantry' (a placeholder). The sidebar's links switch between them.
-let currentView = 'tonight';
+let currentView = 'recipes';
 let uploadQueue = [];
 let isProcessing = false;
 let cancelRequested = false;
@@ -561,14 +563,14 @@ async function tryUnlock() {
 function handleAppShortcut() {
   const action = new URLSearchParams(location.search).get('action');
   if (!action) return;
-  history.replaceState({}, '', '/');
+  history.replaceState({}, '', '/' + location.hash);
   if (action === 'add' && document.getElementById('app-content').style.display !== 'none') openUpload();
   else if (action === 'import' && document.getElementById('app-content').style.display !== 'none') openImport();
 }
 function unlockApp() {
   // Close whatever overlay was open when the session expired so the
   // app comes back clean.
-  for (const id of ['upload-overlay', 'import-overlay', 'detail-overlay', 'shopping-overlay', 'plan-overlay', 'picker-overlay']) {
+  for (const id of ['upload-overlay', 'import-overlay', 'detail-overlay', 'picker-overlay']) {
     if (document.getElementById(id).classList.contains('on')) closeOverlayById(id);
   }
   if (document.getElementById('cook-overlay').classList.contains('on')) closeCookMode();
@@ -580,7 +582,10 @@ function unlockApp() {
   sessionLocked = false;
   setUser(getUser());
   getDeviceId();
-  showView(currentView, { keepDrawer: true });
+  // The address picks the page (so a bookmark of #calendar works, and the retired
+  // #plan / #list names land on what replaced them); otherwise All recipes.
+  showView(viewFromHash(location.hash) || 'recipes', { keepDrawer: true });
+  watchForNewDay();
   loadRecipes();
   handleAppShortcut();
   document.dispatchEvent(new Event('recipe-chest:unlocked'));
@@ -1422,6 +1427,12 @@ const SORTERS = {
 };
 
 function renderGrid() {
+  // Recipes change from many places. When the page showing is not the full list,
+  // redraw that page instead, so a refresh never paints the whole grid over
+  // today's meals or the calendar.
+  if (currentView === 'tonight') { renderTonight(); return; }
+  if (currentView === 'calendar') { renderMealPlan(); return; }
+  if (currentView !== 'recipes') return;
   const grid = document.getElementById('grid');
   if (grid) grid.removeAttribute('aria-busy');
   const empty = document.getElementById('empty');
@@ -1504,15 +1515,7 @@ function renderGrid() {
   }
   empty.style.display = 'none';
   const today = ymd(new Date());
-  // Home screen with an empty search: three suggestions, not the whole chest.
-  // With text in the box, or on All recipes, the matching recipes show.
-  // Suggestions are for a plain home screen only. Any active filter, collection
-  // or search shows what it matches, so a choice made anywhere has a visible effect.
-  const filtering = currentSearch || currentFilter !== 'all' || currentCollection !== 'all' || currentMealFilter !== 'all';
-  const showSuggestions = currentView === 'tonight' && !filtering;
-  const cards = showSuggestions
-    ? RCUtils.pickSuggestions(recipes, today, 3)
-    : sorted.map((r) => ({ recipe: r, caption: RCUtils.cardCaption(r, today) }));
+  const cards = sorted.map((r) => ({ recipe: r, caption: RCUtils.cardCaption(r, today) }));
   grid.innerHTML = cards.map(({ recipe: r, caption }) => cardHtml(r, caption)).join('');
 }
 
@@ -1523,21 +1526,19 @@ function cardHtml(r, caption) {
   const ms = mealStyle(r.mealType);
   const src = (r.userPhoto || (r.image && (r.image.thumb || r.image.url))) ? cardPhotoSrc(r) : '';
   const fav = r.favorite === true;
+  // The one rule for the line under a title: category, at most one different tag,
+  // and "by Author" only if somebody entered one.
   const meta = RCUtils.cardMeta(r, ms.label);
-  const stats = RCUtils.cookStats(r.cookLog);
-  const rating = stats.avgRating != null ? stats.avgRating : '';
-  const author = r.addedBy && String(r.addedBy).trim() && String(r.addedBy).trim().toLowerCase() !== 'anonymous'
-    ? ` \u00b7 by ${escapeHtml(String(r.addedBy).trim())}` : '';
   return `
     <div class="card" data-action="openDetail" data-id="${escapeHtml(r.id)}">
-      <div class="card-media">
+      <div class="img-wrap card-media">
         ${src ? `<img class="card-img" src="${escapeHtml(src)}" alt="" loading="lazy">` : ''}
         <button class="fav-btn ${fav ? 'on' : ''}" data-action="toggleFavorite" data-id="${escapeHtml(r.id)}" data-stop="1" aria-label="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${fav ? 'true' : 'false'}">${fav ? '\u2665' : '\u2661'}</button>
         ${r.image && r.image.url && !r.userPhoto && r.image.photographer ? `<div class="card-credit">Photo by ${escapeHtml(r.image.photographer)}</div>` : ''}
       </div>
-      <div class="card-caption">${escapeHtml(caption || '')}${rating ? ` \u00b7 \u2605 ${rating}` : ''}</div>
+      ${caption ? `<div class="card-caption">${escapeHtml(caption)}</div>` : ''}
       <h3 class="card-title-line"><button class="card-title-btn" data-action="openDetail" data-id="${escapeHtml(r.id)}" data-stop="1">${escapeHtml(r.title)}</button></h3>
-      <div class="card-meta-line">${escapeHtml(meta)}${author}</div>
+      ${meta ? `<div class="card-meta-line">${escapeHtml(meta)}</div>` : ''}
     </div>
   `;
 }
@@ -2046,13 +2047,15 @@ function cookedSectionHtml(r) {
       <span class="cooked-date">${escapeHtml(shortDate(e.date))}</span>
       <span class="cooked-stars" aria-label="${e.rating ? e.rating + ' stars' : 'no rating'}">${escapeHtml(starsText(e.rating))}</span>
       <span class="cooked-note">${escapeHtml(e.note || '')}${e.by ? ` <span class="cooked-by">· ${escapeHtml(e.by)}</span>` : ''}</span>
-      <button class="cooked-del" data-entry="${escapeHtml(e.id)}" data-recipe="${r.id}" data-action="deleteCookedEntry" data-pass="recipe" data-pass2="entry" aria-label="Delete this entry">✕</button>
+      <button class="cooked-del" data-entry="${escapeHtml(e.id)}" data-recipe="${r.id}" data-action="deleteCookedEntry" data-pass="recipe" data-pass2="entry" aria-label="Delete this entry">×</button>
     </li>`).join('');
 
   return `<div class="cooked-section">
       <h2 class="cook-section-h">Cooking log</h2>
-      <button class="action-btn primary" data-recipe="${r.id}" data-action="openCookedModal" data-pass="recipe">🍳 I cooked this</button>
-      ${stats.count ? `<p class="cooked-summary">${escapeHtml(cookedSummary(r))}</p>` : '<p class="cooked-summary">Not cooked yet.</p>'}
+      <div class="cooked-bar">
+        <button type="button" class="btn-cooked" data-recipe="${r.id}" data-action="openCookedModal" data-pass="recipe">I cooked this</button>
+        ${stats.count ? `<p class="cooked-summary">${escapeHtml(cookedSummary(r))}</p>` : '<p class="cooked-summary">Not cooked yet.</p>'}
+      </div>
       ${rows ? `<ul class="cooked-list">${rows}</ul>` : ''}
     </div>`;
 }
@@ -2264,13 +2267,13 @@ async function deleteCollection(name) {
   }
 }
 
-const VIEWS = ['tonight', 'recipes', 'pantry'];
+const VIEWS = ['recipes', 'tonight', 'calendar', 'shopping', 'pantry'];
 
-// Shows one screen. The recipe grid and its filters are shared by Tonight and
-// All recipes, so they are moved into whichever one is showing rather than
-// duplicated: one #grid, one #stats, and every existing handler keeps working.
+// Shows one screen. All recipes and Tonight share one #grid (every existing card
+// handler keeps working); Calendar, Shopping list and Pantry draw their own.
 function showView(name, opts) {
-  const view = VIEWS.includes(name) ? name : 'tonight';
+  const view = VIEWS.includes(name) ? name : 'recipes';
+  const was = currentView;
   currentView = view;
   VIEWS.forEach((v) => {
     const el = document.getElementById('view-' + v);
@@ -2284,30 +2287,93 @@ function showView(name, opts) {
   const stats = document.getElementById('stats');
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
-  const home = document.getElementById('view-' + (view === 'pantry' ? 'tonight' : view));
-  const onResults = view !== 'pantry';
-  if (search) search.hidden = view !== 'tonight';
+  // Only All recipes has the search box and filters. Tonight uses the grid for
+  // today's meals; Calendar, Shopping list and Pantry draw their own content.
+  const usesGrid = view === 'recipes' || view === 'tonight';
+  if (search) search.hidden = view !== 'recipes';
   if (stats) stats.hidden = view !== 'recipes';
-  if (grid) grid.hidden = !onResults;
-  if (empty && !onResults) empty.style.display = 'none';
-  // Sit the search box and results straight after the heading they belong to.
-  if (onResults && home && grid) {
+  if (grid) { grid.hidden = !usesGrid; grid.className = 'grid'; }
+  if (empty && !usesGrid) empty.style.display = 'none';
+  // Sit the shared pieces straight after the heading they belong to.
+  const home = document.getElementById('view-' + (usesGrid ? view : 'recipes'));
+  if (usesGrid && home && grid) {
     let after = home;
-    if (view === 'tonight' && search) { after.after(search); after = search; }
+    if (view === 'recipes' && search) { after.after(search); after = search; }
     if (view === 'recipes' && stats) { after.after(stats); after = stats; }
     after.after(grid);
     grid.after(empty);
   }
+  if (was === 'shopping' && view !== 'shopping') closeShoppingList();
   if (!(opts && opts.keepDrawer)) closeDrawer();
+  try { if (location.hash !== '#' + view) history.replaceState(null, '', '#' + view); } catch (e) { /* no History API */ }
   if (opts && opts.focus) {
     const h = document.querySelector('#view-' + view + ' .view-title');
     if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
   }
-  renderGrid();
+  if (view === 'calendar' || view === 'tonight') {
+    // Both read the plan. Load it first if it has not been, so a first visit
+    // does not show an empty month.
+    renderView(view);
+    if (mealPlanState !== 'ok') loadMealPlan().then(() => { if (currentView === view) renderView(view); });
+  } else if (view === 'shopping') {
+    enterShoppingList();
+  } else {
+    renderGrid();
+  }
+}
+// The date Tonight and the Calendar's "today" are drawn for. When the real date
+// moves on (midnight, or a phone waking after a night asleep) both are redrawn,
+// so Tonight never keeps showing yesterday's meals.
+let renderedDay = todayKey();
+let midnightTimer = null;
+function checkNewDay() {
+  const now = todayKey();
+  if (now === renderedDay) return;
+  const wasToday = calSelected === renderedDay;
+  renderedDay = now;
+  if (wasToday) calGoTo(now); // a calendar sitting on "today" follows the date
+  if (currentView === 'tonight' || currentView === 'calendar') renderView(currentView);
+}
+function scheduleMidnightCheck() {
+  clearTimeout(midnightTimer);
+  const next = new Date();
+  next.setHours(24, 0, 1, 0); // a second past local midnight
+  // setTimeout cannot be trusted across sleep, so this is a nudge; the
+  // visibility handler is the backstop.
+  midnightTimer = setTimeout(() => { checkNewDay(); scheduleMidnightCheck(); }, Math.max(1000, next - new Date()));
+}
+function watchForNewDay() {
+  renderedDay = todayKey();
+  scheduleMidnightCheck();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkNewDay(); scheduleMidnightCheck(); } });
+window.addEventListener('focus', checkNewDay);
+// Back / forward and edited addresses move between pages too.
+window.addEventListener('hashchange', () => {
+  const v = viewFromHash(location.hash);
+  if (v && v !== currentView && document.getElementById('app-content').style.display !== 'none') showView(v);
+});
+
+function renderView(view) {
+  if (view === 'calendar') renderMealPlan();
+  else if (view === 'tonight') renderTonight();
 }
 
-// The sidebar is a drawer on a narrow screen. On a wide one it is always there
-// and these do nothing visible.
+// Old links and bookmarks. The app has no real routes, only these hashes and
+// the ?action= shortcuts, so "redirecting" means mapping the retired names
+// onto the page that replaced them.
+const VIEW_ALIASES = {
+  plan: 'calendar', 'meal-plan': 'calendar', mealplan: 'calendar', planner: 'calendar',
+  list: 'shopping', 'shopping-list': 'shopping', shoppinglist: 'shopping',
+  home: 'recipes', all: 'recipes', 'all-recipes': 'recipes',
+};
+function viewFromHash(hash) {
+  const raw = String(hash || '').replace(/^#\/?/, '').toLowerCase();
+  if (VIEWS.includes(raw)) return raw;
+  return VIEW_ALIASES[raw] || null;
+}
+function calStepMonth(delta) { calMonthStep(delta); }
+
 function toggleDrawer() {
   const open = !document.body.classList.contains('drawer-open');
   document.body.classList.toggle('drawer-open', open);
@@ -2351,6 +2417,69 @@ async function toggleFavorite(id) {
   }
 }
 
+// Small stroke icons for the recipe window. Inline SVG, so they take the text
+// colour and there are no emoji on any control.
+const ICON_X = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const ICON_DOTS = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
+const ICON_CHEVRON = '<svg class="chip-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+const ICON_EXTERNAL = '<svg class="chip-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
+const ICON_HEART = (on) => `<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"${on ? ' data-on="1"' : ''}><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>`;
+
+// ---- The recipe window's "..." menu ----
+// A popover of the less-used actions. Esc closes it and gives focus back to the
+// button; the arrow keys, Home and End move between the items.
+function moreMenuParts() {
+  return { btn: document.getElementById('more-actions-btn'), menu: document.getElementById('more-actions-menu') };
+}
+function setMoreMenu(open, opts) {
+  const { btn, menu } = moreMenuParts();
+  if (!btn || !menu) return;
+  menu.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    const first = menu.querySelector('[role="menuitem"]');
+    if (first) first.focus();
+  } else if (opts && opts.restoreFocus) {
+    btn.focus();
+  }
+}
+function toggleMoreActions() {
+  const { menu } = moreMenuParts();
+  if (!menu) return;
+  setMoreMenu(menu.hidden);
+}
+document.addEventListener('keydown', (e) => {
+  const { btn, menu } = moreMenuParts();
+  if (!menu || menu.hidden) return;
+  const items = [...menu.querySelectorAll('[role="menuitem"]')];
+  const at = items.indexOf(document.activeElement);
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation(); // close the menu only, not the recipe window under it
+    setMoreMenu(false, { restoreFocus: true });
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    items[(at + 1) % items.length].focus();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    items[(at - 1 + items.length) % items.length].focus();
+  } else if (e.key === 'Home') {
+    e.preventDefault(); items[0].focus();
+  } else if (e.key === 'End') {
+    e.preventDefault(); items[items.length - 1].focus();
+  } else if (e.key === 'Tab') {
+    setMoreMenu(false); // leaving the menu by Tab closes it, as a native menu does
+  }
+}, true);
+// A click anywhere else closes it. A pick closes it too, once its action has run.
+document.addEventListener('click', (e) => {
+  const { btn, menu } = moreMenuParts();
+  if (!menu || menu.hidden) return;
+  if (btn && btn.contains(e.target)) return;
+  if (menu.contains(e.target)) { setTimeout(() => setMoreMenu(false), 0); return; }
+  setMoreMenu(false);
+});
+
 function openDetail(id) {
   const r = recipes.find(x => x.id === id);
   if (!r) return;
@@ -2358,10 +2487,10 @@ function openDetail(id) {
   const sourceHref = safeHref(r.sourceUrl);
   let sourceHost = '';
   try { sourceHost = new URL(sourceHref).hostname.replace(/^www\./, ''); } catch {}
-    const tagsHtml = (r.tags || []).map(t => `
+  const tagsHtml = (r.tags || []).map(t => `
     <span class="tag">
       ${escapeHtml(t)}
-      <button class="tag-x" data-id="${escapeHtml(r.id)}" data-tag="${escapeHtml(t)}" data-action="removeTag" data-pass="id" data-pass2="tag" data-stop="1" title="Remove tag" aria-label="Remove tag ${escapeHtml(t)}">✕</button>
+      <button type="button" class="tag-x" data-id="${escapeHtml(r.id)}" data-tag="${escapeHtml(t)}" data-action="removeTag" data-pass="id" data-pass2="tag" data-stop="1" title="Remove tag" aria-label="Remove tag ${escapeHtml(t)}">${ICON_X}</button>
     </span>
   `).join('');
   let servingsHtml = '';
@@ -2370,57 +2499,69 @@ function openDetail(id) {
     if (isFinite(baseServings) && baseServings > 0) {
       const scaleFactor = (currentScaling && currentScaling.recipeId === r.id) ? currentScaling.factor : 1;
       const options = [0.5, 1, 1.5, 2, 3].map(mult => {
-        const s = Math.round(baseServings * mult * 10) / 10;
+        const sv = Math.round(baseServings * mult * 10) / 10;
         const selected = Math.abs(mult - scaleFactor) < 0.01 ? ' selected' : '';
-        return `<option value="${mult}"${selected}>${s} servings</option>`;
+        return `<option value="${mult}"${selected}>${sv} servings</option>`;
       }).join('');
-      servingsHtml = `<select class="servings-select" data-change="changeServings" data-id="${r.id}">${options}</select>`;
+      // A real <select>, styled as a chip, with its own chevron.
+      servingsHtml = `<label class="meta-pill meta-select"><span class="sr-only">Scale servings</span><select class="servings-select" data-change="changeServings" data-id="${r.id}">${options}</select>${ICON_CHEVRON}</label>`;
     }
   }
   const scaleFactor = (currentScaling && currentScaling.recipeId === r.id) ? currentScaling.factor : 1;
   const ingredientsHtml = (r.ingredients || []).map(ing => `<li>${scaleIngredientLine(ing, scaleFactor)}</li>`).join('');
+  const fav = r.favorite === true;
+  const sourceChip = sourceHref
+    ? `<a class="meta-pill meta-link" href="${escapeHtml(sourceHref)}" target="_blank" rel="noopener noreferrer"><span class="meta-link-text">${escapeHtml(sourceHost || 'source')}</span>${ICON_EXTERNAL}</a>`
+    : (r.sourceUrl ? `<span class="meta-pill"><span class="meta-link-text">${escapeHtml(sourceHost || 'source')}</span></span>` : '');
+  const heroHtml = heroPhotoHtml(r, ms);
   const html = `
-    <div class="recipe-hero" style="background:${ms.bg}">${heroPhotoHtml(r, ms)}</div>    <div class="recipe-content">
-      <h1 class="recipe-title">${escapeHtml(r.title)}</h1>
+    <div class="recipe-hero img-wrap${heroHtml ? '' : ' no-photo'}">${heroHtml}</div>
+    <div class="recipe-content">
+      <h1 class="recipe-title" id="detail-title">${escapeHtml(r.title)}</h1>
       ${r.description ? `<p class="recipe-desc">${escapeHtml(r.description)}</p>` : ''}
       <div class="recipe-meta">
-        <span class="meta-pill">${ms.emoji} ${ms.label}</span>
-        ${r.prepTime ? `<span class="meta-pill"><span class="k">Prep:</span> ${escapeHtml(r.prepTime)}</span>` : ''}
-        ${r.cookTime ? `<span class="meta-pill"><span class="k">Cook:</span> ${escapeHtml(r.cookTime)}</span>` : ''}
-        ${r.servings ? `<span class="meta-pill"><span class="k">Serves:</span> ${escapeHtml(r.servings)}</span>${servingsHtml}` : ''}
-        ${sourceHref ? `<span class="meta-pill">🔗 <a href="${escapeHtml(sourceHref)}" target="_blank" rel="noopener">${escapeHtml(sourceHost || 'source')}</a></span>` : (r.sourceUrl ? `<span class="meta-pill">🔗 ${escapeHtml(sourceHost || 'source')}</span>` : '')}
+        <span class="meta-pill"><span class="k">Category</span> <span class="v">${escapeHtml(ms.label)}</span></span>
+        ${r.prepTime ? `<span class="meta-pill"><span class="k">Prep</span> <span class="v">${escapeHtml(r.prepTime)}</span></span>` : ''}
+        ${r.cookTime ? `<span class="meta-pill"><span class="k">Cook</span> <span class="v">${escapeHtml(r.cookTime)}</span></span>` : ''}
+        ${r.servings ? `<span class="meta-pill"><span class="k">Serves</span> <span class="v">${escapeHtml(r.servings)}</span></span>${servingsHtml}` : ''}
+        ${sourceChip}
       </div>
       <div class="recipe-tags" id="tag-row">
         ${tagsHtml}
-        <button class="tag-add-btn" id="tag-add-btn" data-action="showTagInput" data-id="${r.id}">+ Add tag</button>
+        <button type="button" class="tag-add-btn" id="tag-add-btn" data-action="showTagInput" data-id="${r.id}">+ Add tag</button>
       </div>
       ${collectionsRowHtml(r)}
-      ${cookedSectionHtml(r)}
-      <div class="recipe-actions">
-        <button class="action-btn primary" data-action="openCookMode" data-id="${r.id}">👨‍🍳 Cook mode</button>
-        <button class="action-btn" data-action="openShareModal" data-id="${r.id}">🔗 Share link</button>
-        <button class="action-btn" data-action="openAiTools" data-id="${r.id}">✨ AI tools</button>
-        <button class="action-btn ${r.favorite === true ? 'primary' : ''}" data-action="toggleFavorite" data-id="${r.id}" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥ Favorited' : '♡ Favorite'}</button>
-        <button class="action-btn" data-action="addRecipeToShoppingList" data-id="${r.id}">🛒 Add to list</button>
-        <button class="action-btn" data-action="openPlanPickerForRecipe" data-id="${r.id}">📅 Add to meal plan</button>
-        <button class="action-btn" data-action="openEditMode" data-id="${r.id}">✎ Edit</button>
-        <button class="action-btn" data-action="pickRecipePhoto" data-id="${r.id}">📷 ${r.userPhoto ? 'Replace my photo' : 'Add my photo'}</button>
-        ${r.userPhoto ? `<button class="action-btn" data-action="removeRecipePhoto" data-id="${r.id}">🗑 Remove my photo</button>` : ''}
-        <button class="action-btn" data-action="printRecipe">🖨️ Print</button>
-        <button class="action-btn" data-action="printCard">🗂️ Print card</button>
+      <div class="recipe-actions" role="group" aria-label="Recipe actions">
+        <button type="button" class="act act-primary" data-action="openCookMode" data-id="${r.id}">Cook mode</button>
+        <button type="button" class="act" data-action="openPlanPickerForRecipe" data-id="${r.id}">Add to calendar</button>
+        <button type="button" class="act" data-action="addRecipeToShoppingList" data-id="${r.id}">Add to shopping list</button>
+        <button type="button" class="act act-fav${fav ? ' on' : ''}" data-action="toggleFavorite" data-id="${r.id}" aria-pressed="${fav ? 'true' : 'false'}">${ICON_HEART(fav)}<span>${fav ? 'Favorited' : 'Favorite'}</span></button>
+        <button type="button" class="act" data-action="openEditMode" data-id="${r.id}">Edit</button>
+        <span class="act-more-wrap">
+          <button type="button" class="round-btn act-more" id="more-actions-btn" data-action="toggleMoreActions" aria-label="More actions" aria-haspopup="menu" aria-expanded="false" aria-controls="more-actions-menu">${ICON_DOTS}</button>
+          <div class="act-menu" id="more-actions-menu" role="menu" aria-label="More actions" hidden>
+            <button type="button" role="menuitem" data-action="openShareModal" data-id="${r.id}">Share link</button>
+            <button type="button" role="menuitem" data-action="openAiTools" data-id="${r.id}">AI tools</button>
+            <button type="button" role="menuitem" data-action="pickRecipePhoto" data-id="${r.id}">${r.userPhoto ? 'Replace my photo' : 'Add my photo'}</button>
+            ${r.userPhoto ? `<button type="button" role="menuitem" data-action="removeRecipePhoto" data-id="${r.id}">Remove my photo</button>` : ''}
+            <button type="button" role="menuitem" data-action="printRecipe">Print</button>
+            <button type="button" role="menuitem" data-action="printCard">Print card</button>
+          </div>
+        </span>
       </div>
+      ${cookedSectionHtml(r)}
       ${r.ingredients && r.ingredients.length ? `
         <h3 class="section-h">Ingredients</h3>
         <ul class="ing-list">${ingredientsHtml}</ul>
       ` : ''}
       ${r.instructions && r.instructions.length ? `
         <h3 class="section-h">Instructions</h3>
-        <ol class="step-list">${r.instructions.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ol>
+        <ol class="step-list">${r.instructions.map(i => `<li><span class="step-text">${escapeHtml(i)}</span></li>`).join('')}</ol>
       ` : ''}
-      ${r.notes ? `<div class="notes-box">💡 ${escapeHtml(r.notes)}</div>` : ''}
+      ${r.notes ? `<div class="notes-box"><span class="notes-label">Note</span> ${escapeHtml(r.notes)}</div>` : ''}
       <div class="recipe-footer">
         <span>Added by ${escapeHtml(r.addedBy || 'Anonymous')} on ${new Date(r.createdAt).toLocaleDateString()}</span>
-        <button class="delete-btn" data-action="deleteRecipe" data-id="${r.id}">Delete</button>
+        <button type="button" class="delete-btn" data-action="deleteRecipe" data-id="${r.id}">Delete</button>
       </div>
     </div>
   `;
@@ -3144,14 +3285,19 @@ document.addEventListener('webkitfullscreenchange', () => {
 });
 
 // ---- Shopping list ----
+// The shopping list is a page. Showing it loads the list and, in shared mode,
+// starts the refresh; leaving it stops that. (It used to be a dialog, and
+// "List" and "Shopping list" both opened it.)
 async function openShoppingList() {
-  document.getElementById('shopping-overlay').classList.add('on');
-  overlayOpened('shopping-overlay');
+  showView('shopping');
+}
+async function enterShoppingList() {
   await loadShoppingList();
+  if (currentView !== 'shopping') return;
   renderShoppingList();
   if (sharedMode()) startListPolling();
 }
-function closeShoppingList() { stopListPolling(); document.getElementById('shopping-overlay').classList.remove('on'); overlayClosed('shopping-overlay'); }
+function closeShoppingList() { stopListPolling(); }
 // ---- Load state: a failed load is not an empty list ----
 // What a load actually told us. Only a 2xx says what the server holds; any
 // other outcome means "unknown", and writing after it would replace the real
@@ -3226,9 +3372,7 @@ function setSharedMode(on) {
 function updateSharedNotes() {
   const on = sharedMode();
   const slNote = document.getElementById('sl-note');
-  const mpNote = document.getElementById('mp-note');
   if (slNote) slNote.textContent = on ? 'Shared with everyone using the access code. Updates every 20 seconds.' : 'Saved for this device.';
-  if (mpNote) mpNote.textContent = on ? 'Shared with everyone using the access code.' : 'Saved for this device. Tap a day to add recipes.';
   const slBox = document.getElementById('sl-shared');
   const mpBox = document.getElementById('mp-shared');
   if (slBox) slBox.checked = on;
@@ -3403,8 +3547,7 @@ function startListPolling() {
   if (!sharedMode()) return;
   listPollTimer = setInterval(async () => {
     if (document.hidden || !sharedMode()) return;
-    const overlay = document.getElementById('shopping-overlay');
-    if (!overlay || !overlay.classList.contains('on')) { stopListPolling(); return; }
+    if (currentView !== 'shopping') { stopListPolling(); return; }
     await loadShoppingList();
     renderShoppingList();
   }, 20000);
@@ -3607,14 +3750,6 @@ async function addPantryMissing(i) {
 }
 
 // ---- Meal plan ----
-async function openMealPlan() {
-  planWeekOffset = 0;
-  document.getElementById('plan-overlay').classList.add('on');
-  overlayOpened('plan-overlay');
-  await loadMealPlan();
-  renderMealPlan();
-}
-function closeMealPlan() { document.getElementById('plan-overlay').classList.remove('on'); overlayClosed('plan-overlay'); }
 async function loadMealPlan() {
   let ok;
   let data = null;
@@ -3659,19 +3794,8 @@ async function retryMealPlan() {
 // Blocks a meal-plan write while the load is failed.
 function mealPlanReady() {
   if (!listWriteBlocked(mealPlanState)) return true;
-  toast('Your meal plan didn\'t load — tap Retry before changing it.');
+  toast('Your calendar didn\'t load. Open Calendar and tap Retry before changing it.');
   return false;
-}
-function getWeekDays() {
-  const days = [];
-  const base = new Date();
-  base.setDate(base.getDate() + planWeekOffset * 7);
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i);
-    days.push(d);
-  }
-  return days;
 }
 // A planned slot may point at a recipe that has since been deleted: the old
 // inline handler checked for that before opening the detail view.
@@ -3679,54 +3803,162 @@ function openPlannedRecipe(id) {
   if (recipes.find((x) => x.id === id)) openDetail(id);
 }
 
-function changePlanWeek(delta) {
-  planWeekOffset += delta;
-  renderMealPlan();
-}
 function ymd(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
-function renderMealPlan() {
-  const days = getWeekDays();
-  const weekNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const el = document.getElementById('mp-week');
-  const label = document.getElementById('mp-week-label');
-  if (label) {
-    label.textContent = planWeekOffset === 0
-      ? 'This week'
-      : (planWeekOffset > 0 ? 'In ' + planWeekOffset + ' week' + (planWeekOffset > 1 ? 's' : '') + ' • ' : '• ')
-        + days[0].toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' – '
-        + days[6].toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+// ---- Calendar ----
+// One month at a time. The plan is the same { 'YYYY-MM-DD': [recipeId] } map it
+// always was, so every meal planned before this change is on its date.
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+let calSelected = ymd(new Date());
+
+function todayKey() { return ymd(new Date()); }
+function recipesById() {
+  const map = {};
+  recipes.forEach((r) => { map[r.id] = r; });
+  return map;
+}
+function longDate(key) {
+  const d = RCUtils.parseYmd(key);
+  return d ? d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : key;
+}
+
+// Show the month that holds a date, with that date selected.
+function calGoTo(dateKey) {
+  const d = RCUtils.parseYmd(dateKey);
+  if (!d) return;
+  calYear = d.getFullYear();
+  calMonth = d.getMonth();
+  calSelected = dateKey;
+}
+function calMonthStep(delta) {
+  const next = RCUtils.shiftMonth(calYear, calMonth, Number(delta) || 0);
+  calYear = next.year;
+  calMonth = next.month;
+  // Keep a selected day inside the month being looked at.
+  const sel = RCUtils.parseYmd(calSelected);
+  if (!sel || sel.getFullYear() !== calYear || sel.getMonth() !== calMonth) {
+    const first = new Date(calYear, calMonth, 1, 12);
+    const today = new Date();
+    calSelected = (today.getFullYear() === calYear && today.getMonth() === calMonth) ? ymd(today) : ymd(first);
   }
-  el.innerHTML = (listWriteBlocked(mealPlanState)
-    ? `<div class="mp-error" role="alert">
-        <span>Your meal plan didn't load, so it can't be changed right now. Nothing on the server has been overwritten.</span>
-        <button class="btn-secondary" data-action="retryMealPlan">Retry</button>
-      </div>`
-    : '') + days.map((d, idx) => {
-    const key = ymd(d);
-    const ids = mealPlan[key] || [];
-    const label = planWeekOffset === 0 && idx === 0 ? 'Today' : (planWeekOffset === 0 && idx === 1 ? 'Tomorrow' : weekNames[d.getDay()]);
-    const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const slots = ids.map(rid => {
-      const r = recipes.find(x => x.id === rid);
-      const title = r ? r.title : '(deleted)';
-      const ms = r ? mealStyle(r.mealType) : mealStyle('default');
-      return `<div class="mp-slot" data-action="openPlannedRecipe" data-id="${rid}"><span>${ms.emoji}</span><span class="mp-slot-title">${escapeHtml(title)}</span><button class="mp-slot-del" data-action="removeFromPlan" data-id="${key}" data-arg="${rid}" data-stop="1" title="Remove" aria-label="Remove ${escapeHtml(title)} from plan">✕</button></div>`;
-    }).join('');
-    return `
-      <div class="mp-day">
-        <div class="mp-day-head">
-          <div><span class="mp-day-name">${label}</span><span class="mp-day-date">${dateStr}</span></div>
-          <button class="mp-add" data-action="openPicker" data-id="${key}">+ Add recipe</button>
-        </div>
-        ${slots ? `<div class="mp-slots">${slots}</div>` : '<div style="color:var(--dim);font-size:.78rem">No meals planned</div>'}
-      </div>
-    `;
+  renderMealPlan();
+}
+function calToday() {
+  calGoTo(todayKey());
+  renderMealPlan();
+}
+function calSelect(dateKey) {
+  if (!RCUtils.parseYmd(dateKey)) return;
+  calSelected = dateKey;
+  renderMealPlan();
+}
+
+function renderMealPlan() {
+  const grid = document.getElementById('cal-grid');
+  if (!grid) return;
+  const title = document.getElementById('calendar-title');
+  if (title) title.textContent = new Date(calYear, calMonth, 1, 12).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const err = document.getElementById('cal-error');
+  if (err) err.hidden = !listWriteBlocked(mealPlanState);
+
+  const today = todayKey();
+  const byId = recipesById();
+  const rows = RCUtils.monthGrid(calYear, calMonth);
+  grid.style.setProperty('--cal-rows', String(rows.length));
+  grid.innerHTML = rows.map((row) => `<div class="cal-row" role="row">${row.map((cell) => {
+    const chips = RCUtils.dayChips(mealPlan, cell.date, byId, 2);
+    const label = `${longDate(cell.date)}${chips.total ? ', ' + chips.total + ' meal' + (chips.total === 1 ? '' : 's') + ' planned' : ', nothing planned'}`;
+    const cls = ['cal-day', cell.inMonth ? '' : 'out', cell.date === today ? 'today' : '', cell.date === calSelected ? 'sel' : '', chips.total ? 'has-meals' : ''].filter(Boolean).join(' ');
+    return `<button type="button" role="gridcell" class="${cls}" data-action="calSelect" data-id="${cell.date}" data-date="${cell.date}" aria-label="${escapeHtml(label)}" aria-pressed="${cell.date === calSelected}" tabindex="${cell.date === calSelected ? '0' : '-1'}"${cell.date === today ? ' aria-current="date"' : ''}>
+      <span class="cal-num">${cell.day}</span>
+      ${chips.shown.map((t) => `<span class="cal-chip">${escapeHtml(t)}</span>`).join('')}
+      ${chips.more ? `<span class="cal-more">+${chips.more} more</span>` : ''}
+      ${chips.total ? '<span class="cal-dot" aria-hidden="true"></span>' : ''}
+    </button>`;
+  }).join('')}</div>`).join('');
+  renderCalPanel();
+}
+
+// The selected day: its meals, a way to open or remove each, and a way to add.
+function renderCalPanel() {
+  const panel = document.getElementById('cal-panel');
+  if (!panel) return;
+  const ids = mealPlan[calSelected] || [];
+  const byId = recipesById();
+  const blocked = listWriteBlocked(mealPlanState);
+  const items = ids.map((rid) => {
+    const r = byId[rid];
+    if (!r) {
+      return `<li class="cal-meal gone"><span class="cal-meal-title">A deleted recipe</span>
+        <button type="button" class="cal-remove" data-action="removeFromPlanBtn" data-id="${calSelected}" data-rid="${escapeHtml(rid)}" aria-label="Remove this deleted recipe from ${escapeHtml(longDate(calSelected))}">Remove</button></li>`;
+    }
+    const src = cardPhotoSrc(r);
+    return `<li class="cal-meal">
+      <span class="img-wrap cal-thumb">${src ? `<img src="${escapeHtml(src)}" alt="" loading="lazy">` : ''}</span>
+      <button type="button" class="cal-meal-title" data-action="openPlannedRecipe" data-id="${escapeHtml(rid)}">${escapeHtml(r.title)}</button>
+      <button type="button" class="cal-remove" data-action="removeFromPlanBtn" data-id="${calSelected}" data-rid="${escapeHtml(rid)}" aria-label="Remove ${escapeHtml(r.title)} from the plan for ${escapeHtml(longDate(calSelected))}">Remove</button>
+    </li>`;
   }).join('');
+  panel.innerHTML = `
+    <h2 class="cal-panel-title" id="cal-panel-title">${escapeHtml(longDate(calSelected))}</h2>
+    ${ids.length ? `<ul class="cal-meals">${items}</ul>` : '<p class="cal-none">No meals planned for this day.</p>'}
+    <button type="button" class="cal-add" data-action="openPicker" data-id="${calSelected}"${blocked ? ' disabled' : ''}>Add meal</button>
+    <button type="button" class="cal-week-btn" data-action="addWeekToShoppingList"${blocked ? ' disabled' : ''}>Add this week’s ingredients to the shopping list</button>`;
+}
+
+// Arrow keys move between days; Enter and Space select (they are buttons).
+function calKeydown(e) {
+  const cell = e.target && e.target.closest ? e.target.closest('.cal-day') : null;
+  if (!cell) return;
+  const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+  if (step == null) return;
+  e.preventDefault();
+  const next = RCUtils.shiftDay(cell.dataset.date, step);
+  if (!next) return;
+  const d = RCUtils.parseYmd(next);
+  calYear = d.getFullYear();
+  calMonth = d.getMonth();
+  calSelected = next;
+  renderMealPlan();
+  const again = document.querySelector(`.cal-day[data-date="${next}"]`);
+  if (again) again.focus();
+}
+
+// One listener on the grid serves every cell, including the ones redrawn later.
+document.addEventListener('keydown', (e) => {
+  if (e.target && e.target.closest && e.target.closest('#cal-grid')) calKeydown(e);
+});
+
+// Tonight: only today's meals. The date is read each time it renders, never
+// kept, so it is right after midnight; showView and the visibility handler
+// below re-render it.
+function renderTonight() {
+  const dateEl = document.getElementById('tonight-date');
+  const today = todayKey();
+  if (dateEl) dateEl.textContent = longDate(today);
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+  if (!grid) return;
+  if (empty) empty.style.display = 'none';
+  const byId = recipesById();
+  const ids = (mealPlan[today] || []).filter((rid) => byId[rid]);
+  if (!ids.length) {
+    grid.className = 'tonight-empty-wrap';
+    grid.innerHTML = `<div class="tonight-empty"><p>You haven’t planned any meals for tonight. Go to <a href="#calendar" class="tonight-link" data-action="goToCalendarToday">Calendar</a> to add one.</p></div>`;
+    return;
+  }
+  grid.className = 'grid';
+  grid.innerHTML = ids.map((rid) => cardHtml(byId[rid], '')).join('');
+}
+function goToCalendarToday() {
+  calGoTo(todayKey());
+  showView('calendar');
 }
 async function addToPlan(date, recipeId) {
   if (!mealPlanReady()) return;
@@ -3744,7 +3976,7 @@ async function addToPlan(date, recipeId) {
     if (!res.ok) throw new Error('Save failed');
     applyPlanPayload(await res.json());
     renderMealPlan();
-    toast('Added to plan');
+    toast('Added to calendar');
   } catch (e) {
     toast('Could not save: ' + e.message);
   }
@@ -3771,9 +4003,13 @@ async function removeFromPlan(date, recipeId) {
 
 async function addWeekToShoppingList() {
   if (!mealPlanReady()) return;
-  const days = getWeekDays();
+  // The Sunday-to-Saturday week that holds the selected day, as the grid draws it.
+  const sel = RCUtils.parseYmd(calSelected) || new Date();
+  const weekStart = RCUtils.shiftDay(ymd(sel), -sel.getDay());
   const ids = new Set();
-  for (const d of days) for (const rid of (mealPlan[ymd(d)] || [])) ids.add(rid);
+  for (let i = 0; i < 7; i += 1) {
+    for (const rid of (mealPlan[RCUtils.shiftDay(weekStart, i)] || [])) ids.add(rid);
+  }
   if (!ids.size) { toast('No meals planned this week'); return; }
   await loadShoppingList();
   if (!shoppingListReady()) return;
@@ -3857,7 +4093,6 @@ function renderPicker() {
       const already = (mealPlan[key] || []).includes(pickerRecipeId);
       const count = (mealPlan[key] || []).length;
       html += `<button class="mp-pick${already ? ' planned' : ''}" data-action="pickPlanDay" data-id="${key}">` +
-        `<span style="font-size:1.3rem">${already ? '✅' : '📅'}</span>` +
         `<span class="mp-pick-text"><span>${label}, ${date}</span>` +
         `<span class="mp-pick-sub">${already ? 'Already planned' : (count ? count + ' meal' + (count === 1 ? '' : 's') + ' planned' : 'Nothing planned yet')}</span></span></button>`;
     }
@@ -3880,10 +4115,13 @@ function renderPicker() {
   list.innerHTML = matches.map((r) => {
     const ms = mealStyle(r.mealType);
     const done = planned.has(r.id);
-    return `<button class="mp-pick${done ? ' planned' : ''}" data-action="pickRecipe" data-id="${r.id}">` +
-      `<span style="font-size:1.3rem">${ms.emoji}</span>` +
+    const src = cardPhotoSrc(r);
+    const meta = RCUtils.cardMeta(r, ms.label);
+    return `<button class="mp-pick${done ? ' planned' : ''}" data-action="pickRecipe" data-id="${escapeHtml(r.id)}">` +
+      `<span class="img-wrap pick-thumb">${src ? `<img src="${escapeHtml(src)}" alt="" loading="lazy">` : ''}</span>` +
       `<span class="mp-pick-text"><span>${escapeHtml(r.title)}</span>` +
-      (done ? '<span class="mp-pick-sub">Already on this day</span>' : '') + '</span></button>';
+      (done ? '<span class="mp-pick-sub">Already on this day</span>' : (meta ? `<span class="mp-pick-sub">${escapeHtml(meta)}</span>` : '')) +
+      '</span></button>';
   }).join('');
 }
 
@@ -3954,8 +4192,6 @@ document.getElementById('user-tag').addEventListener('click', () => {
 document.getElementById('upload-overlay').addEventListener('click', e => { if (e.target.id === 'upload-overlay' && !isProcessing) cancelUpload(); });
 document.getElementById('import-overlay').addEventListener('click', e => { if (e.target.id === 'import-overlay') closeImport(); });
 document.getElementById('detail-overlay').addEventListener('click', e => { if (e.target.id === 'detail-overlay') closeDetail(); });
-document.getElementById('shopping-overlay').addEventListener('click', e => { if (e.target.id === 'shopping-overlay') closeShoppingList(); });
-document.getElementById('plan-overlay').addEventListener('click', e => { if (e.target.id === 'plan-overlay') closeMealPlan(); });
 document.getElementById('picker-overlay').addEventListener('click', e => { if (e.target.id === 'picker-overlay') closePicker(); });
 document.getElementById('credit-overlay').addEventListener('click', e => { if (e.target.id === 'credit-overlay') cancelPhotoUpload(); });
 document.addEventListener('keydown', e => {

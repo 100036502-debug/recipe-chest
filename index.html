@@ -34,7 +34,7 @@
 
 <div id="app-content" style="display:none;flex:1;flex-direction:column">
 <header class="topbar">
-  <a class="sidebar-logo" href="#tonight" data-action="showView" data-arg="tonight">Recipe Chest</a>
+  <a class="sidebar-logo" href="#recipes" data-action="showView" data-arg="recipes">Recipe Chest</a>
   <button class="round-btn" id="drawer-btn" data-action="toggleDrawer" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
   </button>
@@ -42,17 +42,14 @@
 <div class="scrim" data-action="closeDrawer"></div>
 
 <aside class="sidebar" id="sidebar" aria-label="Recipe Chest">
-  <a class="sidebar-logo" href="#tonight" data-action="showView" data-arg="tonight">Recipe Chest</a>
+  <a class="sidebar-logo" href="#recipes" data-action="showView" data-arg="recipes">Recipe Chest</a>
   <nav class="sidebar-nav" aria-label="Main">
-    <a class="side-link" href="#tonight" data-action="showView" data-arg="tonight" data-view-link="tonight">Tonight</a>
     <a class="side-link" href="#recipes" data-action="showView" data-arg="recipes" data-view-link="recipes">All recipes</a>
-    <!-- TODO: "Meal plan" and "Plan" open the same view, and "Shopping list" and "List" open the same one. Decide whether to merge each pair. -->
-    <button type="button" class="side-link" data-action="openMealPlan">Meal plan</button>
-    <button type="button" class="side-link" data-action="openShoppingList">Shopping list</button>
+    <a class="side-link" href="#tonight" data-action="showView" data-arg="tonight" data-view-link="tonight">Tonight</a>
+    <a class="side-link" href="#calendar" data-action="showView" data-arg="calendar" data-view-link="calendar">Calendar</a>
+    <a class="side-link" href="#shopping" data-action="showView" data-arg="shopping" data-view-link="shopping">Shopping list</a>
     <a class="side-link" href="#pantry" data-action="showView" data-arg="pantry" data-view-link="pantry">Pantry</a>
     <button type="button" class="side-link pantry-btn" data-action="openPantry">What can I make?</button>
-    <button type="button" class="side-link list-btn" data-action="openShoppingList">List</button>
-    <button type="button" class="side-link plan-btn" data-action="openMealPlan">Plan</button>
     <button type="button" class="side-link import-btn" data-action="openImport">Import URL</button>
     <button type="button" class="side-link paste-btn" data-action="openPasteImport">Paste text</button>
     <button type="button" class="side-link add-btn" data-action="openUpload">Add Photos</button>
@@ -86,17 +83,68 @@
   </div>
   <div id="offline-banner" class="offline-banner" style="display:none">You're offline. Showing saved recipes. Some actions are unavailable until you reconnect.</div>
 
-  <section class="view" id="view-tonight" aria-labelledby="tonight-title">
-    <h1 class="view-title" id="tonight-title">What’s cooking?</h1>
+  <!-- All recipes: the home page. Heading, search, filters and the full grid. -->
+  <section class="view" id="view-recipes" aria-labelledby="recipes-title">
+    <h1 class="view-title" id="recipes-title">What’s cooking?</h1>
   </section>
-
   <div class="search-field" id="search-field">
     <label for="search-input">Search for a recipe</label>
     <input type="search" id="search-input" placeholder="Search recipes, ingredients, tags..." autocomplete="off">
   </div>
 
-  <section class="view" id="view-recipes" aria-labelledby="recipes-title" hidden>
-    <h1 class="view-title" id="recipes-title">All recipes</h1>
+  <!-- Tonight: only what is planned for today. -->
+  <section class="view" id="view-tonight" aria-labelledby="tonight-title" hidden>
+    <h1 class="view-title" id="tonight-title">Tonight</h1>
+    <p class="view-date" id="tonight-date"></p>
+  </section>
+
+  <!-- Calendar: the month, and the selected day beside it. -->
+  <section class="view" id="view-calendar" aria-labelledby="calendar-title" hidden>
+    <div class="cal-head">
+      <h1 class="view-title cal-month" id="calendar-title" aria-live="polite"></h1>
+      <div class="cal-nav">
+        <button type="button" class="round-btn" data-action="calStepMonth" data-index="-1" aria-label="Previous month">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <button type="button" class="cal-today" data-action="calToday">Today</button>
+        <button type="button" class="round-btn" data-action="calStepMonth" data-index="1" aria-label="Next month">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="mp-error" id="cal-error" role="alert" hidden>
+      <span>Your calendar didn't load, so it can't be changed right now. Nothing on the server has been overwritten.</span>
+      <button type="button" class="btn-secondary" data-action="retryMealPlan">Retry</button>
+    </div>
+    <label class="sl-toggle write-only cal-share"><input type="checkbox" id="mp-shared" data-change="setSharedMode"> Share with everyone</label>
+    <div class="cal-layout">
+      <div class="cal-grid-wrap">
+        <div class="cal-weekdays" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+        <div class="cal-grid" id="cal-grid" role="grid" aria-labelledby="calendar-title"></div>
+      </div>
+      <aside class="cal-panel" id="cal-panel" aria-labelledby="cal-panel-title" tabindex="-1"></aside>
+    </div>
+  </section>
+
+  <!-- Shopping list: the one list. Same ids as the old dialog so every
+       capability and all saved data carry over unchanged. -->
+  <section class="view" id="view-shopping" aria-labelledby="shopping-title" hidden>
+    <h1 class="view-title" id="shopping-title">Shopping list</h1>
+    <p id="sl-note" class="view-note">Saved for this device.</p>
+    <div class="sl-controls">
+      <label class="sl-toggle"><input type="checkbox" id="sl-group" data-change="setGroupByAisle"> Group by aisle</label>
+      <label class="sl-toggle write-only"><input type="checkbox" id="sl-shared" data-change="setSharedMode"> Share with everyone</label>
+      <button type="button" class="btn-secondary sl-merge-btn" data-action="mergeShoppingList">Merge duplicates</button>
+    </div>
+    <div class="sl-add">
+      <label for="sl-input" class="sr-only">Add an item</label>
+      <input type="text" id="sl-input" placeholder="Add an item..." maxlength="200" data-enter="addShoppingItem">
+      <button type="button" class="btn-primary" data-action="addShoppingItem">Add</button>
+    </div>
+    <div id="sl-list"></div>
+    <div class="sl-foot">
+      <button type="button" class="btn-secondary" data-action="clearShoppingList">Clear all</button>
+    </div>
   </section>
 
   <section class="view" id="view-pantry" aria-labelledby="pantry-view-title" hidden>
@@ -159,8 +207,8 @@
 </div>
 
 <div class="overlay" id="detail-overlay">
-  <div class="modal" id="detail-modal" role="dialog" aria-modal="true" aria-label="Recipe details">
-    <button class="modal-close" data-action="closeDetail" aria-label="Close recipe details">✕</button>
+  <div class="modal" id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+    <button type="button" class="modal-close" data-action="closeDetail" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <div id="detail-content"></div>
   </div>
 </div>
@@ -281,45 +329,6 @@
     <h2 id="coll-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Manage collections</h2>
     <p style="color:var(--dim);font-size:.82rem;margin-bottom:18px">Renaming or deleting updates every recipe that uses it.</p>
     <div id="coll-manager-body"></div>
-  </div>
-</div>
-
-<div class="overlay" id="shopping-overlay">
-  <div class="modal" style="padding:28px 32px;max-width:600px" role="dialog" aria-modal="true" aria-labelledby="shopping-title">
-    <button class="modal-close" data-action="closeShoppingList" aria-label="Close shopping list">✕</button>
-    <h2 id="shopping-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Shopping List</h2>
-    <p id="sl-note" style="color:var(--dim);font-size:.82rem;margin-bottom:12px">Saved for this device.</p>
-    <div class="sl-controls">
-      <label class="sl-toggle"><input type="checkbox" id="sl-group" data-change="setGroupByAisle"> Group by aisle</label>
-      <label class="sl-toggle write-only"><input type="checkbox" id="sl-shared" data-change="setSharedMode"> Share with everyone</label>
-      <button class="btn-secondary sl-merge-btn" data-action="mergeShoppingList">Merge duplicates</button>
-    </div>
-    <div class="sl-add">
-      <input type="text" id="sl-input" placeholder="Add an item..." maxlength="200" data-enter="addShoppingItem">
-      <button class="btn-primary" style="margin:0" data-action="addShoppingItem">Add</button>
-    </div>
-    <div id="sl-list"></div>
-    <div style="margin-top:16px;text-align:right">
-      <button class="btn-secondary" data-action="clearShoppingList">Clear all</button>
-    </div>
-  </div>
-</div>
-
-<div class="overlay" id="plan-overlay">
-  <div class="modal" style="padding:28px 32px;max-width:680px" role="dialog" aria-modal="true" aria-labelledby="plan-title">
-    <button class="modal-close" data-action="closeMealPlan" aria-label="Close meal plan">✕</button>
-    <h2 id="plan-title" style="font-family:Georgia,serif;color:var(--brown);font-size:1.5rem;font-weight:normal;margin-bottom:6px">Meal Plan</h2>
-    <p id="mp-note" style="color:var(--dim);font-size:.82rem;margin-bottom:12px">Saved for this device. Tap a day to add recipes.</p>
-    <div class="sl-controls" style="margin-bottom:16px">
-      <label class="sl-toggle write-only"><input type="checkbox" id="mp-shared" data-change="setSharedMode"> Share with everyone</label>
-    </div>
-    <div class="mp-week-nav">
-      <button class="btn-secondary mp-nav-btn" data-action="changePlanWeek" data-index="-1">← Previous</button>
-      <span class="mp-week-label" id="mp-week-label">This week</span>
-      <button class="btn-secondary mp-nav-btn" data-action="changePlanWeek" data-index="1">Next →</button>
-    </div>
-    <div class="mp-week" id="mp-week"></div>
-    <button class="btn-primary mp-add-week" data-action="addWeekToShoppingList">🛒 Add this week's ingredients to the shopping list</button>
   </div>
 </div>
 

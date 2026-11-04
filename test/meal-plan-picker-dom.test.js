@@ -28,7 +28,9 @@ function build({ recipes, plan = {}, planState = 'ok' }) {
     RCUtils: loadClientUtils(),
     document: { getElementById: el },
     escapeHtml: (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]),
-    mealStyle: () => ({ emoji: '🍽️' }),
+    mealStyle: () => ({ label: 'Dinner' }),
+    // The picker rows show a thumbnail, so the real helper has to exist here too.
+    cardPhotoSrc: (r) => (r.userPhoto ? '/api/photo' : ((r.image && (r.image.thumb || r.image.url)) || '')),
     overlayOpened() {}, overlayClosed() {},
     toast: (m) => toasts.push(m),
     loadMealPlan: async () => 'ok',

@@ -1,4 +1,4 @@
-import { test, expect, unlock } from './helpers.js';
+import { test, expect, unlock, pickMoreAction } from './helpers.js';
 
 const METRIC = {
   kind: 'metric',
@@ -10,7 +10,7 @@ const METRIC = {
 async function openTools(page) {
   await unlock(page);
   await page.locator('#grid .card').first().click();
-  await page.locator('#detail-overlay').getByRole('button', { name: /AI tools/ }).click();
+  await pickMoreAction(page, 'AI tools');
   await expect(page.locator('#ai-overlay')).toBeVisible();
 }
 

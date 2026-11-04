@@ -21,22 +21,23 @@ async function styleOf(locator) {
 }
 
 const LABELS = [
-  'Tonight', 'All recipes', 'Meal plan', 'Shopping list', 'Pantry', 'What can I make?',
-  'List', 'Plan', 'Import URL', 'Paste text', 'Add Photos',
+  'All recipes', 'Tonight', 'Calendar', 'Shopping list', 'Pantry', 'What can I make?',
+  'Import URL', 'Paste text', 'Add Photos',
 ];
 
-test('the sidebar has the eleven links, in order, with no emoji', async ({ page, api }) => {
+test('the sidebar has the nine links, in order, with no emoji and none of the retired ones', async ({ page, api }) => {
   await unlock(page);
   const texts = await page.locator('.sidebar-nav .side-link').allTextContents();
   expect(texts.map((t) => t.trim())).toEqual(LABELS);
   for (const t of texts) expect(t).not.toMatch(/\p{Extended_Pictographic}/u);
+  for (const gone of ['Plan', 'Meal plan', 'List']) expect(texts.map((t) => t.trim())).not.toContain(gone);
 });
 
 test('every sidebar item looks identical: plain text, no shape', async ({ page, api }) => {
   await unlock(page);
   await page.addStyleTag({ content: '*{transition:none !important}' });
   const links = page.locator('.sidebar-nav .side-link');
-  const first = await styleOf(links.nth(1)); // not the current page
+  const first = await styleOf(links.nth(1)); // not the current page (All recipes is)
   expect(first.backgroundColor).toBe('rgba(0, 0, 0, 0)');
   expect(first.borderTopWidth).toBe('0px');
   expect(first.borderRadius).toBe('0px');

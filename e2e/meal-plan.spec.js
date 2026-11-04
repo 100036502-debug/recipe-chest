@@ -1,4 +1,4 @@
-import { test, expect, unlock } from './helpers.js';
+import { test, expect, unlock, openCalendar } from './helpers.js';
 
 // A recipe can be put on the plan from its own page, and the picker opened from
 // a day on the plan has a search box.
@@ -8,7 +8,7 @@ test('a recipe can be added to a day from its own page', async ({ page, api }) =
   await page.locator('#grid .card').filter({ hasText: 'Lemon Pasta' }).click();
   await expect(page.locator('#detail-overlay')).toHaveClass(/on/);
 
-  await page.getByRole('button', { name: /Add to meal plan/ }).click();
+  await page.getByRole('button', { name: 'Add to calendar' }).click();
   await expect(page.locator('#picker-overlay')).toHaveClass(/on/);
   await expect(page.locator('#picker-title')).toContainText('Lemon Pasta');
   await expect(page.locator('#picker-search')).toBeHidden();
@@ -18,27 +18,26 @@ test('a recipe can be added to a day from its own page', async ({ page, api }) =
 
   await page.locator('#picker-list .mp-pick').nth(1).click();
   await expect(page.locator('#picker-overlay')).not.toHaveClass(/on/);
-  await expect(page.locator('.toast, #toast').first()).toContainText('Added to plan');
+  await expect(page.locator('.toast, #toast').first()).toContainText('Added to calendar');
 
   // It is on the plan now, and the chooser says so next time.
   const saved = Object.values(api.lists).find((l) => l.days);
   const dates = Object.keys(saved.days);
   assert(dates.length === 1 && saved.days[dates[0]].join() === 'r1', 'one day holds r1');
 
-  await page.getByRole('button', { name: /Add to meal plan/ }).click();
+  await page.getByRole('button', { name: 'Add to calendar' }).click();
   await expect(page.locator('#picker-list .mp-pick.planned')).toHaveCount(1);
   await expect(page.locator('#picker-list .mp-pick.planned')).toContainText('Already planned');
 });
 
 function assert(ok, message) { if (!ok) throw new Error(message); }
 
-test('the recipe picker on a plan day searches as you type', async ({ page, api }) => {
+test('the recipe picker on a calendar day searches as you type', async ({ page, api }) => {
   assert(Array.isArray(api.recipes), 'the mock API is installed');
   await unlock(page);
-  await page.locator('[data-action="openMealPlan"]').first().click();
-  await expect(page.locator('#plan-overlay')).toHaveClass(/on/);
+  await openCalendar(page);
 
-  await page.locator('.mp-day').first().getByRole('button', { name: /Add recipe/ }).click();
+  await page.locator('.cal-add').click();
   await expect(page.locator('#picker-overlay')).toHaveClass(/on/);
   await expect(page.locator('#picker-search')).toBeVisible();
   await expect(page.locator('#picker-list .mp-pick')).toHaveCount(2);
@@ -59,14 +58,15 @@ test('the recipe picker on a plan day searches as you type', async ({ page, api 
   await page.fill('#picker-search', 'bean');
   await page.locator('#picker-list .mp-pick').first().click();
   await expect(page.locator('#picker-overlay')).not.toHaveClass(/on/);
-  await expect(page.locator('.mp-day').first()).toContainText('Bean Stew');
+  await expect(page.locator('.cal-meals')).toContainText('Bean Stew');
+  await expect(page.locator('.cal-day.sel .cal-chip')).toContainText('Bean Stew');
 });
 
 test('the search box starts empty each time the picker opens', async ({ page, api }) => {
   assert(Array.isArray(api.recipes), 'the mock API is installed');
   await unlock(page);
-  await page.locator('[data-action="openMealPlan"]').first().click();
-  const add = page.locator('.mp-day').first().getByRole('button', { name: /Add recipe/ });
+  await openCalendar(page);
+  const add = page.locator('.cal-add');
   await add.click();
   await page.fill('#picker-search', 'stew');
   await page.locator('#picker-overlay .modal-close').click();

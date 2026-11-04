@@ -1,4 +1,4 @@
-import { test, expect, unlock, callsTo, postsTo, TINY_JPEG } from './helpers.js';
+import { test, expect, unlock, callsTo, postsTo, TINY_JPEG, pickMoreAction } from './helpers.js';
 
 test.describe('my photo of the dish', () => {
   test('choosing a file posts it to /api/photo', async ({ page, api }) => {
@@ -11,7 +11,7 @@ test.describe('my photo of the dish', () => {
     // arrives as a filechooser event rather than a file input in the DOM.
     const [chooser] = await Promise.all([
       page.waitForEvent('filechooser'),
-      page.getByRole('button', { name: /Add my photo/ }).click(),
+      pickMoreAction(page, 'Add my photo'),
     ]);
     await chooser.setFiles({
       name: 'my-dish.jpg',
@@ -38,7 +38,7 @@ test.describe('my photo of the dish', () => {
 
     const [chooser] = await Promise.all([
       page.waitForEvent('filechooser'),
-      page.getByRole('button', { name: /Add my photo/ }).click(),
+      pickMoreAction(page, 'Add my photo'),
     ]);
     await chooser.setFiles({ name: 'my-dish.jpg', mimeType: 'image/jpeg', buffer: TINY_JPEG });
 
