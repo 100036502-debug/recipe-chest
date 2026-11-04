@@ -947,8 +947,28 @@ a.meta-link:hover { text-decoration: underline; }
   border: 0;
   border-bottom: 2px solid var(--t-accent);
 }
-.ing-list { list-style: none; margin: 0 0 16px; padding: 0; max-width: 65ch; }
-.ing-list li { padding: 12px 0; border-bottom: 1px solid var(--t-divider); font-size: 16px; line-height: 1.5; color: var(--t-text); }
+/* Ingredient rows are one plain column divided by hairlines. app.css still lays
+   this list out as a two-column grid of tinted boxes with an accent edge, so the
+   layout, background, edge and radius are all reset here; otherwise rows keep
+   the old box look and crowd the heading's underline. */
+.ing-list {
+  display: block;
+  list-style: none;
+  margin: 4px 0 16px;
+  padding: 0;
+  max-width: 65ch;
+  background: none;
+}
+.ing-list li {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--t-divider);
+  border-radius: 0;
+  padding: 12px 0;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--t-text);
+}
 .ing-list li:last-child { border-bottom: 0; }
 .ing-list input[type=checkbox] { accent-color: var(--t-accent); }
 .step-list { list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 16px; max-width: 65ch; margin: 0 0 16px; padding: 0; }
