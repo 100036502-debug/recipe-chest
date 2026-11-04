@@ -38,7 +38,7 @@ test('the install item never appears when already installed', async ({ page, api
   await offerInstallPrompt(page);
 
   await page.locator('#menu-btn').click();
-  await expect(page.locator('#theme-item')).toBeVisible();
+  await expect(page.locator('#app-menu')).toHaveClass(/on/);
   await expect(page.locator('#install-item')).toBeHidden();
 });
 

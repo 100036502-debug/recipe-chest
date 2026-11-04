@@ -704,8 +704,147 @@
     return scored.map(function (x) { return x.r; });
   }
 
+  // ---- "Tonight" cards ----------------------------------------------------
+  // Free-text times ("20 min", "1 hr 15 mins", "1h30", "45") as whole minutes,
+  // or null when the text does not say. A caption is only shown for a number
+  // we could really read; an unreadable time says nothing rather than a guess.
+  function minutesFromText(text) {
+    var t = String(text == null ? '' : text).toLowerCase().trim();
+    if (!t) return null;
+    var total = 0;
+    var seen = false;
+    var afterHours = false;
+    var re = /(\d+(?:\.\d+)?)\s*(hours?|hrs?|h|minutes?|mins?|m)?(?![a-z])/g;
+    var m;
+    while ((m = re.exec(t)) !== null) {
+      var n = parseFloat(m[1]);
+      if (!isFinite(n)) continue;
+      var unit = m[2] || '';
+      if (/^h/.test(unit)) { total += n * 60; afterHours = true; }
+      else if (/^m/.test(unit)) { total += n; afterHours = false; }
+      // "1h30": the number straight after an hours figure is its minutes.
+      else if (afterHours && n < 60) { total += n; afterHours = false; }
+      else if (!seen && !/[a-z]/.test(t.replace(m[1], ''))) total += n; // a bare "45"
+      else continue;
+      seen = true;
+    }
+    if (!seen || total <= 0 || total > 24 * 60) return null;
+    return Math.round(total);
+  }
+
+  // Prep plus cook when both are readable, else whichever is. Null if neither.
+  function readyInMinutes(recipe) {
+    var prep = minutesFromText(recipe && recipe.prepTime);
+    var cook = minutesFromText(recipe && recipe.cookTime);
+    if (prep == null && cook == null) return null;
+    return (prep || 0) + (cook || 0);
+  }
+
+  // Whole days between two YYYY-MM-DD dates (b minus a).
+  function daysBetween(a, b) {
+    var da = Date.parse(a + 'T00:00:00Z');
+    var db = Date.parse(b + 'T00:00:00Z');
+    if (!isFinite(da) || !isFinite(db)) return null;
+    return Math.round((db - da) / 86400000);
+  }
+
+  // The one line under a card's picture, and only a line the data supports:
+  //   never cooked -> "Never cooked"
+  //   cooked in the last month -> "Cooked last month" would be wrong for last
+  //   week, so it is worded by what is true: "Cooked this week", "Cooked this
+  //   month", "Cooked last month", else the count.
+  // Returns '' when there is nothing true to say.
+  function cardCaption(recipe, todayYmd) {
+    if (!recipe) return '';
+    var stats = cookStats(recipe.cookLog);
+    if (!stats.count) return 'Never cooked';
+    // The count and the average rating are what the old card showed and what
+    // people use to pick a recipe, so they stay on the line.
+    var tail = ' \u00b7 ' + stats.count + '\u00d7' + (stats.avgRating != null ? ' \u00b7 \u2605 ' + stats.avgRating : '');
+    var ago = todayYmd ? daysBetween(stats.lastDate, todayYmd) : null;
+    var when = '';
+    if (ago != null && ago >= 0) {
+      if (ago <= 7) when = 'Cooked this week';
+      else if (String(stats.lastDate).slice(0, 7) === String(todayYmd).slice(0, 7)) when = 'Cooked this month';
+      else {
+        var d = new Date(Date.parse(todayYmd + 'T00:00:00Z'));
+        d.setUTCDate(1);
+        d.setUTCMonth(d.getUTCMonth() - 1);
+        var prev = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+        if (String(stats.lastDate).slice(0, 7) === prev) when = 'Cooked last month';
+      }
+    }
+    // With no date we can place, say only what is certain: how many times.
+    return (when || 'Cooked before') + tail;
+  }
+
+  // "Dinner · vegetarian": the meal type, then one more fact if there is one
+  // (the first tag, else the time). Nothing is added that the recipe lacks.
+  function cardMeta(recipe, mealLabel) {
+    if (!recipe) return '';
+    var parts = [];
+    if (mealLabel) parts.push(mealLabel);
+    var tag = Array.isArray(recipe.tags) ? recipe.tags.filter(function (t) { return t && String(t).trim(); })[0] : '';
+    if (tag) parts.push(String(tag));
+    else if (recipe.prepTime && String(recipe.prepTime).trim()) parts.push(String(recipe.prepTime).trim());
+    return parts.join(' \u00b7 ');
+  }
+
+  // Three recipes for the home screen, each with a caption that is true of it:
+  // one never cooked, one quick, one cooked before. A recipe is used once, and
+  // when a kind has no candidate the slot goes to the next best, so three real
+  // recipes are shown whenever the chest holds three. Order is stable.
+  function pickSuggestions(list, todayYmd, count) {
+    var want = count == null ? 3 : count;
+    var all = (Array.isArray(list) ? list : []).filter(function (r) { return r && r.id && r.title; });
+    var picked = [];
+    var used = {};
+    function take(r, caption) {
+      if (!r || used[r.id] || picked.length >= want) return;
+      used[r.id] = true;
+      picked.push({ recipe: r, caption: caption });
+    }
+    var never = all.filter(function (r) { return !cookStats(r.cookLog).count; });
+    var quick = all.filter(function (r) { var m = readyInMinutes(r); return m != null && m <= 30; })
+      .sort(function (a, b) { return readyInMinutes(a) - readyInMinutes(b); });
+    var cooked = all.filter(function (r) { return cookStats(r.cookLog).count; })
+      .sort(function (a, b) { return String(cookStats(a.cookLog).lastDate) < String(cookStats(b.cookLog).lastDate) ? 1 : -1; });
+
+    // A recipe that has been cooked always shows its cook line, whatever slot it
+    // fills: the count and rating are the useful fact about it, and a "quick"
+    // label must not hide them. A recipe never cooked may show its time.
+    function captionFor(r, preferTime) {
+      var cooked = cookStats(r.cookLog).count > 0;
+      var mins = readyInMinutes(r);
+      if (cooked) return cardCaption(r, todayYmd);
+      return preferTime && mins != null ? 'Ready in ' + mins + ' minutes' : 'Never cooked';
+    }
+    // The quick pick is chosen first, so a recipe that is both quick and never
+    // cooked keeps the more useful label (its time), and the never-cooked slot
+    // goes to a different recipe whenever there is one.
+    var quickPick = quick[0];
+    if (quickPick) take(quickPick, captionFor(quickPick, true));
+    var neverPick = never.filter(function (r) { return !used[r.id]; })[0] || never[0];
+    take(neverPick, 'Never cooked');
+    take(cooked[0], cardCaption(cooked[0], todayYmd));
+
+    // Fill any slot a kind could not, with the next real recipe and the caption
+    // it has earned.
+    for (var i = 0; i < all.length && picked.length < want; i += 1) {
+      var r = all[i];
+      if (used[r.id]) continue;
+      take(r, captionFor(r, true));
+    }
+    return picked;
+  }
+
   root.RCUtils = {
     diffLines,
+    minutesFromText: minutesFromText,
+    readyInMinutes: readyInMinutes,
+    cardCaption: cardCaption,
+    cardMeta: cardMeta,
+    pickSuggestions: pickSuggestions,
     searchRecipes: searchRecipes,
     parseIngredientLine: parseIngredientLine,
     formatQty: formatQty,

@@ -5,15 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Recipe Chest</title>
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#faf6f0">
+<meta name="theme-color" content="#1B1612">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Recipe Chest">
 <script src="/js/theme.js"></script>
+<link rel="preload" href="/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/dm-serif-display-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/tonight.css">
 </head>
 <body class="locked">
 
@@ -30,47 +33,83 @@
 </div>
 
 <div id="app-content" style="display:none;flex:1;flex-direction:column">
-<header class="header">
-  <h1><span>📖</span>Recipe Chest</h1>
-  <div class="search-wrap">
-    <input type="text" id="search-input" placeholder="Search recipes, ingredients, tags...">
+<header class="topbar">
+  <a class="sidebar-logo" href="#tonight" data-action="showView" data-arg="tonight">Recipe Chest</a>
+  <button class="round-btn" id="drawer-btn" data-action="toggleDrawer" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+</header>
+<div class="scrim" data-action="closeDrawer"></div>
+
+<aside class="sidebar" id="sidebar" aria-label="Recipe Chest">
+  <a class="sidebar-logo" href="#tonight" data-action="showView" data-arg="tonight">Recipe Chest</a>
+  <nav class="sidebar-nav" aria-label="Main">
+    <a class="side-link" href="#tonight" data-action="showView" data-arg="tonight" data-view-link="tonight">Tonight</a>
+    <a class="side-link" href="#recipes" data-action="showView" data-arg="recipes" data-view-link="recipes">All recipes</a>
+    <!-- TODO: "Meal plan" and "Plan" open the same view, and "Shopping list" and "List" open the same one. Decide whether to merge each pair. -->
+    <button type="button" class="side-link" data-action="openMealPlan">Meal plan</button>
+    <button type="button" class="side-link" data-action="openShoppingList">Shopping list</button>
+    <a class="side-link" href="#pantry" data-action="showView" data-arg="pantry" data-view-link="pantry">Pantry</a>
+    <button type="button" class="side-link pantry-btn" data-action="openPantry">What can I make?</button>
+    <button type="button" class="side-link list-btn" data-action="openShoppingList">List</button>
+    <button type="button" class="side-link plan-btn" data-action="openMealPlan">Plan</button>
+    <button type="button" class="side-link import-btn" data-action="openImport">Import URL</button>
+    <button type="button" class="side-link paste-btn" data-action="openPasteImport">Paste text</button>
+    <button type="button" class="side-link add-btn" data-action="openUpload">Add Photos</button>
+  </nav>
+  <div class="sidebar-footer">
+    <button type="button" class="round-btn" data-action="lockApp" aria-label="Lock" title="Lock Recipe Chest">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+    </button>
+    <button type="button" class="user-name" id="user-tag" title="Click to change your name">Anonymous</button>
   </div>
-  <div class="header-btns">
-    <button class="pantry-btn" data-action="openPantry">🥕 What can I make?</button>
-    <button class="list-btn" data-action="openShoppingList">🛒 List</button>
-    <button class="plan-btn" data-action="openMealPlan">📅 Plan</button>
-    <button class="import-btn" data-action="openImport">🔗 Import URL</button>
-    <button class="paste-btn" data-action="openPasteImport">📋 Paste text</button>
-    <button class="add-btn" data-action="openUpload">＋ Add Photos</button>
-  </div>
-  <span class="user-tag" id="user-tag" title="Click to change your name">👤 Anonymous</span>
-  <div class="menu-wrap">
-    <button class="lock-btn" id="menu-btn" data-action="toggleAppMenu" aria-label="More options" aria-haspopup="true" title="More options">⋯</button>
+</aside>
+
+<main class="main" id="main">
+  <div class="main-menu menu-wrap">
+    <button class="round-btn" id="menu-btn" data-action="toggleAppMenu" aria-label="More options" aria-haspopup="true" aria-expanded="false" title="More options">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+    </button>
     <div class="menu" id="app-menu" role="menu">
-      <button class="menu-item" role="menuitem" data-action="exportBackup" data-bool="0">⬇️ Export backup</button>
-      <button class="menu-item" role="menuitem" data-action="exportBackup" data-bool="1">⬇️ Export with photos</button>
-      <button class="menu-item" role="menuitem" data-action="pickBackupFiles">⬆️ Restore backup</button>
-      <button class="menu-item" role="menuitem" data-action="openStorage">📦 Storage</button>
-      <button class="menu-item" role="menuitem" id="theme-item" data-action="cycleTheme">🎨 Theme: Auto</button>
-      <button class="menu-item" role="menuitem" id="install-item" data-action="installApp" hidden>📲 Install app</button>
+      <button class="menu-item" role="menuitem" data-action="exportBackup" data-bool="0">Export backup</button>
+      <button class="menu-item" role="menuitem" data-action="exportBackup" data-bool="1">Export with photos</button>
+      <button class="menu-item" role="menuitem" data-action="pickBackupFiles">Restore backup</button>
+      <button class="menu-item" role="menuitem" data-action="openStorage">Storage</button>
+      <button class="menu-item" role="menuitem" id="theme-item" data-action="cycleTheme" hidden>Theme: Dark</button>
+      <button class="menu-item" role="menuitem" id="install-item" data-action="installApp" hidden>Install app</button>
     </div>
   </div>
-  <button class="lock-btn" data-action="lockApp" title="Lock Recipe Chest">🔒</button>
-</header>
 
-<main class="main">
   <div class="ios-hint" id="ios-hint" hidden>
     <span>To install: tap the Share button, then Add to Home Screen.</span>
     <button class="ios-hint-close" data-action="dismissIosHint" aria-label="Dismiss">✕</button>
   </div>
-  <div id="offline-banner" class="offline-banner" style="display:none">⚡ You're offline — showing saved recipes. Some actions are unavailable until you reconnect.</div>
+  <div id="offline-banner" class="offline-banner" style="display:none">You're offline. Showing saved recipes. Some actions are unavailable until you reconnect.</div>
+
+  <section class="view" id="view-tonight" aria-labelledby="tonight-title">
+    <h1 class="view-title" id="tonight-title">What’s cooking?</h1>
+  </section>
+
+  <div class="search-field" id="search-field">
+    <label for="search-input">Search for a recipe</label>
+    <input type="search" id="search-input" placeholder="Search recipes, ingredients, tags..." autocomplete="off">
+  </div>
+
+  <section class="view" id="view-recipes" aria-labelledby="recipes-title" hidden>
+    <h1 class="view-title" id="recipes-title">All recipes</h1>
+  </section>
+
+  <section class="view" id="view-pantry" aria-labelledby="pantry-view-title" hidden>
+    <h1 class="view-title" id="pantry-view-title">Pantry</h1>
+    <p class="view-note">Your pantry will live here. For now, use “What can I make?” in the sidebar to see which recipes you can cook with what you have.</p>
+  </section>
+
   <div class="stats" id="stats"></div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" style="display:none">
-    <div class="icon">🥘</div>
     <h2>The chest is empty</h2>
     <p>Upload photos of recipes or import them from a website.</p>
-    <button class="add-btn" data-action="openUpload">＋ Add the first recipe</button>
+    <button class="add-btn" data-action="openUpload">Add the first recipe</button>
   </div>
 </main>
 </div>

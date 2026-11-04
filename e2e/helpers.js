@@ -300,3 +300,10 @@ export function callsTo(state, path) {
 export function postsTo(state, path) {
   return state.requests.filter((r) => r.path === path && r.method === 'POST');
 }
+
+// The full list, with its sort, filter chips and collections. The home screen
+// shows three suggestions and a search box instead.
+export async function openAllRecipes(page) {
+  await page.locator('.sidebar-nav').getByRole('link', { name: 'All recipes' }).click();
+  await expect(page.locator('#view-recipes')).toBeVisible();
+}

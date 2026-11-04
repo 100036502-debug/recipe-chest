@@ -1,4 +1,4 @@
-import { test, expect, unlock } from './helpers.js';
+import { test, expect, unlock, openAllRecipes } from './helpers.js';
 
 test('a recipe can be put in a collection and filtered by it', async ({ page, api }) => {
   await unlock(page);
@@ -11,6 +11,7 @@ test('a recipe can be put in a collection and filtered by it', async ({ page, ap
   await expect(page.locator('.coll-detail-row')).toContainText('Weeknight');
 
   await page.locator('#detail-overlay .modal-close').click();
+  await openAllRecipes(page);
   await expect(page.locator('.coll-row')).toContainText('Weeknight');
 
   await page.locator('.coll-row [data-coll="Weeknight"]').click();
@@ -21,6 +22,7 @@ test('a recipe can be put in a collection and filtered by it', async ({ page, ap
 test('renaming a collection changes the filter chip', async ({ page, api }) => {
   api.recipes[0].collections = ['Dinner'];
   await unlock(page);
+  await openAllRecipes(page);
   await expect(page.locator('.coll-row')).toContainText('Dinner');
 
   await page.locator('.coll-manage').click();

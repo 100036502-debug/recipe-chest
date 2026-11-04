@@ -1,10 +1,14 @@
+/* eslint-disable no-undef -- the callbacks below run in the browser, not in Node. */
 import { test, expect, unlock } from './helpers.js';
+
+// Every sidebar item is the same plain-text link: one style, no pill, no
+// border, no icon. This replaces the old check that Paste text matched Import
+// URL, which is the same idea applied to the whole list.
 
 const PROPS = [
   'backgroundColor', 'color', 'borderTopWidth', 'borderTopStyle', 'borderRadius',
   'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-  'fontSize', 'fontWeight', 'fontFamily', 'display', 'columnGap', 'whiteSpace',
-  'cursor', 'height', 'boxShadow', 'transform',
+  'fontSize', 'fontWeight', 'fontFamily', 'textDecorationLine', 'boxShadow',
 ];
 
 async function styleOf(locator) {
@@ -16,24 +20,38 @@ async function styleOf(locator) {
   }, PROPS);
 }
 
-for (const theme of ['light', 'dark']) {
-  test(`Paste text button looks like Import URL (${theme})`, async ({ page, api }) => {
-    await page.addInitScript((t) => {
-      try { localStorage.setItem('rc_theme', t); } catch { /* storage blocked */ }
-    }, theme);
-    await unlock(page);
-    // Colours transition over 0.25s; compare the settled values.
-    await page.addStyleTag({ content: '*{transition:none !important}' });
+const LABELS = [
+  'Tonight', 'All recipes', 'Meal plan', 'Shopping list', 'Pantry', 'What can I make?',
+  'List', 'Plan', 'Import URL', 'Paste text', 'Add Photos',
+];
 
-    const importBtn = page.locator('.header-btns .import-btn');
-    const pasteBtn = page.locator('.header-btns .paste-btn');
-    await expect(pasteBtn).toBeVisible();
+test('the sidebar has the eleven links, in order, with no emoji', async ({ page, api }) => {
+  await unlock(page);
+  const texts = await page.locator('.sidebar-nav .side-link').allTextContents();
+  expect(texts.map((t) => t.trim())).toEqual(LABELS);
+  for (const t of texts) expect(t).not.toMatch(/\p{Extended_Pictographic}/u);
+});
 
-    expect(await styleOf(pasteBtn)).toEqual(await styleOf(importBtn));
+test('every sidebar item looks identical: plain text, no shape', async ({ page, api }) => {
+  await unlock(page);
+  await page.addStyleTag({ content: '*{transition:none !important}' });
+  const links = page.locator('.sidebar-nav .side-link');
+  const first = await styleOf(links.nth(1)); // not the current page
+  expect(first.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  expect(first.borderTopWidth).toBe('0px');
+  expect(first.borderRadius).toBe('0px');
+  expect(first.color).toBe('rgb(185, 173, 155)'); // #B9AD9B
+  expect(first.fontSize).toBe('16px');
+  for (let i = 2; i < LABELS.length; i += 1) {
+    expect(await styleOf(links.nth(i)), LABELS[i]).toEqual(first);
+  }
+});
 
-    await importBtn.hover();
-    const importHover = await styleOf(importBtn);
-    await pasteBtn.hover();
-    expect(await styleOf(pasteBtn)).toEqual(importHover);
-  });
-}
+test('hover brightens a link, and the current page is bright', async ({ page, api }) => {
+  await unlock(page);
+  await page.addStyleTag({ content: '*{transition:none !important}' });
+  await expect(page.locator('.sidebar-nav .side-link').first()).toHaveAttribute('aria-current', 'page');
+  const other = page.locator('.sidebar-nav .side-link', { hasText: 'Import URL' });
+  await other.hover();
+  expect(await other.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(243, 235, 221)'); // #F3EBDD
+});

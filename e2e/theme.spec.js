@@ -1,46 +1,30 @@
 /* eslint-disable no-undef -- the callbacks below run in the browser, not in Node. */
 import { test, expect, unlock } from './helpers.js';
 
-async function nextTheme(page) {
-  // The menu stays open after a pick, so only open it when it is actually shut.
-  const open = await page.locator('#app-menu').evaluate((el) => el.classList.contains('on'));
-  if (!open) await page.locator('#menu-btn').click();
-  await page.locator('#theme-item').click();
-}
+// The app is dark only. There is no light theme and no switch, so these check
+// that nothing can turn one on, including a choice saved by an older version.
 
-async function pickDark(page) {
-  // The control cycles Auto -> Light -> Dark: two steps from the default.
-  await nextTheme(page);
-  await nextTheme(page);
-  await expect(page.locator('#theme-item')).toContainText('Dark');
-}
-
-test('dark mode can be chosen, repaints, and survives a reload', async ({ page, api }) => {
-  const problems = [];
-  page.on('console', (message) => { if (message.type() === 'error') problems.push(message.text()); });
-  page.on('pageerror', (error) => problems.push(error.message));
-
+test('the app is dark, and a saved light or auto choice cannot change that', async ({ page, api }) => {
+  await page.addInitScript(() => { try { localStorage.setItem('rc_theme', 'light'); } catch { /* blocked */ } });
   await unlock(page);
-  const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-
-  await pickDark(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-
-  const after = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  expect(after, 'the page actually repaints, not just the attribute').not.toBe(before);
-
-  await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  const reloaded = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  expect(reloaded, 'no flash of light on the way back in').toBe(after);
-
-  expect(problems).toEqual([]);
+  const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(bg).toBe('rgb(27, 22, 18)'); // #1B1612
 });
 
-test('the choice can be put back to auto', async ({ page, api }) => {
+test('there is no theme control for a person to find', async ({ page, api }) => {
   await unlock(page);
-  await pickDark(page);
-  await nextTheme(page); // dark -> auto
-  await expect(page.locator('#theme-item')).toContainText('Auto');
-  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'dark');
+  await page.locator('#menu-btn').click();
+  await expect(page.locator('#app-menu')).toHaveClass(/on/);
+  await expect(page.locator('#theme-item')).toBeHidden();
+  await expect(page.getByText(/Theme:/)).toBeHidden();
+});
+
+test('the sidebar, cards and inputs use the design colours', async ({ page, api }) => {
+  await unlock(page);
+  const color = (sel, prop) => page.locator(sel).first().evaluate((el, p) => getComputedStyle(el)[p], prop);
+  expect(await color('.sidebar', 'backgroundColor')).toBe('rgb(20, 16, 13)');   // #14100D
+  expect(await color('#grid .card', 'backgroundColor')).toBe('rgb(38, 32, 26)'); // #26201A
+  expect(await color('.sidebar-logo', 'color')).toBe('rgb(240, 138, 75)');       // #F08A4B
+  expect(await color('#search-input', 'borderTopColor')).toBe('rgb(74, 63, 52)'); // #4A3F34
 });

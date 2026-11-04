@@ -112,6 +112,7 @@ const ACTIONS = {
   closeCookMode,
   closeCookedModal,
   closeDetail,
+  closeDrawer,
   closeImport,
   closeMealPlan,
   closePantry,
@@ -181,9 +182,11 @@ const ACTIONS = {
   setMealFilter,
   showCollectionInput,
   showTagInput,
+  showView,
   startBatch,
   stopBeep,
   toggleAppMenu,
+  toggleDrawer,
   toggleCookIng,
   toggleCookStep,
   toggleCookTimerPause,
@@ -196,6 +199,9 @@ const ACTIONS = {
 
 function runClickAction(el, event) {
   if (el.dataset.stop === '1') event.stopPropagation();
+  // A link that runs an action must not also navigate: it is an <a> so it can
+  // be focused, announced and opened with Enter, and its href is only a label.
+  if (el.tagName === 'A' && event && event.preventDefault) event.preventDefault();
   const name = el.dataset.action || '';
   const special = SPECIAL_CLICK[name];
   if (special) return special(el, event);
@@ -247,7 +253,13 @@ document.addEventListener('keydown', (event) => {
 // bubble, so this listener has to be in the capture phase.
 document.addEventListener('error', (event) => {
   const el = event.target;
-  if (!el || el.tagName !== 'IMG' || !el.dataset || !el.dataset.emoji) return;
+  if (!el || el.tagName !== 'IMG' || !el.dataset) return;
+  if (!el.dataset.emoji) {
+    // A recipe card's picture that will not load: take it out, so the plain
+    // colour block behind it shows instead of a broken-image icon.
+    if (el.classList.contains('card-img') && el.parentNode) el.parentNode.removeChild(el);
+    return;
+  }
   const span = document.createElement('span');
   span.textContent = el.dataset.emoji;
   if (el.parentNode) el.parentNode.replaceChild(span, el);
@@ -489,6 +501,9 @@ let currentMealFilter = 'all';
 let currentSort = 'newest';
 let showAllTags = false;
 let currentSearch = '';
+// Which screen is showing: 'tonight' (home), 'recipes' (every recipe) or
+// 'pantry' (a placeholder). The sidebar's links switch between them.
+let currentView = 'tonight';
 let uploadQueue = [];
 let isProcessing = false;
 let cancelRequested = false;
@@ -558,11 +573,14 @@ function unlockApp() {
   }
   if (document.getElementById('cook-overlay').classList.contains('on')) closeCookMode();
   document.getElementById('lock-screen').style.display = 'none';
-  document.getElementById('app-content').style.display = 'flex';
+  // Empty, not 'flex': the stylesheet lays the app out as sidebar + main (a
+  // grid), and an inline value would override it.
+  document.getElementById('app-content').style.display = '';
   document.body.classList.remove('locked');
   sessionLocked = false;
   setUser(getUser());
   getDeviceId();
+  showView(currentView, { keepDrawer: true });
   loadRecipes();
   handleAppShortcut();
   document.dispatchEvent(new Event('recipe-chest:unlocked'));
@@ -812,7 +830,7 @@ async function lockApp() {
 function getUser() { return localStorage.getItem('rc_user') || 'Anonymous'; }
 function setUser(name) {
   localStorage.setItem('rc_user', name || 'Anonymous');
-  document.getElementById('user-tag').textContent = '👤 ' + (name || 'Anonymous');
+  document.getElementById('user-tag').textContent = name || 'Anonymous';
 }
 // Only http(s) URLs may become hrefs; anything stored weirdly renders as text.
 function safeHref(u) {
@@ -1485,24 +1503,43 @@ function renderGrid() {
     return;
   }
   empty.style.display = 'none';
-  grid.innerHTML = sorted.map(r => {
-    const ms = mealStyle(r.mealType);
-    return `
-      <div class="card" data-action="openDetail" data-id="${r.id}">
-        <div class="card-meal" style="background:${ms.bg}">
-          <button class="fav-btn ${r.favorite === true ? 'on' : ''}" data-action="toggleFavorite" data-id="${r.id}" data-stop="1" aria-label="${r.favorite === true ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${r.favorite === true ? 'true' : 'false'}">${r.favorite === true ? '♥' : '♡'}</button>${r.userPhoto || (r.image && (r.image.thumb || r.image.url)) ? `<img class="card-img" src="${escapeHtml(cardPhotoSrc(r))}" alt="${escapeHtml(r.title)}" loading="lazy" data-emoji="${ms.emoji}">` : `<span>${ms.emoji}</span>`}${r.image && r.image.url && !r.userPhoto ? `<div class="card-credit">Photo: ${escapeHtml(r.image.photographer || 'Unknown')} on Unsplash</div>` : ''}</div>
-        <div class="card-body">
-          <button class="card-title card-title-btn" data-action="openDetail" data-id="${r.id}" data-stop="1">${escapeHtml(r.title)}</button>
-          <div class="card-desc">${escapeHtml(r.description || '')}</div>
-          <div class="card-meta">
-            <span>${ms.label}${r.prepTime ? ' • ⏱ ' + escapeHtml(r.prepTime) : ''}</span>
-            ${cardCookHtml(r)}
-            <span>${r.addedBy ? 'by ' + escapeHtml(r.addedBy) : ''}</span>
-          </div>
-        </div>
+  const today = ymd(new Date());
+  // Home screen with an empty search: three suggestions, not the whole chest.
+  // With text in the box, or on All recipes, the matching recipes show.
+  // Suggestions are for a plain home screen only. Any active filter, collection
+  // or search shows what it matches, so a choice made anywhere has a visible effect.
+  const filtering = currentSearch || currentFilter !== 'all' || currentCollection !== 'all' || currentMealFilter !== 'all';
+  const showSuggestions = currentView === 'tonight' && !filtering;
+  const cards = showSuggestions
+    ? RCUtils.pickSuggestions(recipes, today, 3)
+    : sorted.map((r) => ({ recipe: r, caption: RCUtils.cardCaption(r, today) }));
+  grid.innerHTML = cards.map(({ recipe: r, caption }) => cardHtml(r, caption)).join('');
+}
+
+// One recipe card, the same everywhere recipes appear. The caption and the
+// meta line are built from what the recipe really holds; an author is only
+// shown if one was actually entered.
+function cardHtml(r, caption) {
+  const ms = mealStyle(r.mealType);
+  const src = (r.userPhoto || (r.image && (r.image.thumb || r.image.url))) ? cardPhotoSrc(r) : '';
+  const fav = r.favorite === true;
+  const meta = RCUtils.cardMeta(r, ms.label);
+  const stats = RCUtils.cookStats(r.cookLog);
+  const rating = stats.avgRating != null ? stats.avgRating : '';
+  const author = r.addedBy && String(r.addedBy).trim() && String(r.addedBy).trim().toLowerCase() !== 'anonymous'
+    ? ` \u00b7 by ${escapeHtml(String(r.addedBy).trim())}` : '';
+  return `
+    <div class="card" data-action="openDetail" data-id="${escapeHtml(r.id)}">
+      <div class="card-media">
+        ${src ? `<img class="card-img" src="${escapeHtml(src)}" alt="" loading="lazy">` : ''}
+        <button class="fav-btn ${fav ? 'on' : ''}" data-action="toggleFavorite" data-id="${escapeHtml(r.id)}" data-stop="1" aria-label="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${fav ? 'true' : 'false'}">${fav ? '\u2665' : '\u2661'}</button>
+        ${r.image && r.image.url && !r.userPhoto && r.image.photographer ? `<div class="card-credit">Photo by ${escapeHtml(r.image.photographer)}</div>` : ''}
       </div>
-    `;
-  }).join('');
+      <div class="card-caption">${escapeHtml(caption || '')}${rating ? ` \u00b7 \u2605 ${rating}` : ''}</div>
+      <h3 class="card-title-line"><button class="card-title-btn" data-action="openDetail" data-id="${escapeHtml(r.id)}" data-stop="1">${escapeHtml(r.title)}</button></h3>
+      <div class="card-meta-line">${escapeHtml(meta)}${author}</div>
+    </div>
+  `;
 }
 // ---- Collections (task 10) ----
 let currentCollection = 'all';
@@ -2019,12 +2056,6 @@ function cookedSectionHtml(r) {
       ${rows ? `<ul class="cooked-list">${rows}</ul>` : ''}
     </div>`;
 }
-function cardCookHtml(r) {
-  const s = RCUtils.cookStats(r.cookLog);
-  if (!s.count) return '';
-  const star = s.avgRating != null ? `<span class="card-cook">★ ${s.avgRating}</span>` : '';
-  return `<span class="card-cook">Cooked ${s.count}×</span>${star}`;
-}
 
 function openCookedModal(id) {
   cookedRecipeId = id;
@@ -2057,7 +2088,7 @@ async function saveCookedEntry() {
   if (rating != null) body.rating = rating;
   if (noteEl && noteEl.value.trim()) body.note = noteEl.value.trim();
   const me = (document.getElementById('user-tag') || {}).textContent || '';
-  const name = String(me).replace(/^👤\s*/, '').trim();
+  const name = String(me).trim();
   if (name && name.toLowerCase() !== 'anonymous') body.by = name;
 
   try {
@@ -2231,6 +2262,67 @@ async function deleteCollection(name) {
   } catch (e) {
     toast('Could not delete: ' + e.message);
   }
+}
+
+const VIEWS = ['tonight', 'recipes', 'pantry'];
+
+// Shows one screen. The recipe grid and its filters are shared by Tonight and
+// All recipes, so they are moved into whichever one is showing rather than
+// duplicated: one #grid, one #stats, and every existing handler keeps working.
+function showView(name, opts) {
+  const view = VIEWS.includes(name) ? name : 'tonight';
+  currentView = view;
+  VIEWS.forEach((v) => {
+    const el = document.getElementById('view-' + v);
+    if (el) el.hidden = v !== view;
+  });
+  document.querySelectorAll('[data-view-link]').forEach((a) => {
+    if (a.dataset.viewLink === view) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  });
+  const search = document.getElementById('search-field');
+  const stats = document.getElementById('stats');
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+  const home = document.getElementById('view-' + (view === 'pantry' ? 'tonight' : view));
+  const onResults = view !== 'pantry';
+  if (search) search.hidden = view !== 'tonight';
+  if (stats) stats.hidden = view !== 'recipes';
+  if (grid) grid.hidden = !onResults;
+  if (empty && !onResults) empty.style.display = 'none';
+  // Sit the search box and results straight after the heading they belong to.
+  if (onResults && home && grid) {
+    let after = home;
+    if (view === 'tonight' && search) { after.after(search); after = search; }
+    if (view === 'recipes' && stats) { after.after(stats); after = stats; }
+    after.after(grid);
+    grid.after(empty);
+  }
+  if (!(opts && opts.keepDrawer)) closeDrawer();
+  if (opts && opts.focus) {
+    const h = document.querySelector('#view-' + view + ' .view-title');
+    if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
+  }
+  renderGrid();
+}
+
+// The sidebar is a drawer on a narrow screen. On a wide one it is always there
+// and these do nothing visible.
+function toggleDrawer() {
+  const open = !document.body.classList.contains('drawer-open');
+  document.body.classList.toggle('drawer-open', open);
+  const btn = document.getElementById('drawer-btn');
+  if (btn) { btn.setAttribute('aria-expanded', open ? 'true' : 'false'); btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu'); }
+  if (open) {
+    const first = document.querySelector('#sidebar .side-link');
+    if (first) first.focus();
+  } else if (btn) btn.focus();
+}
+function closeDrawer() {
+  if (!document.body.classList.contains('drawer-open')) return;
+  document.body.classList.remove('drawer-open');
+  const btn = document.getElementById('drawer-btn');
+  if (btn) { btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-label', 'Open menu'); }
 }
 
 function setFilter(t) { currentFilter = t; renderGrid(); }
@@ -3893,6 +3985,7 @@ document.addEventListener('keydown', e => {
       if (el && el.classList.contains('on')) { closeOverlayById(id); return; }
       openOverlayStack.splice(i, 1); // stale entry: overlay already gone
     }
+    closeDrawer();
   }
 });
 
@@ -4022,12 +4115,13 @@ function savedTheme() {
   } catch (e) { return 'auto'; }
 }
 
-function applyTheme(choice) {
+function applyTheme() {
+  // Dark only. The stored choice and the menu item are kept so the code that
+  // reads them still works, but nothing here lets them switch the palette.
   const root = document.documentElement;
-  if (choice === 'light' || choice === 'dark') root.dataset.theme = choice;
-  else delete root.dataset.theme;
+  root.dataset.theme = 'dark';
   const item = document.getElementById('theme-item');
-  if (item) item.textContent = `🎨 Theme: ${choice === 'auto' ? 'Auto' : choice === 'light' ? 'Light' : 'Dark'}`;
+  if (item) { item.textContent = 'Theme: Dark'; item.hidden = true; }
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
     const bg = getComputedStyle(document.body).backgroundColor;
