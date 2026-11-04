@@ -1,4 +1,4 @@
-import { test, expect, unlock } from './helpers.js';
+import { test, expect, unlock, openAllRecipes } from './helpers.js';
 
 test('a cook logged from the detail view shows in the list and on the card', async ({ page, api }) => {
   await unlock(page);
@@ -17,12 +17,13 @@ test('a cook logged from the detail view shows in the list and on the card', asy
   await expect(page.locator('.cooked-list')).toContainText('Turned out well');
 
   await page.locator('#detail-overlay .modal-close').click();
-  await expect(page.locator('#grid .card').first()).toContainText('Cooked 1×');
+  await expect(page.locator('#grid .card', { hasText: 'Lemon Pasta' })).toContainText('Cooked this week · 1× · ★ 4');
 });
 
 test('the never-cooked filter hides a recipe once it has been cooked', async ({ page, api }) => {
   api.recipes[0].cookLog = [{ id: 'e1', date: '2025-10-12', rating: 5, note: '', by: '' }];
   await unlock(page);
+  await openAllRecipes(page);
   await page.locator('.filter-chip', { hasText: 'Never cooked' }).click();
   await expect(page.locator('#grid .card')).toHaveCount(1);
   await expect(page.locator('#grid')).toContainText('Bean Stew');
