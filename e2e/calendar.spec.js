@@ -270,8 +270,12 @@ test('with nothing planned, Tonight says so and links to the Calendar with today
   await page.locator('.sidebar-nav').getByRole('link', { name: 'Tonight' }).click();
   const box = page.locator('.tonight-empty');
   await expect(box).toHaveText('You haven’t planned any meals for tonight. Go to Calendar to add one.');
-  const css = await box.evaluate((el) => { const c = getComputedStyle(el); return [c.backgroundColor, c.borderRadius, c.paddingTop, c.maxWidth]; });
-  expect(css).toEqual(['rgb(38, 32, 26)', '16px', '28px', '560px']);
+  // Auto-retrying assertions: a one-shot getComputedStyle can land mid-render and
+  // read empties for a box that is about to be replaced.
+  await expect(box).toHaveCSS('background-color', 'rgb(38, 32, 26)');
+  await expect(box).toHaveCSS('border-radius', '16px');
+  await expect(box).toHaveCSS('padding-top', '28px');
+  await expect(box).toHaveCSS('max-width', '560px');
   const link = box.getByRole('link', { name: 'Calendar' });
   expect(await link.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(240, 138, 75)');
   await link.click();
@@ -326,8 +330,8 @@ test('photos sit in a wrapper with the dimming filter and the tint layer', async
   await unlock(page);
   const wrap = page.locator('#grid .card', { hasText: 'Lemon Pasta' }).locator('.img-wrap');
   await expect(wrap).toHaveCount(1);
-  // noir is the default blend: black and white, dimmed, dissolving into the card.
-  expect(await wrap.locator('img').evaluate((el) => getComputedStyle(el).filter)).toContain('grayscale(1)');
+  // ember is the default blend: the burnt-orange duotone, dissolving into the card.
+  expect(await wrap.locator('img').evaluate((el) => getComputedStyle(el).filter)).toContain('duotone-ember');
   expect(await wrap.evaluate((el) => getComputedStyle(el, '::after').backgroundImage)).toContain('linear-gradient');
   expect(await wrap.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
 });
