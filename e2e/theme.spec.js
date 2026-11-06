@@ -26,5 +26,7 @@ test('the sidebar, cards and inputs use the design colours', async ({ page, api 
   expect(await color('.sidebar', 'backgroundColor')).toBe('rgb(20, 16, 13)');   // #14100D
   expect(await color('#grid .card', 'backgroundColor')).toBe('rgb(38, 32, 26)'); // #26201A
   expect(await color('.sidebar-logo', 'color')).toBe('rgb(240, 138, 75)');       // #F08A4B
-  expect(await color('#search-input', 'borderTopColor')).toBe('rgb(74, 63, 52)'); // #4A3F34
+  // Input edges are a low-opacity wash of the cream text colour now, not the
+  // solid mid-brown, which read as a heavy frame on a dark surface.
+  expect(await color('#search-input', 'borderTopColor')).toBe('rgba(243, 235, 221, 0.16)');
 });

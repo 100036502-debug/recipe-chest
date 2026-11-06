@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark" data-photo-filter="noir">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Recipe Chest</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#1B1612">
@@ -19,6 +19,19 @@
 <link rel="stylesheet" href="/css/tonight.css">
 </head>
 <body class="locked">
+
+<!-- Duotone filter for the "ember" photo style. Defined once, never rendered;
+     CSS refers to it as url(#duotone-ember). -->
+<svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
+  <filter id="duotone-ember" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values=".33 .33 .33 0 0  .33 .33 .33 0 0  .33 .33 .33 0 0  0 0 0 1 0"/>
+    <feComponentTransfer>
+      <feFuncR type="table" tableValues="0.106 0.941"/>
+      <feFuncG type="table" tableValues="0.086 0.541"/>
+      <feFuncB type="table" tableValues="0.071 0.294"/>
+    </feComponentTransfer>
+  </filter>
+</svg>
 
 <div id="lock-screen">
   <div class="lock-box">
@@ -88,7 +101,8 @@
     <h1 class="view-title" id="recipes-title">What’s cooking?</h1>
   </section>
   <div class="search-field" id="search-field">
-    <label for="search-input">Search for a recipe</label>
+    <label class="sr-only" for="search-input">Search for a recipe</label>
+    <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg></span>
     <input type="search" id="search-input" placeholder="Search recipes, ingredients, tags..." autocomplete="off">
   </div>
 

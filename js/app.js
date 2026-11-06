@@ -586,6 +586,7 @@ function unlockApp() {
   // #plan / #list names land on what replaced them); otherwise All recipes.
   showView(viewFromHash(location.hash) || 'recipes', { keepDrawer: true });
   watchForNewDay();
+  initPhotoFilter();
   loadRecipes();
   handleAppShortcut();
   document.dispatchEvent(new Event('recipe-chest:unlocked'));
@@ -1323,6 +1324,57 @@ async function processImport() {
 }
 document.getElementById('import-url').addEventListener('keypress', e => { if (e.key === 'Enter') processImport(); });
 
+// ---- Photo blend filter (presentation only) ------------------------------
+// The photo treatment is chosen on the root element and drawn entirely in CSS
+// (see the "Photo blend filters" block in css/tonight.css). Options: noir,
+// ember, smoke, ink, none. It changes no data and touches no image file.
+const PHOTO_FILTERS = ['noir', 'ember', 'smoke', 'ink', 'none'];
+const PHOTO_FILTER_KEY = 'rc_photo_filter';
+const PHOTO_REVEAL_ON_TAP = true; // tap the detail photo for full colour
+
+function applyPhotoFilter(name) {
+  const pick = PHOTO_FILTERS.includes(name) ? name : 'noir';
+  document.documentElement.dataset.photoFilter = pick;
+  try { localStorage.setItem(PHOTO_FILTER_KEY, pick); } catch (e) { /* private mode */ }
+  document.querySelectorAll('#photo-switch button').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.filter === pick));
+  });
+  return pick;
+}
+
+function initPhotoFilter() {
+  const params = new URLSearchParams(location.search);
+  const fromUrl = params.get('photo');
+  let stored = null;
+  try { stored = localStorage.getItem(PHOTO_FILTER_KEY); } catch (e) { /* private mode */ }
+  applyPhotoFilter(fromUrl || stored || document.documentElement.dataset.photoFilter || 'noir');
+
+  // A thumb-sized selector for trying the options on a phone. Only ever built
+  // when the page is opened with ?devtools=1, so it never ships in normal use.
+  if (params.get('devtools') !== '1' || document.getElementById('photo-switch')) return;
+  const bar = document.createElement('div');
+  bar.id = 'photo-switch';
+  bar.className = 'photo-switch';
+  bar.setAttribute('role', 'group');
+  bar.setAttribute('aria-label', 'Photo filter (development only)');
+  bar.innerHTML = PHOTO_FILTERS.map((f) =>
+    `<button type="button" data-filter="${f}" aria-pressed="${document.documentElement.dataset.photoFilter === f}">${f}</button>`
+  ).join('');
+  bar.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-filter]');
+    if (btn) applyPhotoFilter(btn.dataset.filter);
+  });
+  document.body.appendChild(bar);
+}
+
+// tap photo to see full color
+document.addEventListener('click', (e) => {
+  if (!PHOTO_REVEAL_ON_TAP) return;
+  const hero = e.target.closest && e.target.closest('.recipe-hero.img-wrap');
+  if (!hero || e.target.closest('a, button')) return;
+  hero.classList.toggle('reveal');
+});
+
 // ---- Loading placeholders (task 21) ----
 // Eight grey cards shaped like real ones, so the grid does not jump when the
 // recipes arrive. The colours come from the theme variables, so dark mode works.
@@ -1458,14 +1510,15 @@ function renderGrid() {
   const sorted = [...filtered].sort(SORTERS[currentSort] || SORTERS.newest);
 
   // Sort dropdown next to the recipe count
-  let statHtml = `<span>${recipes.length} recipe${recipes.length === 1 ? '' : 's'}</span>`;
+  // Two rows: the count and the sort control, then the chips in a strip that
+  // scrolls sideways. The stray dot separator went with the single-row layout.
+  let statHtml = `<div class="stats-top"><span class="stat-count">${recipes.length} recipe${recipes.length === 1 ? '' : 's'}</span>`;
   statHtml += `<select class="sort-select" data-change="setSort" aria-label="Sort recipes">` +
     ['newest', 'oldest', 'az', 'quickest', 'recently', 'toprated'].map(s =>
       `<option value="${s}"${currentSort === s ? ' selected' : ''}>${({ newest: 'Newest', oldest: 'Oldest', az: 'A to Z', quickest: 'Quickest', recently: 'Recently cooked', toprated: 'Top rated' })[s]}</option>`
-    ).join('') + `</select>`;
+    ).join('') + `</select></div><div class="stats-chips">`;
 
   if (recipes.length) {
-    statHtml += `<span style="color:var(--border)">•</span>`;
     statHtml += `<span class="filter-chip ${currentFilter === 'all' ? 'on' : ''}" data-action="setFilter" data-arg="all">all</span>`;
     if (recipes.some(r => r.favorite)) {
       statHtml += `<span class="filter-chip ${currentFilter === 'favorites' ? 'on' : ''}" data-action="setFilter" data-arg="favorites">♥</span>`;
@@ -1500,6 +1553,7 @@ function renderGrid() {
       names.map((c) => `<span class="filter-chip ${currentCollection === c ? 'on' : ''}" data-coll="${escapeHtml(c)}" data-action="setCollectionFilter" data-pass="coll">${escapeHtml(c)}<span class="coll-count">${collCounts.get(c)}</span></span>`).join('') +
       `<button class="coll-manage" data-action="openCollectionsManager">Manage</button></div>`;
   }
+  statHtml += `</div>`; // end .stats-chips
   stats.innerHTML = statHtml;
   if (!filtered.length) {
     grid.innerHTML = '';
@@ -1536,9 +1590,13 @@ function cardHtml(r, caption) {
         <button class="fav-btn ${fav ? 'on' : ''}" data-action="toggleFavorite" data-id="${escapeHtml(r.id)}" data-stop="1" aria-label="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${fav ? 'true' : 'false'}">${fav ? '\u2665' : '\u2661'}</button>
         ${r.image && r.image.url && !r.userPhoto && r.image.photographer ? `<div class="card-credit">Photo by ${escapeHtml(r.image.photographer)}</div>` : ''}
       </div>
-      ${caption ? `<div class="card-caption">${escapeHtml(caption)}</div>` : ''}
-      <h3 class="card-title-line"><button class="card-title-btn" data-action="openDetail" data-id="${escapeHtml(r.id)}" data-stop="1">${escapeHtml(r.title)}</button></h3>
-      ${meta ? `<div class="card-meta-line">${escapeHtml(meta)}</div>` : ''}
+      <div class="card-body">
+        <h3 class="card-title-line"><button class="card-title-btn" data-action="openDetail" data-id="${escapeHtml(r.id)}" data-stop="1">${escapeHtml(r.title)}</button></h3>
+        <div class="card-sub">
+          ${meta ? `<span class="card-meta-line">${escapeHtml(meta)}</span>` : ''}
+          ${caption ? `<span class="card-caption">${escapeHtml(caption)}</span>` : ''}
+        </div>
+      </div>
     </div>
   `;
 }
@@ -2152,6 +2210,12 @@ async function patchCollections(id, list) {
     const idx = recipes.findIndex((x) => x.id === id);
     if (idx !== -1) recipes[idx] = data;
     renderGrid();
+    // A quick scale on the heart that was just pressed.
+    const heart = document.querySelector(`.card-media .fav-btn[data-id="${id}"]`);
+    if (heart) {
+      heart.classList.add('pop');
+      setTimeout(() => heart.classList.remove('pop'), 300);
+    }
     if (document.getElementById('detail-overlay').classList.contains('on')) openDetail(id);
   } catch (e) {
     toast('Could not save: ' + e.message);

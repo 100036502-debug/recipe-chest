@@ -1005,3 +1005,456 @@ a.meta-link:hover { text-decoration: underline; }
   .act-menu { left: auto; right: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .act, .img-wrap img { transition: none; } }
+
+/* =====================================================================
+ * Mobile polish
+ *
+ * Mobile first: the rules below are the phone layout, and the desktop
+ * blocks at the end put back the wider spacing. Everything reuses the
+ * tokens above; new ones are only the spacing scale, radii and borders
+ * this round introduced.
+ * ===================================================================== */
+:root {
+  /* A 4/8 spacing scale, so margins stop being one-offs. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 40px;
+
+  --page-pad: var(--s-4);        /* the one horizontal gutter */
+  --radius-card: 16px;
+  --radius-control: 12px;
+  --radius-pill: 999px;
+
+  /* Borders are a low-opacity wash, not a solid line: on a dark surface a
+     1px solid mid-brown reads as a heavy frame. */
+  --hairline: rgba(243, 235, 221, .10);
+  --hairline-strong: rgba(243, 235, 221, .16);
+
+  --topbar-h: 56px;
+}
+
+/* ---------- One compact header row ---------- */
+/* The "..." button used to sit alone on its own row under the header. On a
+   phone it now shares that row with the logo and the hamburger, and the row
+   it used to occupy is gone. */
+@media (max-width: 899px) {
+  .topbar {
+    min-height: var(--topbar-h);
+    padding: var(--s-2) var(--page-pad);
+    gap: var(--s-2);
+  }
+  .topbar .sidebar-logo { font-size: 21px; }
+  .topbar .round-btn { width: 44px; height: 44px; flex: none; }
+  .main-menu {
+    position: fixed;
+    top: calc((var(--topbar-h) - 44px) / 2);
+    right: calc(var(--page-pad) + 44px + var(--s-2));
+    margin: 0;
+    z-index: 55;
+  }
+  .main { padding: var(--s-4) var(--page-pad) 0; }
+}
+
+/* ---------- Headline and search ---------- */
+.view-title {
+  line-height: 1.1;
+  margin: 0 0 var(--s-4);
+}
+/* Phones: the headline comes down a notch so a card peeks above the fold.
+   Desktop keeps its 56px. */
+@media (max-width: 899px) {
+  .view-title { font-size: clamp(28px, 7vw, 34px); }
+}
+/* The month name is a title of its own scale, not the hero headline. */
+.view-title.cal-month { font-size: 32px; }
+@media (max-width: 899px) { .view-title.cal-month { font-size: 26px; } }
+.view .view-title { margin-bottom: 0; }
+#view-recipes + .search-field { margin-top: var(--s-4); }
+
+.search-field { position: relative; display: block; }
+/* The visible label is gone; the field keeps an accessible name. */
+.search-field label.sr-only { margin: 0; }
+.search-field .search-icon {
+  position: absolute;
+  left: var(--s-4);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: var(--t-muted);
+  pointer-events: none;
+  display: inline-flex;
+}
+.search-field .search-icon svg { width: 100%; height: 100%; }
+.search-field input {
+  max-width: none;
+  min-height: 48px;
+  padding: 0 var(--s-4) 0 var(--s-6);
+  border-radius: var(--radius-control);
+  border-color: var(--hairline-strong);
+  font-size: 16px; /* never below 16px, or iOS zooms the page on focus */
+}
+.search-field input:focus,
+.search-field input:focus-visible {
+  border-color: var(--t-accent);
+  outline: 2px solid var(--t-accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Filter row: count + sort, then a scrolling chip strip ---------- */
+.stats {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-3);
+  margin: var(--s-4) 0 var(--s-4);
+  font-size: 13px;
+}
+.stats-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: 32px;
+}
+.stat-count {
+  color: var(--t-muted);
+  font-size: 13px;
+  white-space: nowrap; /* "29 recipes" never breaks onto two lines */
+}
+.stats .sort-select {
+  min-height: 32px;
+  padding: 0 var(--s-2) 0 var(--s-3);
+  background: transparent;
+  color: var(--t-muted);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  max-width: 52vw;
+}
+.stats .sort-select:hover { color: var(--t-text); border-color: var(--hairline-strong); }
+
+/* The strip bleeds to both edges so chips scroll out of view instead of
+   being clipped, and fades out on the right to hint there is more. */
+.stats-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  margin-inline: calc(var(--page-pad) * -1);
+  padding: var(--s-1) var(--page-pad);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--page-pad), #000 calc(100% - var(--s-6)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--page-pad), #000 calc(100% - var(--s-6)), transparent 100%);
+}
+.stats-chips::-webkit-scrollbar { display: none; }
+.stats-chips .filter-chip { flex: none; scroll-snap-align: start; }
+.stats-chips .coll-row { margin: 0; padding: 0; overflow: visible; flex-wrap: nowrap; }
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px; /* the emoji sits beside the label, not above it */
+  min-height: 40px;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  color: var(--t-muted);
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* 44px of thumb target without making the chip itself taller: the padding
+   is where the extra 4px live. */
+.filter-chip::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+}
+.filter-chip { position: relative; }
+.filter-chip.on, .filter-chip.on:hover {
+  background: var(--t-accent);
+  border-color: var(--t-accent);
+  color: #1B1612;
+}
+
+/* ---------- Recipe cards ---------- */
+/* The photo is full-bleed at the top of the card, flush to its rounded
+   corners, and only the text block is padded. That removes the inset frame
+   that was costing width and making the card look doubly padded. */
+.card {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--t-surface);
+  transition: transform 150ms ease, background-color 150ms ease;
+}
+.card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 0, 0, .35); }
+.card:active { transform: scale(.99); background: var(--surface-warm); }
+
+.card-media {
+  height: auto;
+  aspect-ratio: 16 / 10;
+  width: 100%;
+  border-radius: 0;
+}
+.card-media .card-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.card-body {
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.card-title-line {
+  font-size: 21px;
+  line-height: 1.2;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-sub {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.card-meta-line {
+  font-size: 13px;
+  color: var(--t-muted);
+  line-height: 1.3;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap; /* a long author truncates instead of wrapping */
+}
+/* "Never cooked" reads as a small badge beside the meta line. */
+.card-caption {
+  flex: none;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(240, 138, 75, .14);
+  color: var(--t-accent);
+  min-height: 0;
+  white-space: nowrap;
+}
+
+/* Photo credit: a small pill, not dark text lost in the gradient. */
+.card-credit,
+.img-credit {
+  left: var(--s-2);
+  right: auto;
+  bottom: var(--s-2);
+  max-width: calc(100% - 72px);
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(20, 16, 13, .78);
+  color: #F3EBDD;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  z-index: 3;
+}
+.card-credit a, .img-credit a { color: inherit; text-decoration: underline; }
+
+.card-media .fav-btn {
+  top: var(--s-3);
+  right: var(--s-3);
+  width: 44px;
+  height: 44px;
+  background: rgba(20, 16, 13, .58);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  transition: transform 120ms ease, color 120ms ease;
+}
+.card-media .fav-btn:active { transform: scale(.9); }
+.card-media .fav-btn.on { color: var(--t-accent); }
+.card-media .fav-btn.pop { animation: heart-pop 260ms ease; }
+@keyframes heart-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.grid { gap: var(--s-4); }
+@media (max-width: 899px) { .grid { gap: var(--s-4); } }
+
+/* Room for the home indicator, so the last card is not under it. */
+#app-content { padding-bottom: 0; }
+.view, .grid { scroll-margin-bottom: var(--s-4); }
+.main { padding-bottom: calc(var(--s-5) + env(safe-area-inset-bottom, 0px)); }
+
+/* Long lists: keep offscreen cards cheap to paint. */
+.card { content-visibility: auto; contain-intrinsic-size: auto 320px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card, .card-media .fav-btn, .img-wrap img { transition: none; animation: none; }
+  .card:active { transform: none; }
+  .card-media .fav-btn.pop { animation: none; }
+}
+
+/* =====================================================================
+ * Photo blend filters
+ *
+ * Pick one on the root: document.documentElement.dataset.photoFilter, or
+ * ?photo=noir|ember|smoke|ink|none. CSS only; the image files are never
+ * touched. Each style sets --photo-img-filter (on the img) and --photo-veil
+ * (the layer above it), so one set of wrappers serves every option.
+ * ===================================================================== */
+:root { --photo-veil: none; }
+
+.img-wrap img {
+  filter: var(--photo-img-filter, brightness(.88) contrast(1.05) saturate(.95) sepia(.12));
+  transition: filter 300ms ease, transform 300ms ease;
+}
+.img-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: var(--photo-veil, none);
+}
+
+/* 1. noir: black and white, the bottom of the photo dissolving into the card. */
+[data-photo-filter="noir"] {
+  --photo-img-filter: grayscale(1) contrast(1.12) brightness(.82);
+  --photo-veil:
+    linear-gradient(to bottom, transparent 30%, var(--t-surface) 100%),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, .45) 100%);
+}
+
+/* 2. ember: a duotone from near-black to the accent. */
+[data-photo-filter="ember"] {
+  --photo-img-filter: grayscale(1) brightness(.9) contrast(1.05);
+  --photo-veil:
+    linear-gradient(to bottom, transparent 30%, var(--t-surface) 100%),
+    rgba(240, 138, 75, .06);
+}
+@supports (filter: url(#duotone-ember)) {
+  [data-photo-filter="ember"] {
+    --photo-img-filter: url(#duotone-ember) brightness(.9) contrast(1.05);
+  }
+}
+
+/* 3. smoke: desaturated and warm, so food still looks like food. */
+[data-photo-filter="smoke"] {
+  --photo-img-filter: saturate(.35) sepia(.35) contrast(1.08) brightness(.8);
+  --photo-veil:
+    linear-gradient(to top, var(--t-surface), transparent 60%);
+}
+[data-photo-filter="smoke"] .img-wrap::after {
+  mix-blend-mode: multiply;
+  background-color: rgba(40, 25, 15, .35);
+}
+
+/* 4. ink: the strongest blend, the photo's edges gone entirely. */
+[data-photo-filter="ink"] {
+  --photo-img-filter: grayscale(1) contrast(1.25) brightness(.7);
+  --photo-veil: none;
+}
+@supports (mask-image: radial-gradient(#000, transparent)) or (-webkit-mask-image: radial-gradient(#000, transparent)) {
+  [data-photo-filter="ink"] .img-wrap img {
+    -webkit-mask-image: radial-gradient(ellipse 90% 85% at 50% 40%, #000 55%, transparent 100%);
+    mask-image: radial-gradient(ellipse 90% 85% at 50% 40%, #000 55%, transparent 100%);
+    mix-blend-mode: lighten;
+  }
+  /* The card surface shows through where the photo fades out. */
+  [data-photo-filter="ink"] .img-wrap { background: var(--t-surface); }
+}
+
+/* 5. none: the plain photo, for comparison. */
+[data-photo-filter="none"] { --photo-img-filter: brightness(1) saturate(1); --photo-veil: none; }
+
+/* Text and buttons over a photo never take the filter. */
+.img-wrap .fav-btn,
+.img-wrap .card-credit,
+.img-wrap .img-credit { filter: none; }
+
+/* Tap the detail photo to see it in full colour. Turn off with one flag in
+   the script (PHOTO_REVEAL_ON_TAP). */
+.img-wrap.reveal img {
+  filter: none !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  mix-blend-mode: normal !important;
+}
+.img-wrap.reveal::after { background: none; }
+.recipe-hero.img-wrap { cursor: zoom-in; }
+
+/* The dev picker, shown only with ?devtools=1. */
+.photo-switch {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--s-3) + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  gap: var(--s-1);
+  padding: var(--s-1);
+  background: rgba(20, 16, 13, .92);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+}
+.photo-switch button {
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--t-muted);
+  font: inherit;
+  font-size: 13px;
+}
+.photo-switch button[aria-pressed="true"] {
+  background: var(--t-accent);
+  color: #1B1612;
+}
+
+/* Desktop keeps its wider rhythm. */
+@media (min-width: 900px) {
+  .card-media { aspect-ratio: 16 / 10; }
+  .card-title-line { font-size: 20px; }
+  .stats { gap: var(--s-3); }
+}
+
+/* Skeletons take the new card shape: full-bleed photo on the card's own
+   corners, then the padded text block, so nothing jumps when data lands. */
+.sk-img { aspect-ratio: 16 / 10; background: var(--t-surface); }
+.sk-body { padding: var(--s-3) var(--s-4) var(--s-4); gap: var(--s-2); }
+.sk-line { background: var(--t-divider); }
+.skeleton-card { background: var(--t-surface); }
+
+/* Hovering lifts the photo a little. It appends to the chosen filter rather
+   than replacing it, which is what the older rule did and why the blend used
+   to vanish under the cursor. */
+.card:hover .img-wrap img,
+.card:focus-within .img-wrap img {
+  filter: var(--photo-img-filter, brightness(1)) brightness(1.08);
+  transform: scale(1.03);
+}
+.img-wrap.reveal img,
+.img-wrap.reveal img:hover { filter: none !important; }
