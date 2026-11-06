@@ -45,7 +45,12 @@ test('a card shows an image block, a caption, a bold title and a meta line, and 
   await unlock(page);
   const lemon = page.locator('#grid .card', { hasText: 'Lemon Pasta' });
   await expect(lemon.locator('.card-media')).toBeVisible();
-  expect((await lemon.locator('.card-media').boundingBox()).height).toBe(150);
+  // The photo is full-bleed at a 16/10 ratio, so its height follows the card's
+  // width instead of being a fixed 150px.
+  const box = await lemon.locator('.card-media').boundingBox();
+  expect(box.height).toBeGreaterThan(150);
+  expect(box.width / box.height).toBeCloseTo(1.6, 1);
+  expect((await lemon.locator('.card-title-line').boundingBox()).x).toBeGreaterThan(box.x);
   await expect(lemon.locator('.card-caption')).not.toBeEmpty();
   await expect(lemon.locator('.card-title-line')).toHaveText('Lemon Pasta');
   await expect(lemon.locator('.card-meta-line')).toContainText('Dinner');
@@ -233,10 +238,13 @@ test.describe('on a phone', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText(/\d{4}/);
   });
 
-  test('one column, a 36px heading, and no sideways scroll', async ({ page, api }) => {
+  test('one column, a smaller headline, and no sideways scroll', async ({ page, api }) => {
     await unlock(page);
     expect(await page.locator('#grid').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(1);
-    expect(await page.locator('.view-title').first().evaluate((el) => getComputedStyle(el).fontSize)).toBe('36px');
+    // clamp(28px, 7vw, 34px): 7vw of 390 is under the floor, so it sits at 28px.
+    const size = parseFloat(await page.locator('.view-title').first().evaluate((el) => getComputedStyle(el).fontSize));
+    expect(size).toBeGreaterThanOrEqual(28);
+    expect(size).toBeLessThanOrEqual(34);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 });

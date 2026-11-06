@@ -326,7 +326,8 @@ test('photos sit in a wrapper with the dimming filter and the tint layer', async
   await unlock(page);
   const wrap = page.locator('#grid .card', { hasText: 'Lemon Pasta' }).locator('.img-wrap');
   await expect(wrap).toHaveCount(1);
-  expect(await wrap.locator('img').evaluate((el) => getComputedStyle(el).filter)).toContain('brightness(0.88)');
+  // noir is the default blend: black and white, dimmed, dissolving into the card.
+  expect(await wrap.locator('img').evaluate((el) => getComputedStyle(el).filter)).toContain('grayscale(1)');
   expect(await wrap.evaluate((el) => getComputedStyle(el, '::after').backgroundImage)).toContain('linear-gradient');
   expect(await wrap.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
 });
