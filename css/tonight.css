@@ -1458,3 +1458,12 @@ a.meta-link:hover { text-decoration: underline; }
 }
 .img-wrap.reveal img,
 .img-wrap.reveal img:hover { filter: none !important; }
+
+/* The PDF slot used to hold an emoji; it holds a word now. */
+.queue-pdf {
+  font-family: var(--t-sans);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--t-muted);
+  background: var(--t-surface);
+}

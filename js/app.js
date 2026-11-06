@@ -258,15 +258,9 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('error', (event) => {
   const el = event.target;
   if (!el || el.tagName !== 'IMG' || !el.dataset) return;
-  if (!el.dataset.emoji) {
-    // A recipe card's picture that will not load: take it out, so the plain
-    // colour block behind it shows instead of a broken-image icon.
-    if (el.classList.contains('card-img') && el.parentNode) el.parentNode.removeChild(el);
-    return;
-  }
-  const span = document.createElement('span');
-  span.textContent = el.dataset.emoji;
-  if (el.parentNode) el.parentNode.replaceChild(span, el);
+  // A picture that will not load is taken out, so the plain colour block
+  // behind it shows instead of a broken-image icon or a stand-in glyph.
+  if (el.parentNode) el.parentNode.removeChild(el);
 }, true);
 
 function requireWrite() {
@@ -450,13 +444,13 @@ window.addEventListener('popstate', () => {
 });
 
 const MEAL_STYLES = {
-  breakfast: { bg: 'linear-gradient(135deg, #FFE066 0%, #FFA726 100%)', emoji: '🥞', label: 'Breakfast' },
-  lunch:     { bg: 'linear-gradient(135deg, #A8E063 0%, #56AB2F 100%)', emoji: '🥗', label: 'Lunch' },
-  dinner:    { bg: 'linear-gradient(135deg, #667EEA 0%, #764BA2 100%)', emoji: '🍽️', label: 'Dinner' },
-  dessert:   { bg: 'linear-gradient(135deg, #F093FB 0%, #F5576C 100%)', emoji: '🍰', label: 'Dessert' },
-  snack:     { bg: 'linear-gradient(135deg, #4FACFE 0%, #00F2FE 100%)', emoji: '🍪', label: 'Snack' },
-  drink:     { bg: 'linear-gradient(135deg, #43C6AC 0%, #191654 100%)', emoji: '☕', label: 'Drink' },
-  default:   { bg: 'linear-gradient(135deg, #C7541A 0%, #5A3A22 100%)', emoji: '📖', label: 'Recipe' },
+  breakfast: { bg: 'linear-gradient(135deg, #FFE066 0%, #FFA726 100%)', label: 'Breakfast' },
+  lunch:     { bg: 'linear-gradient(135deg, #A8E063 0%, #56AB2F 100%)', label: 'Lunch' },
+  dinner:    { bg: 'linear-gradient(135deg, #667EEA 0%, #764BA2 100%)', label: 'Dinner' },
+  dessert:   { bg: 'linear-gradient(135deg, #F093FB 0%, #F5576C 100%)', label: 'Dessert' },
+  snack:     { bg: 'linear-gradient(135deg, #4FACFE 0%, #00F2FE 100%)', label: 'Snack' },
+  drink:     { bg: 'linear-gradient(135deg, #43C6AC 0%, #191654 100%)', label: 'Drink' },
+  default:   { bg: 'linear-gradient(135deg, #C7541A 0%, #5A3A22 100%)', label: 'Recipe' },
 };
 function mealStyle(t) { return MEAL_STYLES[t] || MEAL_STYLES.default; }
 function cardPhotoSrc(r) {
@@ -1090,15 +1084,15 @@ function updateQueueUI() {
     switch (item.status) {
       case 'ready': badge = 'Ready'; break;
       case 'processing': badge = '<span class="spinner"></span>Reading...'; break;
-      case 'done': badge = '✓ ' + (item.title ? escapeHtml(item.title) : 'Saved'); break;
-      case 'duplicate': badge = '📖 Already in your chest' + (item.title ? ': ' + escapeHtml(item.title) : ''); break;
-      case 'failed': badge = '⚠ ' + escapeHtml((item.error || 'Failed').slice(0, 100)); break;
+      case 'done': badge = (item.title ? escapeHtml(item.title) : 'Saved'); break;
+      case 'duplicate': badge = 'Already in your chest' + (item.title ? ': ' + escapeHtml(item.title) : ''); break;
+      case 'failed': badge = escapeHtml((item.error || 'Failed').slice(0, 100)); break;
     }
     let actions = '';
     if (item.status === 'failed') actions = `<button class="queue-retry" data-queue-action="retry" data-queue-id="${item.id}">Retry</button>`;
     else if (item.status === 'duplicate') actions = `<button class="queue-retry queue-open" data-queue-action="open" data-queue-id="${item.id}">Open</button><button class="queue-retry" data-queue-action="copy" data-queue-id="${item.id}"${isProcessing ? ' disabled' : ''}>Save a copy</button>`;
     const name = item.title ? escapeHtml(item.title) : escapeHtml(item.originalName || 'Image');
-    return `<div class="queue-item ${item.status}">${item.previewUrl ? `<img class="queue-thumb" src="${item.previewUrl}" alt="">` : `<span class="queue-thumb queue-pdf" aria-hidden="true">📄</span>`}<div class="queue-info"><div class="queue-name">${name}</div><div class="queue-badge">${badge}</div></div>${actions}</div>`;
+    return `<div class="queue-item ${item.status}">${item.previewUrl ? `<img class="queue-thumb" src="${item.previewUrl}" alt="">` : `<span class="queue-thumb queue-pdf" aria-hidden="true">PDF</span>`}<div class="queue-info"><div class="queue-name">${name}</div><div class="queue-badge">${badge}</div></div>${actions}</div>`;
   }).join('');
   if (isProcessing) list.scrollTop = list.scrollHeight;
 }
@@ -1523,13 +1517,13 @@ function renderGrid() {
   if (recipes.length) {
     statHtml += `<span class="filter-chip ${currentFilter === 'all' ? 'on' : ''}" data-action="setFilter" data-arg="all">all</span>`;
     if (recipes.some(r => r.favorite)) {
-      statHtml += `<span class="filter-chip ${currentFilter === 'favorites' ? 'on' : ''}" data-action="setFilter" data-arg="favorites">♥</span>`;
+      statHtml += `<span class="filter-chip ${currentFilter === 'favorites' ? 'on' : ''}" data-action="setFilter" data-arg="favorites">Favorites</span>`;
     }
     // Meal-type filter chips, only for types that are actually in use
     for (const m of Object.keys(MEAL_STYLES)) {
       if (m === 'default') continue;
       if (!recipes.some(r => r.mealType === m)) continue;
-      statHtml += `<span class="filter-chip ${currentMealFilter === m ? 'on' : ''}" data-action="setMealFilter" data-id="${m}" data-meal="${m}">${MEAL_STYLES[m].emoji} ${MEAL_STYLES[m].label}</span>`;
+      statHtml += `<span class="filter-chip ${currentMealFilter === m ? 'on' : ''}" data-action="setMealFilter" data-id="${m}" data-meal="${m}">${MEAL_STYLES[m].label}</span>`;
     }
     if (recipes.some(r => !(r.cookLog || []).length)) {
       statHtml += `<span class="filter-chip ${currentFilter === 'never' ? 'on' : ''}" data-action="setFilter" data-arg="never">Never cooked</span>`;
@@ -3257,7 +3251,7 @@ async function openCookMode(id) {
     <h1 class="cook-title">${escapeHtml(r.title)}</h1>
     ${r.description ? `<p class="recipe-desc" style="font-size:1.05rem">${escapeHtml(r.description)}</p>` : ''}
     <div class="cook-meta">
-      <span class="meta-pill">${ms.emoji} ${ms.label}</span>
+      <span class="meta-pill">${ms.label}</span>
       ${metaBits.join('')}
     </div>
     ${r.ingredients && r.ingredients.length ? `
@@ -3274,7 +3268,7 @@ async function openCookMode(id) {
       </div>
       <ol class="cook-steps">${stepsHtml}</ol>
     ` : ''}
-    ${r.notes ? `<div class="cook-notes">💡 ${escapeHtml(r.notes)}</div>` : ''}
+    ${r.notes ? `<div class="cook-notes">${escapeHtml(r.notes)}</div>` : ''}
     <div class="cook-footer">
       <button data-action="closeCookMode">Done cooking</button>
     </div>
