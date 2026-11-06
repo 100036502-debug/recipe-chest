@@ -128,7 +128,12 @@ export default async function handler(req, res) {
       return res.status(401).json({ unlocked: false });
     }
 
-    try { await kv.del(attemptsKey); } catch (_) { /* ignore */ }
+    // Only a member login clears the counter. A guest code is shared more
+    // widely, so letting it reset the counter would let anyone holding it
+    // keep guessing ACCESS_CODE without ever being throttled.
+    if (role === 'member') {
+      try { await kv.del(attemptsKey); } catch (_) { /* ignore */ }
+    }
 
     // Set an HttpOnly cookie so the browser doesn't send the code again
     const isHttps = (req.headers['x-forwarded-proto'] || '').includes('https');

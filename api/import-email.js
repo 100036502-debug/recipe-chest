@@ -109,7 +109,7 @@ export default async function handler(req, res) {
 
   try {
     const payload = req.body || {};
-    const sender = String(payload.from || payload.From || 'Email Import');
+    const sender = String(payload.from || payload.From || 'Email Import').slice(0, 300);
     const senderName =
       (sender.match(/^\s*"?([^"<]+)"?\s*</)?.[1] || sender).trim().slice(0, 40) || 'Email Contributor';
     const bodyText = String(payload.text || payload['body-plain'] || payload.html || '');
