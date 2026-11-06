@@ -1329,11 +1329,13 @@ document.getElementById('import-url').addEventListener('keypress', e => { if (e.
 // (see the "Photo blend filters" block in css/tonight.css). Options: noir,
 // ember, smoke, ink, none. It changes no data and touches no image file.
 const PHOTO_FILTERS = ['noir', 'ember', 'smoke', 'ink', 'none'];
+// The chosen blend. Ember (the burnt-orange duotone) won the comparison.
+const DEFAULT_PHOTO_FILTER = 'ember';
 const PHOTO_FILTER_KEY = 'rc_photo_filter';
 const PHOTO_REVEAL_ON_TAP = true; // tap the detail photo for full colour
 
 function applyPhotoFilter(name) {
-  const pick = PHOTO_FILTERS.includes(name) ? name : 'noir';
+  const pick = PHOTO_FILTERS.includes(name) ? name : DEFAULT_PHOTO_FILTER;
   document.documentElement.dataset.photoFilter = pick;
   try { localStorage.setItem(PHOTO_FILTER_KEY, pick); } catch (e) { /* private mode */ }
   document.querySelectorAll('#photo-switch button').forEach((b) => {
@@ -1347,7 +1349,7 @@ function initPhotoFilter() {
   const fromUrl = params.get('photo');
   let stored = null;
   try { stored = localStorage.getItem(PHOTO_FILTER_KEY); } catch (e) { /* private mode */ }
-  applyPhotoFilter(fromUrl || stored || document.documentElement.dataset.photoFilter || 'noir');
+  applyPhotoFilter(fromUrl || stored || document.documentElement.dataset.photoFilter || DEFAULT_PHOTO_FILTER);
 
   // A thumb-sized selector for trying the options on a phone. Only ever built
   // when the page is opened with ?devtools=1, so it never ships in normal use.
