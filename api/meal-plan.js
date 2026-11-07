@@ -96,9 +96,24 @@ export default async function handler(req, res) {
       const current = readPlan(stored);
       const days = { ...(current.days || {}) };
 
+      // Dates outside the window can never be edited again, so they are
+      // dropped rather than left to fill the cap with history.
+      for (const d of Object.keys(days)) {
+        if (!dateAllowed(d)) delete days[d];
+      }
+
       const isNewDate = !Object.prototype.hasOwnProperty.call(days, date);
-      if (ids.length > 0 && isNewDate && Object.keys(days).length >= MAX_DAYS) {
-        return res.status(400).json({ error: `A plan holds at most ${MAX_DAYS} days` });
+      if (ids.length > 0 && isNewDate) {
+        // At the cap, make room by dropping the oldest PAST days before
+        // refusing the new one.
+        const today = new Date().toISOString().slice(0, 10);
+        const oldestFirst = Object.keys(days).sort();
+        while (oldestFirst.length >= MAX_DAYS && oldestFirst[0] < today) {
+          delete days[oldestFirst.shift()];
+        }
+        if (Object.keys(days).length >= MAX_DAYS) {
+          return res.status(400).json({ error: `A plan holds at most ${MAX_DAYS} days` });
+        }
       }
 
       // The cap above is a limit, not a conflict, so it answers first. Then a
