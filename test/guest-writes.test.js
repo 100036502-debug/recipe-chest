@@ -118,9 +118,11 @@ test('a meal plan date must sit within 400 days of today', async () => {
 
 test('a meal plan holds at most 400 days', async () => {
   const kv = createFakeKv();
+  // Future dates only: past days are now evicted at the cap on purpose, so a
+  // plan of history does not represent a plan that is genuinely full.
   const plan = {};
-  for (let i = 0; i < 400; i += 1) {
-    const day = new Date(Date.now() + (i - 200) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  for (let i = 1; i <= 400; i += 1) {
+    const day = new Date(Date.now() + i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     plan[day] = ['r1'];
   }
   await kv.set('meal_plan:shared', plan);
@@ -129,7 +131,8 @@ test('a meal plan holds at most 400 days', async () => {
     headers: memberHeaders(),
     kv,
     body: {
-      date: new Date(Date.now() + 300 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      // Today is inside the window and not already in the plan.
+      date: new Date().toISOString().slice(0, 10),
       recipeIds: ['r1'],
       baseUpdatedAt: Date.now(),
     },

@@ -16,7 +16,9 @@ test('cleanItem strips bullets, numbering and markdown emphasis', () => {
 test('blockToList splits lines and inline numbered items', () => {
   assert.deepEqual(blockToList('- one\n- two'), ['one', 'two']);
   assert.deepEqual(blockToList('1. mix 2. bake'), ['mix', 'bake']);
-  assert.deepEqual(blockToList('salt - pepper'), ['salt', 'pepper']);
+  // A hyphen inside a plain line no longer splits it; only a leading bullet does.
+  assert.deepEqual(blockToList('salt - pepper'), ['salt - pepper']);
+  assert.deepEqual(blockToList('- salt - pepper'), ['salt', 'pepper']);
 });
 
 test('tryParseJson tolerates fences, prose and trailing commas', () => {
