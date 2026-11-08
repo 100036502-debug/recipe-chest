@@ -2451,7 +2451,12 @@ function closeDrawer() {
   if (btn) { btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-label', 'Open menu'); }
 }
 
-function setFilter(t) { currentFilter = t; renderGrid(); }
+function setFilter(t) {
+  // Clicking the active chip clears it. With only one tag on, that leaves no
+  // filter at all, so fall back to "all" rather than an empty grid.
+  currentFilter = (t !== 'all' && currentFilter === t) ? 'all' : t;
+  renderGrid();
+}
 function setMealFilter(m) { currentMealFilter = currentMealFilter === m ? 'all' : m; renderGrid(); }
 function setSort(s) { currentSort = s; renderGrid(); }
 function toggleShowAllTags() { showAllTags = !showAllTags; renderGrid(); }
@@ -2491,12 +2496,34 @@ const ICON_HEART = (on) => `<svg class="btn-icon" viewBox="0 0 24 24" aria-hidde
 function moreMenuParts() {
   return { btn: document.getElementById('more-actions-btn'), menu: document.getElementById('more-actions-menu') };
 }
+// Keep the menu on screen. It is absolutely positioned inside its wrapper, so
+// align its right edge with the button (opening leftwards) and then clamp it
+// into the viewport; without this the last button in the row pushed the menu
+// off the right edge and the page had to be scrolled sideways to reach it.
+function placeMoreMenu(btn, menu) {
+  const wrap = menu.offsetParent || menu.parentElement;
+  if (!wrap) return;
+  menu.style.right = 'auto';
+  menu.style.left = '0px';
+  const width = menu.offsetWidth;
+  const wrapBox = wrap.getBoundingClientRect();
+  const btnBox = btn.getBoundingClientRect();
+  const pad = 8;
+  let viewportLeft = btnBox.right - width;            // open leftwards from the button
+  if (viewportLeft < pad) viewportLeft = btnBox.left;  // not enough room: open rightwards
+  const maxLeft = window.innerWidth - pad - width;
+  if (viewportLeft > maxLeft) viewportLeft = maxLeft;
+  if (viewportLeft < pad) viewportLeft = pad;
+  menu.style.left = `${Math.round(viewportLeft - wrapBox.left)}px`;
+}
+
 function setMoreMenu(open, opts) {
   const { btn, menu } = moreMenuParts();
   if (!btn || !menu) return;
   menu.hidden = !open;
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   if (open) {
+    placeMoreMenu(btn, menu);
     const first = menu.querySelector('[role="menuitem"]');
     if (first) first.focus();
   } else if (opts && opts.restoreFocus) {
