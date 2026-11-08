@@ -1155,6 +1155,18 @@ a.meta-link:hover { text-decoration: underline; }
   mask-image: linear-gradient(to right, transparent 0, #000 var(--page-pad), #000 calc(100% - var(--s-6)), transparent 100%);
 }
 .stats-chips::-webkit-scrollbar { display: none; }
+/* Desktop: the strip scrolls its own chips, it does not widen the page. Without
+   the max-width the flex child took its content width (the whole chip row), so
+   the page itself scrolled sideways to show the last tags. */
+@media (min-width: 900px) {
+  .stats-chips {
+    max-width: 100%;
+    margin-inline: 0;
+    padding-inline: 0;
+    -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - var(--s-6)), transparent 100%);
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - var(--s-6)), transparent 100%);
+  }
+}
 .stats-chips .filter-chip { flex: none; scroll-snap-align: start; }
 .stats-chips .coll-row { margin: 0; padding: 0; overflow: visible; flex-wrap: nowrap; }
 
