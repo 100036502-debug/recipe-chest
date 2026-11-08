@@ -1,5 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { validateImageBody } from '../lib/image-input.js';
+import { ENGLISH_ONLY } from '../lib/english.js';
 import { requireAuth } from '../lib/auth.js';
 import { groqChat, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
@@ -39,7 +40,7 @@ export default async function handler(req, res) {
 
   if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Groq API key not configured' });
 
-  const prompt = `Read the recipe from the attached image. Output using EXACTLY this delimiter format. Nothing else — no reasoning, no commentary, no markdown.
+  const prompt = `${ENGLISH_ONLY}\n\nRead the recipe from the attached image. Output using EXACTLY this delimiter format. Nothing else — no reasoning, no commentary, no markdown.
 
 ===TITLE===
 <recipe name>
