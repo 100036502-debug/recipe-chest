@@ -131,7 +131,9 @@ export default async function handler(req, res) {
     const mimeOf = (a) => text(a && (a.type || a.contentType)).toLowerCase();
     const nameOf = (a) => text(a && (a.filename || a.name)).toLowerCase();
     const usable = allAttachments.filter((a) => a && typeof a === 'object');
-    const imageAttachments = usable.filter((a) => mimeOf(a).startsWith('image/'));
+    // The same three types the photo import accepts (lib/image-input.js).
+    const imageAttachments = usable.filter((a) =>
+      ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(mimeOf(a)));
     const pdfAttachments = usable.filter((a) => mimeOf(a) === 'application/pdf' || nameOf(a).endsWith('.pdf'));
 
     console.log(
