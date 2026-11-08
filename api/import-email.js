@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
 import { parsePdfText } from '../lib/pdf-text.js';
+import { ENGLISH_ONLY } from '../lib/english.js';
 import { resizeImage } from '../lib/image-input.js';
 import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
@@ -33,7 +34,7 @@ const MAX_EMAIL_TEXT_CHARACTERS = 6000;
 const MAX_IMAGES_PER_REQUEST = 3; // Groq's hard limit for the vision model
 const MAX_PDFS_PER_REQUEST = 3; // Apps Script caps at 3, the API must not trust it
 
-const IMAGE_PROMPT = `You are a recipe parser. The image(s) below show a recipe (or parts of one recipe). Read everything together and extract ONE recipe.
+const IMAGE_PROMPT = `${ENGLISH_ONLY}\n\nYou are a recipe parser. The image(s) below show a recipe (or parts of one recipe). Read everything together and extract ONE recipe.
 
 Return ONLY a json object with these keys:
 {
