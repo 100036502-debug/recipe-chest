@@ -36,7 +36,7 @@ test.describe('api/health', () => {
     assert.deepEqual(Object.keys(res.body).sort(), ['ok', 'redis']);
   });
 
-  test('still answers ok when redis is down, with redis:false', async () => {
+  test('answers 503 when redis is down, so a monitor sees it', async () => {
     const kv = createFakeKv();
     kv.ping = async () => { throw new Error('redis unreachable'); };
     const cap = captureConsole();
@@ -45,8 +45,10 @@ test.describe('api/health', () => {
     const errors = cap.parsed('error');
     cap.restore();
 
-    assert.equal(res.statusCode, 200);
-    assert.deepEqual(res.body, { ok: true, redis: false });
+    // An uptime monitor reads the status code, so an unreachable Redis must
+    // not answer 200.
+    assert.equal(res.statusCode, 503);
+    assert.deepEqual(res.body, { ok: false, redis: false });
     assert.equal(errors[0].event, 'health-redis-unreachable');
   });
 
