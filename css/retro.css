@@ -1,0 +1,491 @@
+/* Recipe Chest: the retro cookbook layer.
+ *
+ * Loaded by index.html after tonight.css, and only there (share.html and the
+ * lock screen are untouched). The app stays a dark kitchen at night. Three
+ * places in it become paper under a lamp: the recipe window, cook mode, and the
+ * empty chest. Everything else keeps the Tonight design.
+ *
+ * How it is built:
+ *  - Paper is a scoped token swap. app.css and tonight.css already draw every
+ *    control from custom properties, so re-pointing the properties on
+ *    #detail-modal and #cook-overlay re-inks everything inside without a rule
+ *    per component. Both files use var(--x) resolved per element, but the
+ *    :root aliases (--text, --brown, --primary ...) were computed once at the
+ *    root, so each alias is restated here too.
+ *  - Motion is CSS scroll-driven animation only, no JavaScript. Where
+ *    animation-timeline is unsupported the page is still complete: the pinned
+ *    photo and the card sliding over it use plain position: sticky, and the
+ *    red-pencil underlines and reading bar simply stay hidden.
+ *  - transform and opacity only. Reduced motion: app.css already switches every
+ *    animation off, and the photo stops pinning below.
+ *
+ * Contrast on paper #F0E4C8 (computed, WCAG): ink 12.9:1, soft ink 5.7:1,
+ * stamp red 5.0:1, paper on stamp red (buttons) 5.0:1, borders 3.8:1. Stamp red
+ * is kept off the darker #E6D6B0 surface, where it falls to 4.4:1.
+ */
+
+:root {
+  --rc-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --rc-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Courier New", monospace;
+}
+
+/* ------------------------------------------------------------------ photos */
+/* The ember duotone turned every photo into a two-tone print. This keeps the
+   same warm blend (a little sepia, a little desaturation, a soft fade into the
+   card colour) but lets the food keep most of its own colour. It overrides the
+   variables tonight.css reads, so cards, the recipe window, the calendar and the
+   picker all change together. To go back to the duotone, delete this block. */
+[data-photo-filter="ember"] {
+  --photo-img-filter: saturate(.8) sepia(.16) contrast(1.04) brightness(.94);
+  --photo-veil:
+    linear-gradient(to bottom, transparent 50%, var(--t-surface) 100%),
+    rgba(240, 138, 75, .07);
+}
+@supports (filter: url(#duotone-ember)) {
+  [data-photo-filter="ember"] {
+    --photo-img-filter: saturate(.8) sepia(.16) contrast(1.04) brightness(.94);
+  }
+}
+
+/* ------------------------------------------------------------------ paper */
+:is(#detail-modal, #cook-overlay) {
+  --rc-paper: #F0E4C8;
+  --rc-paper-2: #E6D6B0;
+  --rc-ink: #2B1D12;
+  --rc-ink-soft: #66543F;
+  --rc-stamp: #B3301C;
+  --rc-edge: #85704F;
+  --rc-rule: rgba(43, 29, 18, .18);
+  --rc-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .17 0 0 0 0 .11 0 0 0 0 .07 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  /* Tonight tokens */
+  --t-surface: var(--rc-paper);
+  --t-text: var(--rc-ink);
+  --t-muted: var(--rc-ink-soft);
+  --t-accent: var(--rc-stamp);
+  --t-outline: var(--rc-edge);
+  --t-divider: var(--rc-rule);
+
+  /* app.css aliases, restated because they were resolved at :root */
+  --bg: var(--rc-paper-2);
+  --card: var(--rc-paper);
+  --border: var(--rc-edge);
+  --text: var(--rc-ink);
+  --dim: var(--rc-ink-soft);
+  --brown: var(--rc-ink);
+  --brown-d: #1B120A;
+  --primary: var(--rc-stamp);
+  --primary-d: #8E2414;
+  --on-primary: var(--rc-paper);
+  --surface-warm: #EADCB9;
+  --tag-bg: transparent;
+  --tag-border: var(--rc-edge);
+  --note-border: var(--rc-edge);
+  --danger: #8E2414;
+  --danger-bg: #F2D8CB;
+  --danger-bg-strong: #EBC3B2;
+  --danger-border: #C98C7A;
+  --star: #8F5208;
+  --heart: #B3301C;
+  --floating: rgba(240, 228, 200, .92);
+  --track: rgba(43, 29, 18, .14);
+  --diff-add-bg: rgba(60, 110, 70, .18);
+  --diff-del-bg: rgba(179, 48, 28, .16);
+  --shadow: 0 1px 3px rgba(43, 29, 18, .25);
+  --shadow-h: 0 6px 18px rgba(43, 29, 18, .3);
+
+  color: var(--rc-ink);
+  color-scheme: light;
+}
+
+/* ============================================================ recipe window */
+#detail-modal {
+  background-color: var(--rc-paper);
+  background-image: var(--rc-grain);
+  border-radius: 6px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .6), 0 0 0 1px rgba(0, 0, 0, .35);
+  scrollbar-color: var(--rc-edge) transparent;
+}
+
+/* The photograph pins to the top of the window; the card slides up over it. */
+#detail-modal .recipe-hero {
+  position: sticky;
+  top: 0;
+  z-index: 0;
+  height: 300px;
+  border-radius: 6px 6px 0 0;
+}
+#detail-modal .recipe-hero.no-photo { position: relative; height: 96px; }
+#detail-modal .recipe-hero::after {
+  background:
+    linear-gradient(180deg, rgba(20, 16, 13, 0) 55%, rgba(20, 16, 13, .35) 100%),
+    rgba(240, 138, 75, .05);
+}
+#detail-modal .recipe-hero .img-credit { background: rgba(20, 16, 13, .72); color: #F3EBDD; }
+#detail-modal .recipe-hero .img-credit a { color: #F3EBDD; }
+
+#detail-modal .recipe-content {
+  position: relative;
+  z-index: 1;
+  margin-top: -18px;
+  padding: 30px 48px 44px;
+  background-color: var(--rc-paper);
+  background-image: var(--rc-grain);
+}
+/* A card cut with pinking shears: the paper edge is a row of paper triangles. */
+#detail-modal .recipe-content::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -7px;
+  height: 8px;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='8' viewBox='0 0 16 8'%3E%3Cpath d='M0 8 8 0 16 8Z' fill='%23F0E4C8'/%3E%3C/svg%3E") repeat-x left bottom;
+}
+#detail-modal .recipe-hero.no-photo + .recipe-content { margin-top: 0; }
+#detail-modal .recipe-hero.no-photo + .recipe-content::before { display: none; }
+
+/* Title: the header of an index card, a double red rule under it. */
+#detail-modal .recipe-title {
+  font-size: 44px;
+  line-height: 1.05;
+  color: var(--rc-ink);
+  text-wrap: balance;
+}
+#detail-modal .recipe-title::after {
+  content: "";
+  display: block;
+  height: 4px;
+  margin-top: 16px;
+  border-top: 1px solid var(--rc-stamp);
+  border-bottom: 1px solid var(--rc-stamp);
+}
+#detail-modal .recipe-desc { color: var(--rc-ink-soft); text-wrap: pretty; }
+
+/* Typed labels: data, not decoration, so monospace is earned here. */
+#detail-modal .meta-pill,
+#detail-modal .tag,
+#detail-modal .tag-chip {
+  border-radius: 2px;
+  border: 1px solid var(--rc-edge);
+  background: transparent;
+  color: var(--rc-ink);
+  font-family: var(--rc-mono);
+  font-size: 13px;
+  letter-spacing: .01em;
+}
+#detail-modal .meta-pill .k,
+#detail-modal .tag,
+#detail-modal .tag-x { color: var(--rc-ink-soft); }
+#detail-modal .meta-pill .v { color: var(--rc-ink); }
+#detail-modal a.meta-link { color: var(--rc-stamp); }
+#detail-modal .tag-add-btn { border-radius: 2px; border-color: var(--rc-edge); font-family: var(--rc-mono); font-size: 13px; }
+
+/* Actions: ink outline, red when it is the main thing. */
+#detail-modal .act {
+  border: 1.5px solid var(--rc-ink);
+  border-radius: 3px;
+  color: var(--rc-ink);
+  background: transparent;
+  transition: background-color 140ms var(--rc-ease), transform 120ms var(--rc-ease);
+}
+#detail-modal .act:hover { background: rgba(43, 29, 18, .08); }
+#detail-modal .act:active { transform: translateY(1px); }
+#detail-modal .act-primary { background: var(--rc-stamp); border-color: var(--rc-stamp); color: var(--rc-paper); }
+#detail-modal .act-primary:hover { background: #8E2414; border-color: #8E2414; }
+#detail-modal .act-fav.on { color: var(--rc-stamp); border-color: var(--rc-stamp); }
+#detail-modal .act-fav.on svg { fill: var(--rc-stamp); }
+#detail-modal .act-menu { background: var(--rc-paper-2); border: 1.5px solid var(--rc-ink); border-radius: 3px; box-shadow: 0 10px 24px rgba(43, 29, 18, .35); }
+#detail-modal .act-menu button { color: var(--rc-ink); border-radius: 2px; }
+#detail-modal .act-menu button:hover,
+#detail-modal .act-menu button:focus-visible { background: rgba(43, 29, 18, .1); }
+#detail-modal .btn-cooked { border-radius: 3px; border-color: var(--rc-stamp); color: var(--rc-stamp); }
+#detail-modal .btn-cooked:hover { background: rgba(179, 48, 28, .1); }
+
+/* Section headings: a double red underline, as on a printed form. */
+#detail-modal .section-h {
+  position: relative;
+  font-size: 26px;
+  padding-bottom: 8px;
+  border-bottom: 0;
+  color: var(--rc-ink);
+}
+#detail-modal .section-h::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-bottom: 3px double var(--rc-stamp);
+}
+
+/* Ingredients are typed on the card, one line each, dotted leaders between. */
+#detail-modal .ing-list li {
+  position: relative;
+  border-bottom: 1px dotted var(--rc-edge);
+  font-family: var(--rc-mono);
+  font-size: 15px;
+  letter-spacing: .005em;
+  color: var(--rc-ink);
+}
+#detail-modal .ing-list li:last-child { border-bottom: 1px dotted var(--rc-edge); }
+
+/* Steps: a big serif numeral in the margin instead of a coloured dot. */
+#detail-modal .step-list { gap: 20px; }
+#detail-modal .step-list li { position: relative; padding-bottom: 14px; font-size: 17px; line-height: 1.6; }
+#detail-modal .step-list li::before {
+  width: auto;
+  min-width: 34px;
+  height: auto;
+  justify-content: flex-start;
+  border-radius: 0;
+  background: none;
+  color: var(--rc-stamp);
+  font-family: var(--t-serif);
+  font-size: 36px;
+  font-weight: 400;
+  line-height: .95;
+}
+
+/* Notes: a dashed outline, the way a note is boxed on a recipe card. */
+#detail-modal .notes-box {
+  background: transparent;
+  border: 1px dashed var(--rc-edge);
+  border-radius: 2px;
+  color: var(--rc-ink);
+  font-style: italic;
+}
+#detail-modal .notes-label { color: var(--rc-ink-soft); }
+
+#detail-modal .cooked-section,
+#detail-modal .recipe-footer { border-top-color: var(--rc-rule); }
+#detail-modal .cooked-row { border-top-color: var(--rc-rule); border-radius: 0; }
+#detail-modal .delete-btn { border-radius: 3px; border-color: var(--danger-border); color: var(--danger); }
+#detail-modal .delete-btn:hover { background: var(--danger); color: var(--rc-paper); border-color: var(--danger); }
+
+/* The close button sits on the photograph, so it stays dark glass. */
+#detail-modal .modal-close { background: rgba(20, 16, 13, .6); border-color: rgba(243, 235, 221, .3); color: #F3EBDD; }
+
+/* The last screen resolves with a stamp. Real text: the product name. */
+#detail-modal .recipe-footer { position: relative; }
+#detail-modal .recipe-footer::after {
+  content: "Recipe Chest";
+  content: "Recipe Chest" / "";
+  position: absolute;
+  right: 6px;
+  top: -52px;
+  padding: 6px 12px 5px;
+  border: 2px solid var(--rc-stamp);
+  border-radius: 4px;
+  outline: 1px solid var(--rc-stamp);
+  outline-offset: 3px;
+  color: var(--rc-stamp);
+  font-family: var(--t-serif);
+  font-size: 15px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  opacity: .9;
+  transform: rotate(-7deg);
+  pointer-events: none;
+}
+
+/* ===================================================================== cook */
+#cook-overlay .cook-mode {
+  background-color: var(--rc-paper);
+  background-image: var(--rc-grain);
+  color: var(--rc-ink);
+  scrollbar-color: var(--rc-edge) transparent;
+}
+.cook-mode .cook-title {
+  font-size: clamp(2.1em, 5vw, 3.3em);
+  line-height: 1.02;
+  color: var(--rc-ink);
+  text-wrap: balance;
+}
+.cook-mode .cook-title::after {
+  content: "";
+  display: block;
+  max-width: 900px;
+  height: 4px;
+  margin-top: 18px;
+  border-top: 1px solid var(--rc-stamp);
+  border-bottom: 1px solid var(--rc-stamp);
+}
+.cook-mode .cook-section-h { color: var(--rc-ink); }
+.cook-mode .cook-meta .meta-pill {
+  border-radius: 2px;
+  border: 1px solid var(--rc-edge);
+  background: transparent;
+  color: var(--rc-ink);
+  font-family: var(--rc-mono);
+}
+
+/* Ingredients typed in a column, no tinted boxes, no coloured edge. */
+.cook-mode .cook-ing { gap: 0; }
+.cook-mode .cook-ing li {
+  background: none;
+  border: 0;
+  border-bottom: 1px dotted var(--rc-edge);
+  border-radius: 0;
+  padding: 10px 4px;
+  font-family: var(--rc-mono);
+  font-size: 1.05em;
+  color: var(--rc-ink);
+}
+
+/* Steps: a serif numeral you can read from the counter. */
+.cook-mode .cook-steps { gap: 28px; }
+.cook-mode .cook-steps li { position: relative; }
+.cook-mode .cook-steps li::before {
+  width: auto;
+  min-width: 1.15em;
+  height: auto;
+  justify-content: flex-start;
+  border-radius: 0;
+  background: none;
+  color: var(--rc-stamp);
+  font-family: var(--t-serif);
+  font-size: 2.6em;
+  font-weight: 400;
+  line-height: .9;
+}
+/* The reading bar: a red rule in the margin beside the step in the middle of
+   the screen. It is hidden unless scroll-driven animation is available. */
+.cook-mode .cook-steps li::after {
+  content: "";
+  position: absolute;
+  left: -18px;
+  top: .15em;
+  bottom: .15em;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--rc-stamp);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cook-mode .cook-notes {
+  background: transparent;
+  border: 1px dashed var(--rc-edge);
+  border-radius: 2px;
+  color: var(--rc-ink);
+}
+.cook-mode .cook-footer { border-top-color: var(--rc-rule); }
+.cook-mode .cook-footer button { border-radius: 3px; background: var(--rc-stamp); color: var(--rc-paper); }
+.cook-mode .cook-footer button:hover { background: #8E2414; }
+.cook-scale-btn, .cook-reset, .cook-timer-btn { border-radius: 3px; }
+.cook-timer { border: 1.5px solid var(--rc-ink); border-radius: 3px; background: var(--rc-paper-2); }
+.cook-timer.paused { border-color: #8A6D1F; }
+.cook-timer.done { border-color: var(--danger); background: var(--danger-bg); }
+.cook-timer-chip { border-radius: 3px; border-color: var(--rc-stamp); color: var(--rc-stamp); }
+.cook-timer-chip:hover { background: var(--rc-stamp); color: var(--rc-paper); }
+.cook-timers { background: var(--rc-paper); border-bottom-color: var(--rc-rule); }
+
+/* ================================================================ the chest */
+/* A card-file drawer with index cards standing in it, drawn as one image so the
+   markup stays as it was. It rises once each time the empty state appears. */
+.empty::before {
+  content: "";
+  display: block;
+  width: 240px;
+  height: 170px;
+  max-width: 70%;
+  margin: 0 auto 24px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 170'%3E%3Cg fill='%23F0E4C8' stroke='%232B1D12' stroke-opacity='.4'%3E%3Crect x='52' y='18' width='84' height='72' rx='3' transform='rotate(-9 94 90)'/%3E%3Crect x='104' y='16' width='84' height='72' rx='3' transform='rotate(7 146 88)'/%3E%3Crect x='78' y='8' width='84' height='72' rx='3' transform='rotate(-2 120 80)'/%3E%3C/g%3E%3Cpath d='M86 28h72M86 40h72M86 52h72M86 64h50' stroke='%232B1D12' stroke-opacity='.18' stroke-width='1' transform='rotate(-2 120 80)'/%3E%3Cpath d='M86 22h72' stroke='%23B3301C' stroke-width='1.6' transform='rotate(-2 120 80)'/%3E%3Crect x='28' y='84' width='184' height='76' rx='4' fill='%236B4A2E'/%3E%3Crect x='28' y='84' width='184' height='9' rx='2' fill='%23553A24'/%3E%3Crect x='90' y='108' width='60' height='26' rx='2' fill='%23F0E4C8'/%3E%3Cpath d='M97 121h46' stroke='%23B3301C' stroke-width='1.6'/%3E%3Crect x='108' y='142' width='24' height='6' rx='3' fill='%231B1612'/%3E%3C/svg%3E") center / contain no-repeat;
+  animation: rc-drawer-in 520ms var(--rc-ease) both;
+}
+.empty h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.1; color: var(--t-text); text-wrap: balance; }
+.empty p { max-width: 40ch; margin-inline: auto; }
+
+/* ================================================================== motion */
+@keyframes rc-drawer-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@supports (animation-timeline: view()) {
+  /* The photograph drifts and swells slowly as the card rises over it. */
+  #detail-modal .recipe-hero:not(.no-photo) .hero-img {
+    animation: rc-plate linear both;
+    animation-timeline: scroll(nearest block);
+    animation-range: 0px 320px;
+  }
+
+  /* The signature move: red pencil. Each ingredient and step is underlined as
+     it comes up the window, so what has been read stays marked. */
+  #detail-modal :is(.ing-list, .step-list) li::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: var(--rc-stamp);
+    border-radius: 1px;
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: left center;
+    pointer-events: none;
+    animation: rc-pencil linear both;
+    animation-timeline: view();
+    animation-range: entry 35% entry 100%;
+  }
+
+  #detail-modal .recipe-footer::after {
+    animation: rc-stamp linear both;
+    animation-timeline: view();
+    animation-range: entry 30% entry 100%;
+  }
+
+  .cook-mode .cook-steps li::after {
+    animation: rc-read linear both;
+    animation-timeline: view();
+    animation-range: cover 28% cover 72%;
+  }
+}
+
+@keyframes rc-plate  { to { transform: scale(1.1) translateY(-22px); } }
+@keyframes rc-pencil { to { opacity: .6; transform: scaleX(1); } }
+@keyframes rc-stamp {
+  from { opacity: 0; transform: rotate(-7deg) scale(1.35); }
+  to   { opacity: .9; transform: rotate(-7deg) scale(1); }
+}
+@keyframes rc-read {
+  0%   { opacity: 0; }
+  35%  { opacity: .9; }
+  65%  { opacity: .9; }
+  100% { opacity: 0; }
+}
+
+/* ============================================================ small screens */
+@media (max-width: 599px) {
+  #detail-modal .recipe-hero { height: 220px; }
+  #detail-modal .recipe-content { padding: 26px 20px 32px; }
+  #detail-modal .recipe-title { font-size: 32px; }
+  #detail-modal .recipe-footer::after { display: none; }
+  #detail-modal .step-list li::before { font-size: 30px; min-width: 28px; }
+  .cook-mode .cook-steps li::after { left: -12px; }
+}
+
+/* ======================================================== reduced motion */
+/* app.css already turns every animation off. The photo also stops pinning, so
+   the card still overlaps it but nothing travels as the page scrolls. */
+@media (prefers-reduced-motion: reduce) {
+  #detail-modal .recipe-hero { position: relative; }
+  #detail-modal .act { transition: none; }
+}
+
+/* ======================================================================= print */
+/* Printing stays plain black on white; app.css owns the rest of the print rules. */
+@media print {
+  #detail-modal { background: #fff !important; box-shadow: none !important; }
+  #detail-modal .recipe-content { margin-top: 0 !important; background: #fff !important; padding: 0 !important; }
+  #detail-modal .recipe-content::before,
+  #detail-modal .recipe-title::after,
+  #detail-modal .section-h::after,
+  #detail-modal .recipe-footer::after,
+  #detail-modal :is(.ing-list, .step-list) li::after { display: none !important; }
+  #detail-modal .step-list li::before { border-radius: 50% !important; }
+  #detail-modal .ing-list li { font-family: inherit !important; }
+}
