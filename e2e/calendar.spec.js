@@ -331,7 +331,10 @@ test('photos sit in a wrapper with the dimming filter and the tint layer', async
   const wrap = page.locator('#grid .card', { hasText: 'Lemon Pasta' }).locator('.img-wrap');
   await expect(wrap).toHaveCount(1);
   // ember is the default blend: the burnt-orange duotone, dissolving into the card.
-  expect(await wrap.locator('img').evaluate((el) => getComputedStyle(el).filter)).toContain('duotone-ember');
+  // The duotone was retired for a softer warm blend: the food keeps its colour.
+  const photoFilter = await wrap.locator('img').evaluate((el) => getComputedStyle(el).filter);
+  expect(photoFilter).not.toContain('duotone-ember');
+  expect(photoFilter).toContain('sepia(0.16)');
   expect(await wrap.evaluate((el) => getComputedStyle(el, '::after').backgroundImage)).toContain('linear-gradient');
   expect(await wrap.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
 });
