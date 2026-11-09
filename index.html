@@ -153,7 +153,20 @@
 
   <section class="view" id="view-pantry" aria-labelledby="pantry-view-title" hidden>
     <h1 class="view-title" id="pantry-view-title">Pantry</h1>
-    <p class="view-note">Your pantry will live here. For now, use “What can I make?” in the sidebar to see which recipes you can cook with what you have.</p>
+    <p class="view-note">What you keep in the cupboard. “What can I make?” matches recipes against this same list.</p>
+    <div class="pantry-add">
+      <label class="field-label" for="pantry-view-input">Add an ingredient</label>
+      <div class="pantry-add-row">
+        <input id="pantry-view-input" type="text" placeholder="Chickpeas" autocomplete="off" data-enter="addPantryViewItem">
+        <button type="button" class="btn-primary" data-action="addPantryViewItem">Add</button>
+      </div>
+    </div>
+    <p class="pantry-view-count" id="pantry-view-count"></p>
+    <div class="pantry-view-list" id="pantry-view-list"></div>
+    <div class="pantry-view-foot">
+      <button type="button" class="btn-primary" data-action="openPantry">What can I make?</button>
+      <button type="button" class="btn-secondary" data-action="clearPantry">Clear all</button>
+    </div>
   </section>
 
   <div class="stats" id="stats"></div>
