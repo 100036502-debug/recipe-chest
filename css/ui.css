@@ -551,52 +551,35 @@ h1, h2, h3, .view-title, .recipe-title, .modal h2, .modal h3, .cal-month,
 
 .section-h { font-size: 24px; color: var(--ink); border-bottom: 0; }
 
-/* Two columns: a sticky ingredient panel beside the method. Every child is
-   placed by name because the template interleaves headings and lists. */
-#detail-modal .recipe-content {
+/* Two columns: a sticky ingredient panel beside the method. The template wraps
+   each side in .recipe-ing / .recipe-method, so nothing has to be placed by
+   name and nothing can land on top of anything else. */
+#detail-modal .recipe-content { display: block; padding: 26px 48px 0; }
+
+.recipe-cols {
   display: grid;
   grid-template-columns: 330px minmax(0, 1fr);
-  grid-template-areas:
-    "title   title"
-    "desc    desc"
-    "meta    meta"
-    "tags    tags"
-    "acts    acts"
-    "cooked  cooked"
-    "ing-h   step-h"
-    "ing     steps"
-    "notes   notes"
-    "footer  footer";
-  column-gap: 48px;
+  gap: 48px;
   align-items: start;
+  margin: 6px 0 26px;
 }
-#detail-modal .recipe-title   { grid-area: title; }
-#detail-modal .recipe-desc    { grid-area: desc; }
-#detail-modal .recipe-meta    { grid-area: meta; }
-#detail-modal .recipe-tags    { grid-area: tags; }
-#detail-modal .recipe-actions { grid-area: acts; }
-#detail-modal .cooked-section { grid-area: cooked; }
-#detail-modal .notes-box      { grid-area: notes; }
-#detail-modal .recipe-footer  { grid-area: footer; }
-#detail-modal .ing-list       { grid-area: ing; }
-#detail-modal .step-list      { grid-area: steps; }
-#detail-modal .recipe-content > .section-h:nth-of-type(1) { grid-area: ing-h; }
-#detail-modal .recipe-content > .section-h:nth-of-type(2) { grid-area: step-h; }
-#detail-modal .section-h { margin-top: 8px; }
-
-#detail-modal .ing-list {
+.recipe-ing {
   position: sticky;
   top: 0;
+  align-self: start;
+}
+.recipe-ing .section-h { margin-top: 0; }
+.recipe-ing .ing-list {
   background: var(--peach);
   border-radius: var(--r-card);
-  padding: 22px 22px 18px;
+  padding: 18px 22px;
   list-style: none;
   display: flex;
   flex-direction: column;
   max-height: 62vh;
   overflow: auto;
 }
-#detail-modal .ing-list li {
+.recipe-ing .ing-list li {
   min-height: 44px;
   display: flex;
   align-items: center;
@@ -605,7 +588,9 @@ h1, h2, h3, .view-title, .recipe-title, .modal h2, .modal h3, .cal-month,
   font-size: 16px;
   color: var(--ink);
 }
-#detail-modal .ing-list li:last-child { border-bottom: 0; }
+.recipe-ing .ing-list li:last-child { border-bottom: 0; }
+.recipe-method { max-width: 62ch; }
+.recipe-method .section-h { margin-top: 0; }
 
 #detail-modal .step-list {
   display: flex;
@@ -647,10 +632,54 @@ h1, h2, h3, .view-title, .recipe-title, .modal h2, .modal h3, .cal-month,
 }
 .notes-label { color: var(--slate); }
 
-.cooked-section, .recipe-footer {
-  grid-column: 1 / -1;
+.cooked-section {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 18px;
+  color: var(--ink);
+}
+.cooked-section .cook-section-h { color: var(--ink); font-size: 24px; }
+.cooked-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.cooked-summary { color: var(--slate); font-size: 15px; }
+.cooked-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.cooked-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+}
+.cooked-date { color: var(--ink); font-weight: 600; }
+.cooked-stars { color: var(--star); }
+.cooked-note { color: var(--ink); flex: 1; }
+.cooked-by { color: var(--slate); }
+.cooked-del {
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--slate);
+  min-height: 36px;
+  padding: 0 10px;
+}
+.cooked-del:hover { border-color: var(--line-strong); color: var(--orange-text); }
+
+.recipe-footer {
   border-top: 1px solid var(--line);
   color: var(--slate);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0 28px;
+}
+.recipe-footer .delete-btn {
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--err);
+  min-height: 40px;
+  padding: 0 14px;
 }
 .btn-cooked {
   border: 1px solid var(--line-strong);
@@ -751,11 +780,10 @@ h1, h2, h3, .view-title, .recipe-title, .modal h2, .modal h3, .cal-month,
   /* Full screen sheet: the overlay stops padding so the sheet reaches the edges. */
   #detail-overlay { padding: 0; align-items: stretch; }
   #detail-modal { width: 100%; max-width: none; border-radius: 0; height: 100%; max-height: 100%; }
-  #detail-modal .recipe-content {
-    display: block;
-    padding: 20px 20px 40px;
-  }
-  #detail-modal .ing-list { position: static; max-height: none; margin-bottom: 24px; }
+  #detail-modal .recipe-content { padding: 20px 20px 40px; }
+  .recipe-cols { display: block; }
+  .recipe-ing { position: static; margin-bottom: 24px; }
+  .recipe-ing .ing-list { max-height: none; }
   .recipe-hero { height: 210px; border-radius: 0; }
   .recipe-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .recipe-actions .act-primary { grid-column: 1 / -1; }
@@ -838,3 +866,201 @@ h1, h2, h3, .view-title, .recipe-title, .modal h2, .modal h3, .cal-month,
   transition: top 120ms ease;
 }
 .skip-link:focus { top: 12px; }
+
+/* ============================================================ calendar */
+.cal-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.cal-month { font-size: 40px; color: var(--ink); margin: 0; }
+.cal-nav { display: flex; gap: 6px; }
+.cal-nav button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--chalk);
+  color: var(--ink);
+}
+.cal-today {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--orange-text);
+  font-weight: 600;
+}
+.cal-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; align-items: start; }
+.cal-weekdays, .cal-weekdays span { color: var(--slate); font-size: 13px; }
+.cal-grid { border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.cal-day {
+  min-height: 92px;
+  padding: 6px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--chalk);
+  color: var(--slate);
+  font-size: 14px;
+}
+.cal-day.gone { opacity: .45; }
+.cal-num { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.cal-day.today .cal-num { background: var(--orange); color: #fff; font-weight: 600; }
+.cal-day.sel { background: var(--peach); box-shadow: inset 0 0 0 2px var(--orange); }
+.cal-chip {
+  background: var(--peach);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-day.sel .cal-chip { background: #fff; }
+:root[data-theme="dark"] .cal-day.sel .cal-chip { background: rgba(255, 255, 255, .1); }
+.cal-panel {
+  background: var(--peach);
+  border-radius: var(--r-card);
+  padding: 22px;
+  color: var(--ink);
+}
+.cal-panel-title { font-family: var(--display); font-size: 24px; color: var(--ink); }
+.cal-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.cal-row:first-of-type { border-top: 0; }
+.cal-thumb { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex: none; }
+.cal-thumb.placeholder { background: #FBDFCC; }
+.cal-meal-title { flex: 1; font-weight: 600; font-size: 16px; color: var(--ink); line-height: 1.3; }
+.cal-remove { color: var(--slate); background: none; border: 0; min-height: 36px; }
+.cal-remove:hover { color: var(--err); }
+.cal-add, .cal-week-btn {
+  min-height: 44px;
+  border-radius: var(--r-ctl);
+  font-weight: 600;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--orange-text);
+}
+.cal-add { background: var(--orange); border-color: var(--orange); color: var(--on-primary); }
+.cal-none, .cal-more { color: var(--slate); }
+
+/* ============================================================ shopping */
+.sl-aisle-h, .sl-aisle {
+  font-family: var(--display);
+  font-size: 20px;
+  color: var(--ink);
+}
+.sl-text { color: var(--ink); }
+.sl-del { color: var(--slate); }
+.sl-empty, .sl-error { color: var(--slate); }
+.sl-foot { color: var(--slate); border-top: 1px solid var(--line); }
+
+/* ============================================================ tonight */
+.view-date { color: var(--slate); }
+.tonight-empty { color: var(--slate); }
+.tonight-link { color: var(--orange-text); font-weight: 600; }
+
+/* ============================================================ pantry */
+.pantry-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--chalk);
+  color: var(--ink);
+}
+.pantry-card-title { font-family: var(--display); font-size: 20px; color: var(--ink); }
+.pantry-card-score { color: var(--slate); }
+.pantry-bar { height: 8px; border-radius: 99px; background: var(--peach); overflow: hidden; }
+.pantry-bar-fill { background: var(--orange); }
+.pantry-card-missing { color: var(--slate); }
+.pantry-chip { background: var(--peach); color: var(--ink); border-radius: var(--r-pill); }
+.pantry-chip-x { color: var(--slate); }
+.pantry-add-missing { border: 1px solid var(--line-strong); color: var(--orange-text); background: transparent; border-radius: var(--r-ctl); min-height: 40px; }
+
+/* ============================================================ upload queue */
+.queue-pdf, .queue-thumb { border-radius: 8px; }
+.queue-name { color: var(--ink); }
+.queue-info { color: var(--slate); }
+.queue-badge { border-radius: var(--r-pill); background: var(--peach); color: var(--orange-text); }
+.queue-retry { border: 1px solid var(--line-strong); color: var(--orange-text); background: transparent; border-radius: var(--r-ctl); }
+.pick-thumb { border-radius: 8px; }
+
+/* Inline dark styles on the generator/upload modals */
+[style*="#2a1f18"], [style*="#26201a"], [style*="#1B1612"] { background-color: transparent !important; }
+
+/* ================================================== ingredient ticks */
+.ing-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  cursor: pointer;
+}
+.ing-check {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 6px;
+  accent-color: var(--orange);
+  cursor: pointer;
+}
+.ing-text { color: var(--ink); }
+.ing-list li.done .ing-text { color: var(--slate); text-decoration: line-through; }
+.ing-list li.done .ing-check { accent-color: var(--orange); }
+
+.ing-sheet-head { display: none; }
+
+/* The phone action bar and the panel promoted to a sheet. */
+.recipe-bar { display: none; }
+
+@media (max-width: 899px) {
+  .recipe-bar {
+    display: block;
+    position: sticky;
+    bottom: 0;
+    padding: 12px 0 4px;
+    background: linear-gradient(to top, var(--chalk) 70%, transparent);
+  }
+  .recipe-bar-btn {
+    width: 100%;
+    min-height: 52px;
+    border-radius: var(--r-ctl);
+    border: 1px solid var(--orange);
+    background: var(--orange);
+    color: var(--on-primary);
+    font-family: var(--ui);
+    font-size: 17px;
+    font-weight: 600;
+  }
+
+  .ing-sheet-head { display: flex; align-items: center; gap: 12px; }
+  .ing-sheet-head .section-h { flex: 1; margin: 0; }
+  .ing-sheet-close { display: none; }
+
+  /* The same list, promoted to a bottom sheet. No second copy of the ticks. */
+  #detail-modal.ing-open .recipe-ing {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 60;
+    margin: 0;
+    padding: 10px 20px calc(28px + env(safe-area-inset-bottom));
+    background: var(--chalk);
+    border-radius: 22px 22px 0 0;
+    box-shadow: 0 -12px 40px rgba(23, 32, 51, .25);
+    max-height: 72vh;
+    overflow: auto;
+  }
+  #detail-modal.ing-open .recipe-ing .ing-list { background: transparent; padding: 0; max-height: none; }
+  #detail-modal.ing-open .recipe-ing .grab {
+    display: block;
+    width: 40px;
+    height: 5px;
+    border-radius: 5px;
+    background: rgba(23, 32, 51, .22);
+    margin: 0 auto 12px;
+  }
+  #detail-modal.ing-open .ing-sheet-head .section-h { display: block; }
+  #detail-modal.ing-open .ing-sheet-close { display: inline-flex; }
+  #detail-modal.ing-open .recipe-ing .grab { margin-left: auto; margin-right: auto; }
+}
