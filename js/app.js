@@ -4438,13 +4438,18 @@ function savedTheme() {
   } catch (e) { return 'auto'; }
 }
 
-function applyTheme() {
-  // Dark only. The stored choice and the menu item are kept so the code that
-  // reads them still works, but nothing here lets them switch the palette.
+function applyTheme(choice) {
+  // Light is the default; light and dark pin the choice, auto follows the OS.
   const root = document.documentElement;
-  root.dataset.theme = 'dark';
+  const pick = THEME_CHOICES.includes(choice) ? choice : savedTheme();
+  const dark = pick === 'dark' || (pick === 'auto' && window.matchMedia
+    && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  root.dataset.theme = dark ? 'dark' : 'light';
   const item = document.getElementById('theme-item');
-  if (item) { item.textContent = 'Theme: Dark'; item.hidden = true; }
+  if (item) {
+    item.textContent = `Theme: ${pick === 'auto' ? 'Auto' : dark ? 'Dark' : 'Light'}`;
+    item.hidden = false;
+  }
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
     const bg = getComputedStyle(document.body).backgroundColor;
