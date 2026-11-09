@@ -14,6 +14,9 @@ test('on a desktop the tag strip scrolls inside itself and never widens the page
   api.recipes.forEach((r) => { r.tags = MANY_TAGS.slice(); });
   await page.setViewportSize({ width: 1280, height: 900 });
   await unlock(page);
+  // Chip widths depend on the web fonts; measure after they have settled.
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(150);
 
   const box = await page.locator('.stats-chips').evaluate((el) => ({ client: el.clientWidth, scroll: el.scrollWidth }));
   expect(box.scroll).toBeGreaterThan(box.client); // the chips overflow the strip...

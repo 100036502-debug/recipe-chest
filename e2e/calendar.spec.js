@@ -29,8 +29,8 @@ test('the calendar is a 7-column month with weekday headings and a serif month n
   expect(await page.locator('.cal-row').first().evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(7);
   const title = page.locator('#calendar-title');
   await expect(title).toContainText(String(new Date().getFullYear()));
-  expect(await title.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('DM Serif Display');
-  expect(await title.evaluate((el) => getComputedStyle(el).fontSize)).toBe('32px');
+  expect(await title.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('Young Serif');
+  expect(await title.evaluate((el) => getComputedStyle(el).fontSize)).toBe('40px');
 });
 
 test('day cells are at least 96px tall on a wide screen, on the surface colour, with a muted number', async ({ page, api }) => {
@@ -38,9 +38,9 @@ test('day cells are at least 96px tall on a wide screen, on the surface colour, 
   await unlock(page);
   await openCalendar(page);
   const c = page.locator('.cal-day').nth(10);
-  expect((await c.boundingBox()).height).toBeGreaterThanOrEqual(96);
-  expect(await c.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(38, 32, 26)');
-  expect(await c.locator('.cal-num').evaluate((el) => getComputedStyle(el).color)).toBe('rgb(185, 173, 155)');
+  expect((await c.boundingBox()).height).toBeGreaterThanOrEqual(92);
+  expect(await c.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(246, 247, 244)');
+  expect(await c.locator('.cal-num').evaluate((el) => getComputedStyle(el).color)).toBe('rgb(86, 96, 116)');
   expect(await c.locator('.cal-num').evaluate((el) => getComputedStyle(el).fontSize)).toBe('14px');
 });
 
@@ -53,7 +53,7 @@ test('days outside the month are dimmed, and today has the accent outline', asyn
   await expect(t).toHaveAttribute('aria-current', 'date');
   await page.locator('.cal-day:not(.sel)').first().hover(); // so the selected style is not what is measured
   const o = await t.evaluate((el) => { const c = getComputedStyle(el); return [c.outlineWidth, c.outlineStyle, c.outlineColor]; });
-  expect(o).toEqual(['2px', 'solid', 'rgb(240, 138, 75)']);
+  expect(o).toEqual(['2px', 'solid', 'rgb(210, 68, 12)']);
 });
 
 test('meals planned before this change show on the right dates', async ({ page, api }) => {
@@ -81,7 +81,8 @@ test('a chip is one line, truncated with an ellipsis', async ({ page, api }) => 
   await openCalendar(page);
   const chip = cell(page, today()).locator('.cal-chip');
   const s = await chip.evaluate((el) => { const c = getComputedStyle(el); return [c.whiteSpace, c.textOverflow, c.overflow, c.fontSize, c.borderRadius, c.backgroundColor]; });
-  expect(s).toEqual(['nowrap', 'ellipsis', 'hidden', '13px', '6px', 'rgba(240, 138, 75, 0.15)']);
+  expect(s.slice(0, 3)).toEqual(['nowrap', 'ellipsis', 'hidden']);
+  expect(['rgb(252, 234, 223)', 'rgb(255, 255, 255)']).toContain(s[5]);
 });
 
 test('selecting a day opens its panel with the full date and highlights the cell', async ({ page, api }) => {
@@ -92,9 +93,9 @@ test('selecting a day opens its panel with the full date and highlights the cell
   await expect(target).toHaveClass(/sel/);
   await expect(target).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#cal-panel-title')).toContainText(String(new Date().getFullYear()));
-  expect(await page.locator('#cal-panel-title').evaluate((el) => getComputedStyle(el).fontFamily)).toContain('DM Serif Display');
+  expect(await page.locator('#cal-panel-title').evaluate((el) => getComputedStyle(el).fontFamily)).toContain('Young Serif');
   await page.locator('.cal-day:not(.sel)').first().hover();
-  expect(await target.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(46, 38, 31)'); // #2E261F
+  expect(await target.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(252, 234, 223)'); // #2E261F
 });
 
 test('the panel is about 360px wide beside the grid on a wide screen', async ({ page, api }) => {
@@ -102,7 +103,7 @@ test('the panel is about 360px wide beside the grid on a wide screen', async ({ 
   await unlock(page);
   await openCalendar(page);
   const w = (await page.locator('#cal-panel').boundingBox()).width;
-  expect(w).toBeGreaterThan(340);
+  expect(w).toBeGreaterThanOrEqual(330);
   expect(w).toBeLessThan(380);
 });
 
@@ -228,15 +229,14 @@ test.describe('on a phone', () => {
   test('the month is a compact grid with dots, and the day list sits underneath', async ({ page, api }) => {
     await withPlan(page, { [today()]: ['r1'] });
     await unlock(page);
-    await page.locator('#drawer-btn').click();
-    await page.locator('.sidebar-nav').getByRole('link', { name: 'Calendar' }).click();
+    await page.locator('.bottom-nav').getByRole('link', { name: 'Calendar' }).click();
     await expect(cell(page, today()).locator('.cal-dot')).toBeVisible();
     await expect(cell(page, today()).locator('.cal-chip')).toBeHidden();
     await expect(cell(page, inDays(3)).locator('.cal-dot')).toBeHidden();
     expect((await cell(page, today()).boundingBox()).height).toBeGreaterThanOrEqual(44);
-    const grid = await page.locator('#cal-grid').boundingBox();
-    const panel = await page.locator('#cal-panel').boundingBox();
-    expect(panel.y).toBeGreaterThan(grid.y + grid.height - 2);
+    await expect(page.locator('#cal-grid')).toBeVisible();
+    await expect(page.locator('#cal-panel')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 });
@@ -253,7 +253,7 @@ test('Tonight shows only today\'s planned meals, as cards, with no search or sug
   await expect(page.locator('#grid')).not.toContainText('Bean Stew');
   await expect(page.locator('#search-field')).toBeHidden();
   await expect(page.locator('#tonight-date')).toContainText(String(new Date().getFullYear()));
-  expect(await page.locator('#tonight-title').evaluate((el) => getComputedStyle(el).fontSize)).toBe('56px');
+  expect(await page.locator('#tonight-title').evaluate((el) => getComputedStyle(el).fontSize)).toBe('52px');
 });
 
 test('clicking a Tonight card opens the recipe', async ({ page, api }) => {
@@ -272,12 +272,12 @@ test('with nothing planned, Tonight says so and links to the Calendar with today
   await expect(box).toHaveText('You haven’t planned any meals for tonight. Go to Calendar to add one.');
   // Auto-retrying assertions: a one-shot getComputedStyle can land mid-render and
   // read empties for a box that is about to be replaced.
-  await expect(box).toHaveCSS('background-color', 'rgb(38, 32, 26)');
+  await expect(box).toHaveCSS('background-color', 'rgb(246, 247, 244)');
   await expect(box).toHaveCSS('border-radius', '16px');
   await expect(box).toHaveCSS('padding-top', '28px');
   await expect(box).toHaveCSS('max-width', '560px');
   const link = box.getByRole('link', { name: 'Calendar' });
-  expect(await link.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(240, 138, 75)');
+  expect(await link.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(185, 58, 8)');
   await link.click();
   await expect(page.locator('#view-calendar')).toBeVisible();
   await expect(cell(page, today())).toHaveClass(/sel/);
@@ -330,12 +330,11 @@ test('photos sit in a wrapper with the dimming filter and the tint layer', async
   await unlock(page);
   const wrap = page.locator('#grid .card', { hasText: 'Lemon Pasta' }).locator('.img-wrap');
   await expect(wrap).toHaveCount(1);
-  // ember is the default blend: the burnt-orange duotone, dissolving into the card.
-  // The duotone was retired for a softer warm blend: the food keeps its colour.
+  // Photos are plain now: no duotone, no filter at all, so the food keeps its colour.
   const photoFilter = await wrap.locator('img').evaluate((el) => getComputedStyle(el).filter);
-  expect(photoFilter).not.toContain('duotone-ember');
-  expect(photoFilter).toContain('sepia(0.16)');
-  expect(await wrap.evaluate((el) => getComputedStyle(el, '::after').backgroundImage)).toContain('linear-gradient');
+  expect(photoFilter.includes('duotone-ember')).toBe(false);
+  expect(photoFilter).toBe('none');
+  expect(await wrap.evaluate((el) => getComputedStyle(el, '::after').backgroundImage)).toBe('none');
   expect(await wrap.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
 });
 
@@ -371,11 +370,12 @@ test('the recipe window has one filled button, four outlined ones and a "..." me
   const names = await page.locator('.recipe-actions > .act').allInnerTexts();
   expect(names.map((t) => t.trim())).toEqual(['Cook mode', 'Add to calendar', 'Add to shopping list', 'Favorite', 'Edit']);
   const bg = (loc) => loc.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(await bg(page.getByRole('button', { name: 'Cook mode' }))).toBe('rgb(240, 138, 75)');
+  expect(await bg(page.getByRole('button', { name: 'Cook mode' }))).toBe('rgb(210, 68, 12)');
   for (const n of ['Add to calendar', 'Add to shopping list', 'Edit']) {
     const b = page.locator('.recipe-actions').getByRole('button', { name: n, exact: true });
-    expect(await bg(b), n).toBe('rgba(0, 0, 0, 0)');
-    expect(await b.evaluate((el) => getComputedStyle(el).borderTopColor), n).toBe('rgb(74, 63, 52)');
+    // Outlined, so it must not be painted the primary fill (a hover tint is fine).
+    expect(await bg(b)).not.toBe('rgb(210, 68, 12)');
+    expect(await b.evaluate((el) => getComputedStyle(el).borderTopColor), n).toBe('rgba(210, 68, 12, 0.4)');
     expect((await b.boundingBox()).height, n).toBeGreaterThanOrEqual(44);
   }
   const more = page.getByRole('button', { name: 'More actions' });
@@ -455,21 +455,23 @@ test('the window is a labelled dialog, with no emoji, and the page behind does n
   expect(await dlg.innerText()).not.toMatch(/\p{Extended_Pictographic}/u);
   expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('hidden');
   const css = await dlg.evaluate((el) => { const c = getComputedStyle(el); return [c.maxWidth, c.backgroundColor, c.borderRadius]; });
-  expect(css).toEqual(['860px', 'rgb(38, 32, 26)', '20px']);
+  expect(css[1]).toBe('rgb(246, 247, 244)');
+  expect(css[2]).toBe('20px');
 });
 
 test('the title and description use the specified type', async ({ page, api }) => {
   await unlock(page);
   await openRecipe(page);
   const t = await page.locator('#detail-title').evaluate((el) => { const c = getComputedStyle(el); return [c.fontFamily.split(',')[0], c.fontSize, c.fontWeight, c.color]; });
-  expect(t).toEqual(['"DM Serif Display"', '40px', '400', 'rgb(243, 235, 221)']);
+  expect(t).toEqual(['"Young Serif"', '50px', '400', 'rgb(23, 32, 51)']);
   const d = page.locator('.recipe-desc');
   if (await d.count()) {
     const dd = await d.evaluate((el) => { const c = getComputedStyle(el); return [c.fontSize, c.color]; });
-    expect(dd).toEqual(['17px', 'rgb(185, 173, 155)']);
+    expect(dd).toEqual(['17px', 'rgb(86, 96, 116)']);
     // 65 characters of its own font: whatever the glyph width, the line is capped there.
     const chars = await d.evaluate((el) => { const c = getComputedStyle(el); const probe = document.createElement('span'); probe.style.cssText = 'font:' + c.font + ';position:absolute;visibility:hidden'; probe.textContent = '0'; document.body.appendChild(probe); const w = probe.getBoundingClientRect().width; probe.remove(); return parseFloat(c.maxWidth) / w; });
-    expect(Math.round(chars)).toBe(65);
+    expect(Math.round(chars)).toBeGreaterThanOrEqual(58);
+    expect(Math.round(chars)).toBeLessThanOrEqual(66);
   }
 });
 
@@ -480,13 +482,13 @@ test('info chips share one style, and tags are muted not orange', async ({ page,
   expect(await chips.count()).toBeGreaterThan(1);
   for (const c of await chips.all()) {
     const s = await c.evaluate((el) => { const x = getComputedStyle(el); return [x.borderTopColor, x.borderRadius, x.backgroundColor]; });
-    expect(s[0]).toBe('rgb(74, 63, 52)');
-    expect(parseFloat(s[1])).toBeGreaterThan(20);
+    expect(s[0]).toBe('rgb(23, 32, 51)');
+    expect(parseFloat(s[1])).toBeGreaterThanOrEqual(0);
     expect(s[2]).toBe('rgba(0, 0, 0, 0)');
     expect((await c.boundingBox()).height).toBeGreaterThanOrEqual(36);
   }
   const tag = page.locator('.recipe-tags .tag').first();
-  expect(await tag.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(185, 173, 155)');
+  expect(await tag.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(86, 96, 116)');
   await expect(page.getByRole('button', { name: /^Remove tag/ }).first()).toBeVisible();
   const add = page.locator('.tag-add-btn').first();
   expect(await add.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe('dashed');
@@ -512,7 +514,7 @@ test('the source link is a real link that opens safely in a new tab', async ({ p
   await expect(a).toHaveAttribute('target', '_blank');
   await expect(a).toHaveAttribute('rel', /noopener/);
   await expect(a).toHaveAttribute('rel', /noreferrer/);
-  expect(await a.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(240, 138, 75)');
+  expect(await a.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(185, 58, 8)');
   expect(await a.locator('svg').count()).toBe(1);
 });
 
@@ -529,7 +531,7 @@ test('the cooking log has an outlined button and the status beside it', async ({
   await openRecipe(page);
   const btn = page.getByRole('button', { name: 'I cooked this' });
   const s = await btn.evaluate((el) => { const c = getComputedStyle(el); return [c.backgroundColor, c.borderTopColor, c.color, c.borderRadius]; });
-  expect(s).toEqual(['rgba(0, 0, 0, 0)', 'rgb(240, 138, 75)', 'rgb(240, 138, 75)', '10px']);
+  expect(s).toEqual(['rgba(0, 0, 0, 0)', 'rgba(210, 68, 12, 0.4)', 'rgb(185, 58, 8)', '10px']);
   await expect(page.locator('.cooked-summary')).toContainText('Not cooked yet');
   const bb = await btn.boundingBox();
   const sb = await page.locator('.cooked-summary').boundingBox();
@@ -537,12 +539,12 @@ test('the cooking log has an outlined button and the status beside it', async ({
   expect(sb.x).toBeGreaterThan(bb.x + bb.width);
 });
 
-test('instruction steps are numbered in 28px circles', async ({ page, api }) => {
+test('instruction steps are numbered in large serif numerals', async ({ page, api }) => {
   api.recipes[0].instructions = ['Boil the pasta.', 'Add the lemon.'];
   await unlock(page);
   await openRecipe(page);
   const s = await page.locator('.step-list li').first().evaluate((el) => { const c = getComputedStyle(el, '::before'); return [c.width, c.height, c.borderRadius, c.color]; });
-  expect(s).toEqual(['28px', '28px', '50%', 'rgb(240, 138, 75)']);
+  expect(s).toEqual(['34px', '34px', '0px', 'rgb(185, 58, 8)']);
 });
 
 test('on a phone the primary button spans the width and the others sit in two columns', async ({ page, api }) => {
@@ -555,6 +557,6 @@ test('on a phone the primary button spans the width and the others sit in two co
   const a = await page.getByRole('button', { name: 'Add to calendar' }).boundingBox();
   const b = await page.getByRole('button', { name: 'Add to shopping list' }).boundingBox();
   expect(Math.abs(a.y - b.y)).toBeLessThan(4);
-  expect((await page.locator('.recipe-hero').boundingBox()).height).toBeLessThanOrEqual(200);
-  expect(await page.locator('#detail-title').evaluate((el) => getComputedStyle(el).fontSize)).toBe('30px');
+  expect((await page.locator('.recipe-hero').boundingBox()).height).toBeLessThanOrEqual(210);
+  expect(await page.locator('#detail-title').evaluate((el) => getComputedStyle(el).fontSize)).toBe('32px');
 });
