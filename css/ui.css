@@ -1116,3 +1116,40 @@ a:not(.btn-primary):not(.act-primary):not(.bnav-add),
     margin: 2px auto 0;
   }
 }
+
+/* Calendar head: the month may shrink, the controls stay put and stay on screen
+   when they wrap, and the month drops to its phone size. */
+.cal-head { justify-content: space-between; align-items: center; gap: 12px; }
+.cal-month { min-width: 0; flex: 0 1 auto; }
+.cal-nav { flex: none; margin-left: auto; flex-wrap: nowrap; }
+
+@media (max-width: 899px) {
+  .cal-month,
+  #calendar-title { font-size: 28px; }
+  .cal-head { gap: 8px; }
+  .cal-today { padding: 0 14px; font-size: 15px; }
+  .cal-nav { gap: 4px; }
+  .cal-nav .round-btn, .cal-nav button { width: 40px; height: 40px; }
+}
+
+/* The heart: the bright orange reads lighter than the deep label orange, and
+   fills only when the recipe is a favourite. */
+.act-fav { color: var(--orange); border-color: var(--line); }
+.act-fav:hover { background: var(--peach); border-color: var(--line-strong); }
+.act-fav svg { color: var(--orange); }
+.act-fav.on { color: var(--orange); border-color: var(--orange); }
+.act-fav.on svg { fill: var(--orange); stroke: var(--orange); }
+
+/* Below the desktop breakpoint the day panel is a full-width block, not a fixed
+   330px column, so it cannot push the page sideways on a small phone. */
+@media (max-width: 899px) {
+  .cal-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .cal-panel { width: 100%; max-width: 100%; }
+}
+
+/* The heart icon is the bright orange; the label stays ink so it keeps its
+   contrast, and the deep orange when the recipe is a favourite. */
+.act-fav { color: var(--ink); border-color: var(--line); }
+.act-fav svg { color: var(--orange); }
+.act-fav.on { color: var(--orange-text); border-color: var(--orange); }
+.act-fav.on svg { fill: var(--orange); stroke: var(--orange); }
