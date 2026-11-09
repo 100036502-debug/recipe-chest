@@ -85,6 +85,7 @@ const INPUT_ACTIONS = {
 
 const ENTER_ACTIONS = {
   addPantryItem: () => addPantryItem(),
+  addPantryViewItem: () => addPantryViewItem(),
   addShoppingItem: () => addShoppingItem(),
 };
 
@@ -97,6 +98,7 @@ const KEYDOWN_ACTIONS = {
 // markup from reaching an unrelated global.
 const ACTIONS = {
   addCookTimerTime,
+  addPantryViewItem,
   addPantryItem,
   addPantryMissing,
   addRecipeToShoppingList,
@@ -2333,6 +2335,7 @@ const VIEWS = ['recipes', 'tonight', 'calendar', 'shopping', 'pantry'];
 // handler keeps working); Calendar, Shopping list and Pantry draw their own.
 function showView(name, opts) {
   const view = VIEWS.includes(name) ? name : 'recipes';
+  if (view === 'pantry') renderPantryView();
   const was = currentView;
   currentView = view;
   VIEWS.forEach((v) => {
@@ -3771,19 +3774,41 @@ function closePantry() {
   overlayClosed('pantry-overlay');
 }
 
+// One path into the pantry, whether the name was typed in the matcher or on the
+// Pantry page, so the two can never drift apart.
+function addPantryNames(value) {
+  const parts = String(value || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return 0;
+  const list = getPantry();
+  let added = 0;
+  parts.forEach((part) => {
+    const clean = part.slice(0, 60);
+    if (list.some((x) => x.toLowerCase() === clean.toLowerCase())) return;
+    list.push(clean);
+    added += 1;
+  });
+  if (added) savePantry(list);
+  renderPantry();
+  return added;
+}
+
 function addPantryItem() {
   const input = document.getElementById('pantry-input');
   if (!input) return;
-  const parts = String(input.value || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (!parts.length) return;
-  const list = getPantry();
-  parts.forEach((p) => {
-    const clean = p.slice(0, 60);
-    if (!list.some((x) => x.toLowerCase() === clean.toLowerCase())) list.push(clean);
-  });
-  savePantry(list);
-  input.value = '';
-  renderPantry();
+  const added = addPantryNames(input.value);
+  if (added) input.value = '';
+}
+
+// The Pantry page writes to the same list the matcher reads.
+function addPantryViewItem() {
+  const input = document.getElementById('pantry-view-input');
+  if (!input) return;
+  const added = addPantryNames(input.value);
+  if (added) {
+    input.value = '';
+    toast(added === 1 ? 'Added to the pantry' : `Added ${added} items`);
+  }
+  input.focus();
 }
 function removePantryItem(i) {
   const list = getPantry();
@@ -3822,7 +3847,30 @@ function fillPantrySuggestions() {
   el.innerHTML = names.slice(0, 300).map((n) => `<option value="${escapeHtml(n)}"></option>`).join('');
 }
 
+// The Pantry page and the matcher read one list, so an item added in either
+// place is in both, and stays after a reload.
+function renderPantryView() {
+  const listEl = document.getElementById('pantry-view-list');
+  if (!listEl) return;
+  const list = getPantry();
+  const countEl = document.getElementById('pantry-view-count');
+  if (countEl) {
+    countEl.textContent = list.length === 1 ? '1 ingredient' : `${list.length} ingredients`;
+  }
+  if (!list.length) {
+    listEl.innerHTML = '<p class="pantry-view-empty">Nothing here yet. Add what you keep, from salt to sumac.</p>';
+    return;
+  }
+  listEl.innerHTML = list.map((p, i) => `<div class="pantry-view-item">
+      <span class="pantry-view-name">${escapeHtml(p)}</span>
+      <button type="button" class="pantry-view-x" data-action="removePantryItem" data-index="${i}" aria-label="Remove ${escapeHtml(p)}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>`).join('');
+}
+
 function renderPantry() {
+  renderPantryView();
   const chips = document.getElementById('pantry-chips');
   const list = getPantry();
   if (chips) {

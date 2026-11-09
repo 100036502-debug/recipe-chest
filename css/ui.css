@@ -1153,3 +1153,64 @@ a:not(.btn-primary):not(.act-primary):not(.bnav-add),
 .act-fav svg { color: var(--orange); }
 .act-fav.on { color: var(--orange-text); border-color: var(--orange); }
 .act-fav.on svg { fill: var(--orange); stroke: var(--orange); }
+
+/* ============================================================== pantry page */
+.pantry-add { max-width: 520px; margin-top: 22px; }
+.pantry-add .field-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+.pantry-add-row { display: flex; gap: 10px; }
+.pantry-add-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--line);
+  background: var(--peach);
+  color: var(--ink);
+  padding: 0 16px;
+  font: 400 16px var(--ui);
+}
+.pantry-view-count {
+  margin: 20px 0 8px;
+  font-size: 14px;
+  color: var(--slate);
+}
+.pantry-view-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  max-width: 760px;
+}
+.pantry-view-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 6px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--chalk);
+  font-size: 16px;
+  color: var(--ink);
+}
+.pantry-view-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pantry-view-x {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--slate);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.pantry-view-x .i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.pantry-view-x:hover { background: var(--peach); color: var(--orange-text); }
+.pantry-view-empty { color: var(--slate); font-size: 16px; margin: 0; }
+.pantry-view-foot { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 26px; }
