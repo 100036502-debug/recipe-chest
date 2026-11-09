@@ -1093,7 +1093,9 @@ a.meta-link:hover { text-decoration: underline; }
 .search-field input {
   max-width: none;
   min-height: 48px;
-  padding: 0 var(--s-4) 0 var(--s-6);
+  /* 46px = icon offset (16) + icon (18) + a 12px gap. The old 32px left
+     padding put the placeholder text under the icon's right edge. */
+  padding: 0 var(--s-4) 0 46px;
   border-radius: var(--radius-control);
   border-color: var(--hairline-strong);
   font-size: 16px; /* never below 16px, or iOS zooms the page on focus */
@@ -1155,6 +1157,22 @@ a.meta-link:hover { text-decoration: underline; }
   mask-image: linear-gradient(to right, transparent 0, #000 var(--page-pad), #000 calc(100% - var(--s-6)), transparent 100%);
 }
 .stats-chips::-webkit-scrollbar { display: none; }
+/* Phones: chips wrap onto as many lines as they need. The sideways strip cut
+   labels mid-word at the right edge ("Desse..."), which reads as broken
+   rather than scrollable, so small screens get every chip fully readable. */
+@media (max-width: 599px) {
+  .stats-chips {
+    flex-wrap: wrap;
+    overflow: visible;
+    scroll-snap-type: none;
+    row-gap: var(--s-2);
+    margin-inline: 0;
+    padding: var(--s-1) 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
 /* Desktop: the strip scrolls its own chips, it does not widen the page. Without
    the max-width the flex child took its content width (the whole chip row), so
    the page itself scrolled sideways to show the last tags. */
