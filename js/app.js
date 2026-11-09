@@ -2595,7 +2595,7 @@ function openDetail(id) {
     }
   }
   const scaleFactor = (currentScaling && currentScaling.recipeId === r.id) ? currentScaling.factor : 1;
-  const ingredientsHtml = (r.ingredients || []).map(ing => `<li>${scaleIngredientLine(ing, scaleFactor)}</li>`).join('');
+  const ingredientsHtml = (r.ingredients || []).map((ing, i) => `<li><label class="ing-row"><input type="checkbox" class="ing-check" data-i="${i}"><span class="ing-text">${scaleIngredientLine(ing, scaleFactor)}</span></label></li>`).join('');
   const fav = r.favorite === true;
   const sourceChip = sourceHref
     ? `<a class="meta-pill meta-link" href="${escapeHtml(sourceHref)}" target="_blank" rel="noopener noreferrer"><span class="meta-link-text">${escapeHtml(sourceHost || 'source')}</span>${ICON_EXTERNAL}</a>`
@@ -2636,16 +2636,33 @@ function openDetail(id) {
           </div>
         </span>
       </div>
-      ${cookedSectionHtml(r)}
-      ${r.ingredients && r.ingredients.length ? `
-        <h3 class="section-h">Ingredients</h3>
-        <ul class="ing-list">${ingredientsHtml}</ul>
-      ` : ''}
-      ${r.instructions && r.instructions.length ? `
-        <h3 class="section-h">Instructions</h3>
-        <ol class="step-list">${r.instructions.map(i => `<li><span class="step-text">${escapeHtml(i)}</span></li>`).join('')}</ol>
-      ` : ''}
+      <div class="recipe-cols">
+        ${r.ingredients && r.ingredients.length ? `
+          <section class="recipe-ing" id="recipe-ing">
+            <div class="ing-sheet-head">
+              <span class="grab" aria-hidden="true"></span>
+              <h3 class="section-h">Ingredients</h3>
+              <button type="button" class="round-btn ing-sheet-close" id="ing-sheet-close" aria-label="Close ingredients">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+              </button>
+            </div>
+            <ul class="ing-list">${ingredientsHtml}</ul>
+          </section>
+        ` : ''}
+        ${r.instructions && r.instructions.length ? `
+          <section class="recipe-method">
+            <h3 class="section-h">Instructions</h3>
+            <ol class="step-list">${r.instructions.map(i => `<li><span class="step-text">${escapeHtml(i)}</span></li>`).join('')}</ol>
+          </section>
+        ` : ''}
+      </div>
       ${r.notes ? `<div class="notes-box"><span class="notes-label">Note</span> ${escapeHtml(r.notes)}</div>` : ''}
+      <div class="recipe-bar">
+        <button type="button" class="recipe-bar-btn" id="ing-bar-btn">
+          Ingredients, <span id="ing-left">${(r.ingredients || []).length}</span> left
+        </button>
+      </div>
+      ${cookedSectionHtml(r)}
       <div class="recipe-footer">
         <span>Added by ${escapeHtml(r.addedBy || 'Anonymous')} on ${new Date(r.createdAt).toLocaleDateString()}</span>
         <button type="button" class="delete-btn" data-action="deleteRecipe" data-id="${r.id}">Delete</button>
@@ -2656,7 +2673,41 @@ function openDetail(id) {
   document.getElementById('detail-overlay').classList.add('on');
   overlayOpened('detail-overlay');
   document.getElementById('detail-modal').scrollTop = 0;
+  document.getElementById('detail-modal').classList.remove('ing-open');
+  updateIngLeft();
 }
+// Recipe sheet: ticks are local to the open sheet, nothing is stored. The phone
+// bar counts what is left and promotes the same panel to a bottom sheet, so
+// there is only one list to keep in step.
+function updateIngLeft() {
+  const modal = document.getElementById('detail-modal');
+  if (!modal) return;
+  const boxes = [...modal.querySelectorAll('.ing-check')];
+  const left = boxes.filter((b) => !b.checked).length;
+  const label = modal.querySelector('#ing-left');
+  if (label) label.textContent = String(left);
+  const btn = modal.querySelector('#ing-bar-btn');
+  if (btn) btn.hidden = boxes.length === 0;
+}
+document.addEventListener('change', (e) => {
+  const box = e.target && e.target.closest && e.target.closest('.ing-check');
+  if (!box) return;
+  const row = box.closest('li');
+  if (row) row.classList.toggle('done', box.checked);
+  updateIngLeft();
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest) return;
+  if (e.target.closest('#ing-bar-btn')) {
+    const modal = document.getElementById('detail-modal');
+    if (modal) modal.classList.add('ing-open');
+    return;
+  }
+  if (e.target.closest('#ing-sheet-close')) {
+    const modal = document.getElementById('detail-modal');
+    if (modal) modal.classList.remove('ing-open');
+  }
+});
 function closeDetail() { document.getElementById('detail-overlay').classList.remove('on'); overlayClosed('detail-overlay'); currentScaling = null; }
 function printRecipe() { window.print(); }
 
@@ -4438,13 +4489,18 @@ function savedTheme() {
   } catch (e) { return 'auto'; }
 }
 
-function applyTheme() {
-  // Dark only. The stored choice and the menu item are kept so the code that
-  // reads them still works, but nothing here lets them switch the palette.
+function applyTheme(choice) {
+  // Light is the default; light and dark pin the choice, auto follows the OS.
   const root = document.documentElement;
-  root.dataset.theme = 'dark';
+  const pick = THEME_CHOICES.includes(choice) ? choice : savedTheme();
+  const dark = pick === 'dark' || (pick === 'auto' && window.matchMedia
+    && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  root.dataset.theme = dark ? 'dark' : 'light';
   const item = document.getElementById('theme-item');
-  if (item) { item.textContent = 'Theme: Dark'; item.hidden = true; }
+  if (item) {
+    item.textContent = `Theme: ${pick === 'auto' ? 'Auto' : dark ? 'Dark' : 'Light'}`;
+    item.hidden = false;
+  }
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
     const bg = getComputedStyle(document.body).backgroundColor;

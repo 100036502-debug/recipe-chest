@@ -96,12 +96,13 @@ test('All recipes keeps the count, sort, filters and collections', async ({ page
   await expect(page.locator('#grid .card .card-title-line').first()).toHaveText('Bean Stew');
 });
 
-test('the active filter chip is the accent colour with dark text', async ({ page, api }) => {
+test('the active filter chip is the accent colour with readable text', async ({ page, api }) => {
   await unlock(page);
   await openAllRecipes(page);
   const on = page.locator('#stats .filter-chip.on').first();
-  expect(await on.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(240, 138, 75)');
-  expect(await on.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(27, 22, 18)');
+  expect(await on.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(210, 68, 12)');
+  // --on-primary: white on the solid orange in light, ink on the soft one at night.
+  expect(await on.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(255, 255, 255)');
   const off = page.locator('#stats .filter-chip:not(.on)').first();
   expect(await off.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
   expect((await off.boundingBox()).height).toBeGreaterThanOrEqual(36);
@@ -217,25 +218,22 @@ test('the sidebar links are real links or buttons, reachable by Tab', async ({ p
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 780 } });
 
-  test('the sidebar is a drawer behind a menu button, with the lock and name inside it', async ({ page, api }) => {
+  test('a top bar and a fixed bottom bar replace the drawer', async ({ page, api }) => {
     await unlock(page);
     await expect(page.locator('.topbar')).toBeVisible();
     await expect(page.locator('.sidebar')).toBeHidden();
-    await page.locator('#drawer-btn').click();
-    await expect(page.locator('.sidebar')).toBeVisible();
-    await expect(page.locator('#drawer-btn')).toHaveAttribute('aria-expanded', 'true');
-    await expect(page.locator('.sidebar-footer').getByRole('button', { name: 'Lock', exact: true })).toBeVisible();
-    await expect(page.locator('.sidebar-footer #user-tag')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.locator('.sidebar')).toBeHidden();
+    const nav = page.locator('.bottom-nav');
+    await expect(nav).toBeVisible();
+    await expect(nav.locator('.bnav-item')).toHaveCount(4);
+    await expect(nav.locator('.bnav-add')).toBeVisible();
+    expect((await nav.boundingBox()).height).toBeGreaterThanOrEqual(80);
   });
 
-  test('choosing a link closes the drawer and shows that page', async ({ page, api }) => {
+  test('choosing a bottom bar item shows that page', async ({ page, api }) => {
     await unlock(page);
-    await page.locator('#drawer-btn').click();
-    await page.locator('.sidebar-nav').getByRole('link', { name: 'Calendar' }).click();
-    await expect(page.locator('.sidebar')).toBeHidden();
+    await page.locator('.bottom-nav').getByRole('link', { name: 'Calendar' }).click();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(/\d{4}/);
+    await expect(page.locator('.bottom-nav')).toBeVisible();
   });
 
   test('one column, a smaller headline, and no sideways scroll', async ({ page, api }) => {
@@ -255,11 +253,11 @@ test.describe('on a wide screen', () => {
   test('a 220px sidebar, three columns, and the headings in the display face', async ({ page, api }) => {
     api.recipes.push(...[3, 4, 5].map((n) => ({ id: 'w' + n, title: 'Wide ' + n, tags: [], mealType: 'dinner', ingredients: [], addedBy: 'Sam' })));
     await unlock(page);
-    expect((await page.locator('.sidebar').boundingBox()).width).toBe(220);
+    expect((await page.locator('.sidebar').boundingBox()).width).toBe(248);
     expect(await page.locator('#grid').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(3);
     const h1 = await page.locator('.view-title').first().evaluate((el) => { const c = getComputedStyle(el); return { size: c.fontSize, family: c.fontFamily }; });
-    expect(h1.size).toBe('56px');
-    expect(h1.family).toContain('DM Serif Display');
-    expect(await page.evaluate(() => document.fonts.check('16px "DM Sans"') && document.fonts.check('16px "DM Serif Display"'))).toBe(true);
+    expect(h1.size).toBe('52px');
+    expect(h1.family).toContain('Young Serif');
+    expect(await page.evaluate(() => document.fonts.check('16px "Instrument Sans"') && document.fonts.check('16px "Young Serif"'))).toBe(true);
   });
 });

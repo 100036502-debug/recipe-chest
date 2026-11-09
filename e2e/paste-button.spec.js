@@ -33,17 +33,18 @@ test('the sidebar has the nine links, in order, with no emoji and none of the re
   for (const gone of ['Plan', 'Meal plan', 'List']) expect(texts.map((t) => t.trim())).not.toContain(gone);
 });
 
-test('every sidebar item looks identical: plain text, no shape', async ({ page, api }) => {
+test('every sidebar item looks identical: one shape, one colour', async ({ page, api }) => {
   await unlock(page);
   await page.addStyleTag({ content: '*{transition:none !important}' });
   const links = page.locator('.sidebar-nav .side-link');
   const first = await styleOf(links.nth(1)); // not the current page (All recipes is)
   expect(first.backgroundColor).toBe('rgba(0, 0, 0, 0)');
   expect(first.borderTopWidth).toBe('0px');
-  expect(first.borderRadius).toBe('0px');
-  expect(first.color).toBe('rgb(185, 173, 155)'); // #B9AD9B
+  expect(first.borderRadius).toBe('10px');
   expect(first.fontSize).toBe('16px');
-  for (let i = 2; i < LABELS.length; i += 1) {
+  // The five view links share one shape; the action buttons below them are a
+  // different group and are compared by their own test below.
+  for (let i = 2; i <= 4; i += 1) {
     expect(await styleOf(links.nth(i)), LABELS[i]).toEqual(first);
   }
 });
@@ -54,5 +55,5 @@ test('hover brightens a link, and the current page is bright', async ({ page, ap
   await expect(page.locator('.sidebar-nav .side-link').first()).toHaveAttribute('aria-current', 'page');
   const other = page.locator('.sidebar-nav .side-link', { hasText: 'Import URL' });
   await other.hover();
-  expect(await other.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(243, 235, 221)'); // #F3EBDD
+  expect(await other.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(23, 32, 51)'); // ink
 });

@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark" data-photo-filter="ember">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Recipe Chest</title>
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#1B1612">
+<meta name="theme-color" content="#F6F7F4">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -13,26 +13,14 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Recipe Chest">
 <script src="/js/theme.js"></script>
-<link rel="preload" href="/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/fonts/dm-serif-display-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/instrument-sans-latin-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/young-serif-latin-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/app.css">
 <link rel="stylesheet" href="/css/tonight.css">
-<link rel="stylesheet" href="/css/photo-filter.css">
+<link rel="stylesheet" href="/css/ui.css">
 </head>
 <body class="locked">
 
-<!-- Duotone filter for the "ember" photo style. Defined once, never rendered;
-     CSS refers to it as url(#duotone-ember). -->
-<svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
-  <filter id="duotone-ember" color-interpolation-filters="sRGB">
-    <feColorMatrix type="matrix" values=".33 .33 .33 0 0  .33 .33 .33 0 0  .33 .33 .33 0 0  0 0 0 1 0"/>
-    <feComponentTransfer>
-      <feFuncR type="table" tableValues="0.106 0.898"/>
-      <feFuncG type="table" tableValues="0.086 0.612"/>
-      <feFuncB type="table" tableValues="0.071 0.435"/>
-    </feComponentTransfer>
-  </filter>
-</svg>
 
 <div id="lock-screen">
   <div class="lock-box">
@@ -46,6 +34,7 @@
   </div>
 </div>
 
+<a class="skip-link" href="#main">Skip to content</a>
 <div id="app-content" style="display:none;flex:1;flex-direction:column">
 <header class="topbar">
   <a class="sidebar-logo" href="#recipes" data-action="showView" data-arg="recipes">Recipe Chest</a>
@@ -367,6 +356,17 @@
     </div>
   </div>
 </div>
+
+
+<nav class="bottom-nav" aria-label="Main">
+  <a class="bnav-item" href="#recipes" data-action="showView" data-arg="recipes" data-view-link="recipes">Recipes</a>
+  <a class="bnav-item" href="#tonight" data-action="showView" data-arg="tonight" data-view-link="tonight">Tonight</a>
+  <button type="button" class="bnav-add" data-action="openUpload" aria-label="Add a recipe">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+  <a class="bnav-item" href="#calendar" data-action="showView" data-arg="calendar" data-view-link="calendar">Calendar</a>
+  <a class="bnav-item" href="#shopping" data-action="showView" data-arg="shopping" data-view-link="shopping">List</a>
+</nav>
 
 <div class="toast" id="toast"></div>
 
