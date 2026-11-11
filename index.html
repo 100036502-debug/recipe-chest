@@ -374,12 +374,32 @@
 <nav class="bottom-nav" aria-label="Main">
   <a class="bnav-item" href="#recipes" data-action="showView" data-arg="recipes" data-view-link="recipes">Recipes</a>
   <a class="bnav-item" href="#tonight" data-action="showView" data-arg="tonight" data-view-link="tonight">Tonight</a>
-  <button type="button" class="bnav-add" data-action="openUpload" aria-label="Add a recipe">
+  <button type="button" class="bnav-add" data-action="openAddSheet" aria-label="Add a recipe" aria-haspopup="dialog">
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
   </button>
   <a class="bnav-item" href="#calendar" data-action="showView" data-arg="calendar" data-view-link="calendar">Calendar</a>
   <a class="bnav-item" href="#shopping" data-action="showView" data-arg="shopping" data-view-link="shopping">List</a>
 </nav>
+
+<div class="overlay" id="add-overlay">
+  <div class="modal add-modal" role="dialog" aria-modal="true" aria-labelledby="add-title">
+    <h2 id="add-title">Add a recipe</h2>
+    <p class="sub">How do you want to add it?</p>
+    <button type="button" class="add-option" data-action="chooseAdd" data-arg="photos">
+      <span class="add-option-title">Add photos</span>
+      <span class="add-option-sub">Screenshots or PDFs, one or many</span>
+    </button>
+    <button type="button" class="add-option" data-action="chooseAdd" data-arg="url">
+      <span class="add-option-title">Import from a link</span>
+      <span class="add-option-sub">Paste a recipe URL and let AI read it</span>
+    </button>
+    <button type="button" class="add-option" data-action="chooseAdd" data-arg="paste">
+      <span class="add-option-title">Paste text</span>
+      <span class="add-option-sub">Copy the recipe text and tidy it up</span>
+    </button>
+    <button type="button" class="btn-secondary" data-action="closeAddSheet">Cancel</button>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 

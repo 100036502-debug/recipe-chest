@@ -123,6 +123,8 @@ const ACTIONS = {
   closeImport,
   closePantry,
   closePasteImport,
+  chooseAdd,
+  closeAddSheet,
   closePicker,
   closeShareModal,
   closeShoppingList,
@@ -155,6 +157,7 @@ const ACTIONS = {
   openShareModal,
   openShoppingList,
   openStorage,
+  openAddSheet,
   openUpload,
   pickBackupFiles,
   pickRecipe,
@@ -429,6 +432,7 @@ function closeOverlayById(id) {
     case 'paste-overlay': closePasteImport(); break;
     case 'coll-overlay': closeCollectionsManager(); break;
     case 'cooked-overlay': closeCookedModal(); break;
+    case 'add-overlay': closeAddSheet(); break;
     case 'picker-overlay': closePicker(); break;
     case 'credit-overlay': cancelPhotoUpload(); break;
   }
@@ -913,6 +917,34 @@ async function compressImage(file, maxDim = 1200, quality = 0.85) {
     reader.readAsDataURL(file);
   });
 }
+
+// The bottom-nav "+" asks which kind of import to start, instead of
+// assuming photos. Same three paths the sidebar offers.
+function openAddSheet() {
+  document.getElementById('add-overlay').classList.add('on');
+  overlayOpened('add-overlay');
+}
+function closeAddSheet() {
+  const el = document.getElementById('add-overlay');
+  if (!el.classList.contains('on')) return;
+  overlayClosed('add-overlay');
+  el.classList.remove('on');
+}
+function chooseAdd(kind) {
+  closeAddSheet();
+  // Close pops the sheet's history entry asynchronously; open the next
+  // overlay on the following tick so its own entry is pushed after that
+  // pop, or the Back button would skip it.
+  const open = () => {
+    if (kind === 'photos') openUpload();
+    else if (kind === 'url') openImport();
+    else if (kind === 'paste') openPasteImport();
+  };
+  setTimeout(open, 0);
+}
+document.getElementById('add-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'add-overlay') closeAddSheet(); // tap the backdrop
+});
 
 function openUpload() {
   document.getElementById('upload-overlay').classList.add('on');
