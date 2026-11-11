@@ -775,7 +775,10 @@ h1, h2, h3, .view-title, .recipe-title, .modal h2, .modal h3, .cal-month,
 .bottom-nav { display: none; }
 
 @media (max-width: 899px) {
-  .sidebar { display: none; }
+  /* The drawer lives off-canvas via transform in tonight.css; display:none
+     here made the hamburger a no-op, because transform/visibility cannot
+     beat display. */
+  .sidebar { display: block; }
   .main { padding: 18px 16px 110px; }
   .view-title { font-size: 34px; }
   .topbar { display: flex; background: var(--chalk); border-bottom: 1px solid var(--line); }
@@ -1214,3 +1217,52 @@ a:not(.btn-primary):not(.act-primary):not(.bnav-add),
 .pantry-view-x:hover { background: var(--peach); color: var(--orange-text); }
 .pantry-view-empty { color: var(--slate); font-size: 16px; margin: 0; }
 .pantry-view-foot { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 26px; }
+
+
+/* ------------------------------------------------------------- add sheet */
+/* The bottom-nav "+" asks how to add a recipe instead of assuming photos. */
+.add-modal {
+  width: 100%;
+  max-width: 420px;
+  padding: 22px;
+  background: var(--t-surface, #fff);
+  border-radius: 20px;
+}
+.add-modal h2 {
+  font-size: 20px;
+  margin: 0 0 4px;
+  color: var(--t-text, #2A2118);
+}
+.add-modal p.sub {
+  margin: 0 0 16px;
+  color: var(--t-muted, #6B6154);
+  font-size: 14px;
+}
+.add-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  border: 1px solid var(--t-outline, #DDD6C8);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--t-text, #2A2118);
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 60px;
+}
+.add-option:hover { border-color: var(--t-accent, #C4622D); }
+.add-option .add-option-title { font-size: 16px; font-weight: 600; }
+.add-option .add-option-sub { font-size: 13.5px; color: var(--t-muted, #6B6154); }
+.add-modal .btn-secondary { width: 100%; margin-top: 4px; }
+@media (max-width: 899px) {
+  #add-overlay { align-items: flex-end; padding: 0; }
+  #add-overlay .add-modal {
+    border-radius: 20px 20px 0 0;
+    padding-bottom: calc(22px + env(safe-area-inset-bottom));
+  }
+}
