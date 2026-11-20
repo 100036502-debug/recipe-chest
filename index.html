@@ -85,6 +85,10 @@
     <button class="ios-hint-close" data-action="dismissIosHint" aria-label="Dismiss">✕</button>
   </div>
   <div id="offline-banner" class="offline-banner" style="display:none">You're offline. Showing saved recipes. Some actions are unavailable until you reconnect.</div>
+  <div id="storage-banner" class="offline-banner" role="status" hidden>
+    <span id="storage-banner-text"></span>
+    <button type="button" class="ios-hint-close" data-action="dismissStorageBanner" aria-label="Dismiss storage warning">✕</button>
+  </div>
 
   <!-- All recipes: the home page. Heading, search, filters and the full grid. -->
   <section class="view" id="view-recipes" aria-labelledby="recipes-title">

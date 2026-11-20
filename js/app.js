@@ -29,7 +29,7 @@ function applyRole(role) {
 }
 // Anything that opens a write flow is hidden for a guest, without having to
 // remember to annotate every button by hand.
-const WRITE_HANDLERS = /(openImport|openPasteImport|openUpload|openEdit|saveEdit|deleteRecipe|toggleFav|startCookLog|openCookedModal|deleteCookedEntry|openShareModal|openAiTools|restoreRecipe|savePastedRecipe|createShareLink|revokeShareLink|showTagInput|removeTag|showCollectionInput|removeCollectionFromRecipe|openCollectionsManager|renameCollectionPrompt|deleteCollection|pickRecipePhoto|removeRecipePhoto|exportBackup|pickBackupFiles|openStorage)/;
+const WRITE_HANDLERS = /(openAddSheet|chooseAdd|openImport|openPasteImport|openUpload|openEdit|saveEdit|deleteRecipe|toggleFav|startCookLog|openCookedModal|deleteCookedEntry|openShareModal|openAiTools|restoreRecipe|savePastedRecipe|createShareLink|revokeShareLink|showTagInput|removeTag|showCollectionInput|removeCollectionFromRecipe|openCollectionsManager|renameCollectionPrompt|deleteCollection|pickRecipePhoto|removeRecipePhoto|exportBackup|pickBackupFiles|openStorage)/;
 function markWriteOnly() {
   document.querySelectorAll('[data-action]').forEach((el) => {
     if (WRITE_HANDLERS.test(el.dataset.action || '')) el.classList.add('write-only');
@@ -156,6 +156,7 @@ const ACTIONS = {
   openPlannedRecipe,
   openShareModal,
   openShoppingList,
+  dismissStorageBanner,
   openStorage,
   openAddSheet,
   openUpload,
@@ -734,9 +735,13 @@ async function exportBackup(withPhotos) {
 
     // 2. Photos, one slice per file so no response hits the size limit.
     let offset = 0;
+    let after = '';
     let part = 0;
     for (;;) {
-      const res = await apiFetch(`${API}/export?photos=1&offset=${offset}`, { credentials: 'same-origin' });
+      // `after` is the cursor for photos of one huge recipe; without it the
+      // next slice restarts at the same recipe and the loop repeats.
+      const q = `photos=1&offset=${offset}${after ? `&after=${encodeURIComponent(after)}` : ''}`;
+      const res = await apiFetch(`${API}/export?${q}`, { credentials: 'same-origin' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         toast('Could not export photos: ' + (data.error || 'Export failed') + '. Try "Export backup" (without photos).');
@@ -744,13 +749,16 @@ async function exportBackup(withPhotos) {
       }
       const slice = await res.json();
       const ids = Object.keys(slice.photos || {});
-      if (ids.length || slice.done) {
+      // Only write a file when it actually holds photos, and never write an
+      // empty trailing one when the last slice had none left.
+      if (ids.length || (slice.done && part === 0)) {
         part++;
         downloadBlobAs(new Blob([JSON.stringify(slice)], { type: 'application/json' }),
           `recipe-chest-photos-${date}-part${part}.json`);
       }
       if (slice.done) break;
       offset = slice.nextOffset;
+      after = slice.nextAfter || '';
       toast(`Exporting photos... part ${part + 1}`);
     }
     toast(`Backup downloaded${part > 1 ? ` (${part} photo parts)` : ' (with photos)'}`);
@@ -925,6 +933,7 @@ async function compressImage(file, maxDim = 1200, quality = 0.85) {
 // The bottom-nav "+" asks which kind of import to start, instead of
 // assuming photos. Same three paths the sidebar offers.
 function openAddSheet() {
+  if (!requireWrite()) return;
   document.getElementById('add-overlay').classList.add('on');
   overlayOpened('add-overlay');
 }
@@ -947,6 +956,7 @@ function chooseAdd(kind) {
   setTimeout(open, 0);
 }
 function openUpload() {
+  if (!requireWrite()) return;
   document.getElementById('upload-overlay').classList.add('on');
   overlayOpened('upload-overlay');
   document.getElementById('uploader-name').value = getUser() === 'Anonymous' ? '' : getUser();
@@ -1148,9 +1158,23 @@ function openQueuedRecipe(queueItemId) {
 function saveCopyAnyway(queueItemId) {
   const item = uploadQueue.find(i => i.id === queueItemId);
   if (!item || isProcessing) return;
+  item.error = null;
+  if (oneRecipeChecked()) {
+    // These photos were sent as ONE recipe, so retry the whole group. Making a
+    // single item ready would send that photo on its own and create a partial
+    // recipe from it.
+    for (const it of uploadQueue) {
+      if (it.isPdf || it.status === 'done') continue;
+      it.status = 'ready';
+      it.skipDuplicateCheck = true;
+      it.error = null;
+    }
+    updateQueueUI();
+    startBatch();
+    return;
+  }
   item.status = 'ready';
   item.skipDuplicateCheck = true;
-  item.error = null;
   updateQueueUI();
   startBatch();
 }
@@ -1190,7 +1214,7 @@ async function processAsOneRecipe(items, name) {
       }
       prepared.push({ imageBase64: base64, mimeType: mime });
     }
-    const plan = RCUtils.buildMultiImageRequest(prepared, name);
+    const plan = RCUtils.buildMultiImageRequest(prepared, name, prepared.some(i => i.skipDuplicateCheck === true));
     if (plan.error) throw new Error(plan.error);
     const res = await apiFetch(plan.path, {
       method: 'POST',
@@ -1201,7 +1225,15 @@ async function processAsOneRecipe(items, name) {
     let data = null;
     try { data = await res.json(); } catch (e) { data = null; }
     if (res.status === 409) {
-      group.forEach(i => { i.status = 'duplicate'; i.error = null; });
+      // Carry the existing recipe's id and title: without them the row's
+      // "Open" button does nothing (openQueuedRecipe needs a recipeId).
+      const dup = (data && data.duplicate) || {};
+      group.forEach(i => {
+        i.status = 'duplicate';
+        i.error = null;
+        i.recipeId = dup.id || null;
+        i.title = dup.title || i.title;
+      });
       updateQueueUI();
       return;
     }
@@ -1215,6 +1247,7 @@ async function processAsOneRecipe(items, name) {
       i.file = null;
     });
     if (saved.id && !recipes.some(r => r.id === saved.id)) recipes.push(saved);
+    try { localStorage.setItem('rc_recipes_cache', JSON.stringify(recipes)); } catch (e) { /* storage full */ }
     renderGrid();
   } catch (e) {
     group.forEach(i => { i.status = 'failed'; i.error = e.message; });
@@ -1311,6 +1344,7 @@ async function startBatch() {
 }
 
 function openImport() {
+  if (!requireWrite()) return;
   document.getElementById('import-overlay').classList.add('on');
   overlayOpened('import-overlay');
   document.getElementById('importer-name').value = getUser() === 'Anonymous' ? '' : getUser();
@@ -1461,24 +1495,11 @@ async function loadRecipes() {
 
 // Total prep+cook time in minutes, or -1 when the recipe has no times
 // (those always sort last under 'Quickest').
-function timeToMinutes(s) {
-  const str = String(s || '').toLowerCase();
-  if (!str) return -1;
-  let total = 0, found = false;
-  const re = /(\d+(?:\.\d+)?)\s*(hour|hr|h\b|minute|min|m\b)?/g;
-  let m;
-  while ((m = re.exec(str))) {
-    const n = parseFloat(m[1]);
-    if (!m[2] || /^h/.test(m[2])) total += m[2] && /^h/.test(m[2]) ? n * 60 : n;
-    else total += n;
-    found = true;
-  }
-  return found ? total : -1;
-}
+// Time parsing lives in js/utils.js: the local copy summed both ends of a
+// range ("10-15 min" became 25) and read "1-2 hours" as 121 minutes.
 function totalTimeMinutes(r) {
-  const p = timeToMinutes(r.prepTime), c = timeToMinutes(r.cookTime);
-  if (p >= 0 && c >= 0) return p + c;
-  return Math.max(p, c); // -1 when neither parses
+  const m = RCUtils.readyInMinutes(r);
+  return m == null ? -1 : m;
 }
 const SORTERS = {
   newest: (a, b) => (b.createdAt || 0) - (a.createdAt || 0),
@@ -1892,7 +1913,9 @@ function closeAiTools() {
 }
 
 function clearAiUndo() {
-  if (aiUndoTimer) { clearTimeout(aiUndoTimer); aiUndoTimer = null; }
+  // aiUndoTimer is a setInterval id; clearTimeout happens to work on one in
+  // browsers, but it reads as a bug and would break on any other host.
+  if (aiUndoTimer) { clearInterval(aiUndoTimer); aiUndoTimer = null; }
   aiPrevious = null;
   const undo = document.getElementById('ai-undo');
   if (undo) undo.remove();
@@ -2043,6 +2066,9 @@ async function replaceWithAi() {
       rev: updated && typeof updated.rev === 'number' ? updated.rev : undefined,
     };
     await loadRecipes();
+    // The detail sheet can be open behind the AI one; refresh it or it keeps
+    // showing the pre-AI ingredients after the AI sheet closes.
+    if (document.getElementById('detail-overlay').classList.contains('on')) openDetail(aiRecipeId);
     toast('Recipe updated');
     showAiUndo();
   } catch (e) { toast(e.message); }
@@ -2094,6 +2120,7 @@ async function undoAiReplace() {
     }
     if (!res.ok) throw new Error('Could not undo that change');
     await loadRecipes();
+    if (document.getElementById('detail-overlay').classList.contains('on')) openDetail(aiRecipeId);
     toast('Change undone');
   } catch (e) { toast(e.message); }
 }
@@ -3642,7 +3669,10 @@ let lastListOp = null;
 
 async function saveShoppingList(op, retried) {
   if (!shoppingListReady()) return;
-  if (typeof op === 'function') lastListOp = op;
+  // Called from a retry, lastListOp is already the right one. Called fresh
+  // with no callback (a bulk edit applied in place), the old callback is
+  // stale: keep it and a 409 replays an unrelated earlier change.
+  if (!retried) lastListOp = typeof op === 'function' ? op : null;
   try {
     const body = { deviceId: listDeviceId(), items: shoppingList.items };
     if (shoppingList.updatedAt != null) body.baseUpdatedAt = shoppingList.updatedAt;
@@ -4250,20 +4280,33 @@ async function addWeekToShoppingList() {
   if (!ids.size) { toast('No meals planned this week'); return; }
   await loadShoppingList();
   if (!shoppingListReady()) return;
-  const existing = new Set((shoppingList.items || []).map(it => it.text.toLowerCase()));
-  let added = 0;
+  const additions = [];
   for (const rid of ids) {
     const r = recipes.find(x => x.id === rid);
     if (!r || !r.ingredients) continue;
     for (const ing of r.ingredients) {
-      if (existing.has(String(ing).toLowerCase())) continue;
-      shoppingList.items.push({ text: String(ing), checked: false, recipeId: rid });
-      added++;
+      additions.push({ text: String(ing), checked: false, recipeId: rid });
     }
   }
-  await saveShoppingList();
-  if (added) toast(`Added ${added} ingredient${added > 1 ? 's' : ''} for the week`);
-  else toast('Everything is already on the list');
+  if (!additions.length) { toast('Everything is already on the list'); return; }
+
+  const nameOf = (text) => RCUtils.normalizeIngredientName(RCUtils.parseIngredientLine(text).name);
+  const priorNames = new Set((shoppingList.items || []).map((it) => nameOf(it.text)));
+  let mergedCount = 0;
+  additions.forEach((a) => { if (priorNames.has(nameOf(a.text))) mergedCount++; });
+  const addedCount = additions.length - mergedCount;
+
+  // Same merge the single-recipe path uses ("2 cups flour" + "1 cup flour" =
+  // three), and the same replay-safe callback for a 409 retry.
+  const apply = (items) => {
+    const combined = RCUtils.mergeShoppingItems(items.concat(additions.map((a) => ({ ...a }))));
+    items.length = 0;
+    combined.forEach((x) => items.push(x));
+  };
+  apply(shoppingList.items);
+  await saveShoppingList(apply);
+  renderShoppingList();
+  if (addedCount || mergedCount) toast(`${addedCount} added, ${mergedCount} merged`);
 }
 
 // The picker serves two directions. From a day on the plan it lists recipes
@@ -4523,13 +4566,15 @@ function formatMb(bytes) {
   return (Number(bytes || 0) / 1048576).toFixed(1) + ' MB';
 }
 
-async function openStorage() {
+async function openStorage(refresh) {
   const overlay = document.getElementById('storage-overlay');
   overlay.classList.add('on');
   overlayOpened('storage-overlay');
   setStorageBody('<p class="share-hint">Measuring…</p>');
   try {
-    const res = await apiFetch(`${API}/storage-stats`);
+    // The server caches the answer for ten minutes; "Measure again" asks for a
+    // fresh one, or it would just re-show the cached number.
+    const res = await apiFetch(`${API}/storage-stats${refresh ? '?refresh=1' : ''}`);
     const stats = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(stats.error || 'Could not measure storage');
     renderStorageBody(stats);
@@ -4559,7 +4604,7 @@ function renderStorageBody(stats) {
     <p class="storage-line">${formatMb(stats.totalBytes)} used, ${photos}, ${count}</p>
     ${bar}
     <p class="share-hint">Photos ${formatMb(stats.photoBytes)} · recipe text ${formatMb(stats.recipeBytes)}</p>
-    <button class="btn-secondary" data-action="openStorage">Measure again</button>`);
+    <button class="btn-secondary" data-action="openStorage" data-bool="1">Measure again</button>`);
 }
 
 async function checkStorageBanner() {

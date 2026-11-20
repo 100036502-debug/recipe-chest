@@ -583,7 +583,7 @@
   // ---- multi-photo import -----------------------------------------------
   // Builds the ONE request that sends several photos of the same recipe, or an
   // error the caller can show without touching the network.
-  function buildMultiImageRequest(items, addedBy) {
+  function buildMultiImageRequest(items, addedBy, skipDuplicateCheck) {
     var list = (Array.isArray(items) ? items : []).filter(function (it) {
       return it && typeof it.imageBase64 === 'string' && it.imageBase64 && it.mimeType;
     });
@@ -596,6 +596,7 @@
       body: {
         images: list.map(function (it) { return { imageBase64: it.imageBase64, mimeType: it.mimeType }; }),
         addedBy: addedBy || '',
+        ...(skipDuplicateCheck ? { skipDuplicateCheck: true } : {}),
       },
     };
   }
