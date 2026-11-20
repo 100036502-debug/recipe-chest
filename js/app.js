@@ -433,6 +433,9 @@ function closeOverlayById(id) {
     case 'coll-overlay': closeCollectionsManager(); break;
     case 'cooked-overlay': closeCookedModal(); break;
     case 'add-overlay': closeAddSheet(); break;
+    case 'share-overlay': closeShareModal(); break;
+    case 'ai-overlay': closeAiTools(); break;
+    case 'storage-overlay': closeStorage(); break;
     case 'picker-overlay': closePicker(); break;
     case 'credit-overlay': cancelPhotoUpload(); break;
   }
@@ -570,8 +573,9 @@ function handleAppShortcut() {
 function unlockApp() {
   // Close whatever overlay was open when the session expired so the
   // app comes back clean.
-  for (const id of ['upload-overlay', 'import-overlay', 'detail-overlay', 'picker-overlay']) {
-    if (document.getElementById(id).classList.contains('on')) closeOverlayById(id);
+  for (const id of [...openOverlayStack]) {
+    const el = document.getElementById(id);
+    if (el && el.classList.contains('on')) closeOverlayById(id);
   }
   if (document.getElementById('cook-overlay').classList.contains('on')) closeCookMode();
   document.getElementById('lock-screen').style.display = 'none';
@@ -942,10 +946,6 @@ function chooseAdd(kind) {
   };
   setTimeout(open, 0);
 }
-document.getElementById('add-overlay').addEventListener('click', (e) => {
-  if (e.target.id === 'add-overlay') closeAddSheet(); // tap the backdrop
-});
-
 function openUpload() {
   document.getElementById('upload-overlay').classList.add('on');
   overlayOpened('upload-overlay');
@@ -3171,7 +3171,7 @@ function renderCookTimers(force) {
     bar.dataset.sig = sig;
     bar.hidden = mine.length === 0;
     bar.innerHTML = mine.length === 0 ? '' : mine.map((t) => (
-      '<div class="cook-timer" data-id="' + escapeHtml(t.id) + '" data-action="stopBeep" data-id="' + t.id + '">'
+      '<div class="cook-timer" data-id="' + escapeHtml(t.id) + '">'
       + '<div class="cook-timer-head">'
       + '<span class="cook-timer-where">Step ' + (Number.isInteger(t.step) ? t.step + 1 : '') + '</span>'
       + '<span class="cook-timer-label">' + escapeHtml(t.label) + '</span>'
@@ -3193,7 +3193,9 @@ function renderCookTimers(force) {
     const paused = t.pausedRemainingMs != null;
     row.classList.toggle('paused', paused);
     row.classList.toggle('done', remaining === 0);
-    if (paused !== row.dataset.paused && force !== true) {
+    // dataset values are strings; comparing a boolean made this true on
+    // every 250ms tick, rebuilding the buttons and eating taps/focus.
+    if (String(paused) !== row.dataset.paused && force !== true) {
       // The Pause/Resume label has to follow the state.
       const btns = row.querySelector('.cook-timer-btns');
       if (btns) btns.innerHTML = cookTimerButtons(t);
@@ -3340,7 +3342,7 @@ async function openCookMode(id) {
     return '<li class="cook-step-item"><div class="cook-step-body">'
       + '<div class="cook-step' + (done ? ' done' : '') + '" data-step="' + i + '" role="button" tabindex="0"'
       + ' aria-pressed="' + (done ? 'true' : 'false') + '" data-action="toggleCookStep" data-index="' + i + '"'
-      + ' data-keys="cookStepKey" data-index="' + i + '">' + escapeHtml(s) + '</div>'
+      + ' data-keys="cookStepKey">' + escapeHtml(s) + '</div>'
       + (chips ? '<div class="cook-step-timers">' + chips + '</div>' : '')
       + '</div></li>';
   }).join('');
@@ -3540,7 +3542,22 @@ function setSharedMode(on) {
   updateSharedNotes();
   if (on) startListPolling();
   else stopListPolling();
+  // Switching buckets must refetch both, or the screen keeps the previous
+  // bucket's items AND its updatedAt, so the next edit writes stale data
+  // into the new bucket (or 409s on the version check).
+  reloadForSharedMode();
   toast(on ? 'Sharing with everyone' : 'Back to your own list');
+}
+async function reloadForSharedMode() {
+  try {
+    await Promise.all([
+      shoppingListReady() ? loadShoppingList() : Promise.resolve(),
+      mealPlanReady() ? loadMealPlan() : Promise.resolve(),
+    ]);
+  } catch (e) { /* loaders toast their own errors */ }
+  renderShoppingList();
+  renderMealPlan();
+  if (currentView === 'tonight') renderTonight();
 }
 function updateSharedNotes() {
   const on = sharedMode();
@@ -4208,7 +4225,9 @@ async function removeFromPlan(date, recipeId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ deviceId: getDeviceId(), date, recipeIds: updated, baseUpdatedAt: mealPlanUpdatedAt }),
+      // Must match addToPlan's bucket, or removing from the shared plan
+      // overwrites the personal plan (or 409s) instead.
+      body: JSON.stringify({ deviceId: listDeviceId(), date, recipeIds: updated, baseUpdatedAt: mealPlanUpdatedAt }),
     });
     if (res.status === 409) { await conflictReloadPlan(); return; }
     if (!res.ok) throw new Error('Save failed');
@@ -4407,11 +4426,19 @@ document.getElementById('user-tag').addEventListener('click', () => {
   if (n !== null) setUser(n.trim() || 'Anonymous');
 });
 
-document.getElementById('upload-overlay').addEventListener('click', e => { if (e.target.id === 'upload-overlay' && !isProcessing) cancelUpload(); });
-document.getElementById('import-overlay').addEventListener('click', e => { if (e.target.id === 'import-overlay') closeImport(); });
-document.getElementById('detail-overlay').addEventListener('click', e => { if (e.target.id === 'detail-overlay') closeDetail(); });
-document.getElementById('picker-overlay').addEventListener('click', e => { if (e.target.id === 'picker-overlay') closePicker(); });
-document.getElementById('credit-overlay').addEventListener('click', e => { if (e.target.id === 'credit-overlay') cancelPhotoUpload(); });
+// Tapping the dimmed backdrop closes any overlay. The upload sheet is the
+// one exception: it must not vanish mid-batch.
+for (const id of ['upload-overlay', 'import-overlay', 'detail-overlay', 'picker-overlay', 'credit-overlay',
+  'pantry-overlay', 'cooked-overlay', 'storage-overlay', 'ai-overlay', 'share-overlay', 'paste-overlay',
+  'coll-overlay', 'add-overlay']) {
+  const el = document.getElementById(id);
+  if (!el) continue;
+  el.addEventListener('click', (e) => {
+    if (e.target.id !== id) return;
+    if (id === 'upload-overlay' && isProcessing) return;
+    closeOverlayById(id);
+  });
+}
 document.addEventListener('keydown', e => {
   if (e.key === 'Tab') {
     // Trap Tab inside the topmost open overlay

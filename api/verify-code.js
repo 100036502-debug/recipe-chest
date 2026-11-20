@@ -3,9 +3,8 @@ import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
 import {
   makeSessionValue, getSession, guestCode, guestOpen, guestSigningCode,
-  sessionEpoch, revokeAllSessions, requireAuth,
+  sessionEpoch, revokeAllSessions, requireAuth, sessionStillValid,
 } from '../lib/auth.js';
-import { getKv } from '../lib/redis.js';
 import { bumpCounter, failurePenalty, getClientIp, sleep } from '../lib/rate-limit.js';
 import { logError } from '../lib/log.js';
 
@@ -43,7 +42,7 @@ export default async function handler(req, res) {
   // GET: check if the caller already has a valid session cookie
   // One helper: the epoch a new cookie should carry.
   const currentEpoch = async () => {
-    const epoch = await sessionEpoch(getKv());
+    const epoch = await sessionEpoch(kv);
     return epoch === null ? 0 : epoch;
   };
 
@@ -51,7 +50,7 @@ export default async function handler(req, res) {
   if (req.method === 'PUT') {
     if (!(await requireAuth(req, res, { memberOnly: true }))) return;
     try {
-      const epoch = await revokeAllSessions(getKv());
+      const epoch = await revokeAllSessions(kv);
       res.setHeader('Set-Cookie', 'rc_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure');
       return res.status(200).json({ ok: true, epoch });
     } catch {
@@ -61,7 +60,11 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     const cur = getSession(req);
-    return res.status(200).json({ unlocked: cur !== null, role: cur ? cur.role : null, guestOpen: guestOpen() });
+    if (!cur) return res.status(200).json({ unlocked: false, role: null, guestOpen: guestOpen() });
+    // A revoked cookie still carries a valid signature and expiry; only the
+    // session epoch tells us it was killed, so ask before saying "unlocked".
+    const valid = cur.role === 'guest' ? true : await sessionStillValid(req);
+    return res.status(200).json({ unlocked: valid, role: valid ? cur.role : null, guestOpen: guestOpen() });
   }
 
   // POST: verify a submitted code
