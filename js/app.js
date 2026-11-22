@@ -591,7 +591,6 @@ function unlockApp() {
   // #plan / #list names land on what replaced them); otherwise All recipes.
   showView(viewFromHash(location.hash) || 'recipes', { keepDrawer: true });
   watchForNewDay();
-  initPhotoFilter();
   loadRecipes();
   handleAppShortcut();
   document.dispatchEvent(new Event('recipe-chest:unlocked'));
