@@ -38,7 +38,12 @@ test('day cells are at least 96px tall on a wide screen, on the surface colour, 
   await unlock(page);
   await openCalendar(page);
   const c = page.locator('.cal-day').nth(10);
-  expect((await c.boundingBox()).height).toBeGreaterThanOrEqual(92);
+  // The grid is redrawn when the saved plan arrives, which detaches cells; poll
+  // for a measured height instead of reading a box that may be mid-redraw.
+  await expect.poll(async () => {
+    const box = await page.locator('.cal-day').nth(10).boundingBox();
+    return box ? box.height : 0;
+  }).toBeGreaterThanOrEqual(92);
   expect(await c.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(246, 247, 244)');
   expect(await c.locator('.cal-num').evaluate((el) => getComputedStyle(el).color)).toBe('rgb(86, 96, 116)');
   expect(await c.locator('.cal-num').evaluate((el) => getComputedStyle(el).fontSize)).toBe('14px');
