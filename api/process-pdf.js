@@ -1,21 +1,18 @@
 // POST /api/process-pdf — extract a recipe from an uploaded PDF.
 // Same duplicate detection, photo lookup and storage as api/process.js.
 import { parsePdfText, PdfUnreadable } from '../lib/pdf-text.js';
-import { Redis } from '@upstash/redis';
 import { requireAuth } from '../lib/auth.js';
 import { findDuplicate, isUsableRecipe, cleanTags, normalizeMealType, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { findDishImage } from '../lib/image.js';
-import { getKv } from '../lib/redis.js';
 import { rateLimited } from '../lib/rate-limit.js';
+import { getKv } from '../lib/redis.js';
 import { sendServerError } from '../lib/http.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
 import { saveRecipeRecord } from '../lib/save-recipe.js';
 import { listRecipeId } from '../lib/recipe-index.js';
 
-const kv = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
-});
+// The app's single Redis client, not a second connection of our own.
+const kv = getKv();
 
 export const config = {
   // Vercel caps request bodies at ~4.5 MB regardless of this setting,
@@ -67,7 +64,7 @@ export default async function handler(req, res) {
     const skipDup = skipDuplicateCheck === true;
     const [dup, image] = await Promise.all([
       skipDup ? null : findDuplicate(kv, { title: recipe.title }),
-      findDishImage(recipe.title, { kv: getKv() }),
+      findDishImage(recipe.title, { kv }),
     ]);
 
     if (dup) {
@@ -98,9 +95,9 @@ export default async function handler(req, res) {
       addedBy: String(addedBy || 'Anonymous').slice(0, 40),
     };
 
-    await saveRecipeRecord(kv, finalRecipe);
+    const saved = await saveRecipeRecord(kv, finalRecipe);
     await listRecipeId(kv, id);
-    return res.status(200).json(finalRecipe);
+    return res.status(200).json(saved);
   } catch (error) {
     if (error instanceof PdfUnreadable) {
       return res.status(400).json({ error: error.message });

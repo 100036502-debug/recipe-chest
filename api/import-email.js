@@ -1,11 +1,10 @@
 import crypto from 'crypto';
-import { Redis } from '@upstash/redis';
+import { getKv } from '../lib/redis.js';
 import { parsePdfText } from '../lib/pdf-text.js';
 import { ENGLISH_ONLY } from '../lib/english.js';
 import { resizeImage } from '../lib/image-input.js';
 import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
-import { getKv } from '../lib/redis.js';
 import { bumpCounter } from '../lib/rate-limit.js';
 import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe, normalizeIncomingRecipe } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
@@ -15,18 +14,20 @@ import { saveRecipeRecord } from '../lib/save-recipe.js';
 import { importRecipeFromUrl } from '../lib/url-recipe.js';
 import { extractRecipeLinks, isMostlyLinks, bareOfProse } from '../lib/email-links.js';
 
-// let, not const: tests swap in a fake store and a fake page fetcher instead of
-// reaching Redis and the network.
-let redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
-});
+// One Redis client for the whole app, resolved through lib/redis so tests can
+// swap it with __setKvForTests; the local override below keeps the older
+// per-module injection working too. This file used to hold its own client and
+// then call getKv() in half its code, which meant two connections and two
+// different stores in tests.
+let storeOverride = null;
 let linkDeps = {};
 
 export function __setImportDepsForTests({ store, link } = {}) {
-  if (store) redis = store;
+  if (store) storeOverride = store;
   linkDeps = link || {};
 }
+
+function store() { return storeOverride || getKv(); }
 
 export const config = { maxDuration: 60 };
 
@@ -87,7 +88,7 @@ export default async function handler(req, res) {
   const spendOneCall = async (calls) => {
     try {
       for (let i = 0; i < calls; i += 1) {
-        const used = await bumpCounter(getKv(), `email_import_daily:${day}`, 2 * 24 * 60 * 60);
+        const used = await bumpCounter(store(), `email_import_daily:${day}`, 2 * 24 * 60 * 60);
         if (used > dailyLimit) return false;
       }
       return true;
@@ -100,7 +101,7 @@ export default async function handler(req, res) {
 
   // Refuse before spending anything when today is already spent.
   try {
-    const already = Number(await getKv().get(`email_import_daily:${day}`)) || 0;
+    const already = Number(await store().get(`email_import_daily:${day}`)) || 0;
     if (already >= dailyLimit) {
       return res.status(429).json({ error: 'Daily email import limit reached. Try again tomorrow.' });
     }
@@ -118,7 +119,7 @@ export default async function handler(req, res) {
 
     // Idempotency: skip if we already handled this exact message
     if (messageId) {
-      const previousImport = await redis.get(`email_import:${messageId}`);
+      const previousImport = await store().get(`email_import:${messageId}`);
       if (previousImport) {
         return res.status(200).json({ success: true, ...previousImport });
       }
@@ -251,7 +252,7 @@ export default async function handler(req, res) {
     for (const url of linksFound) {
       const result = await importRecipeFromUrl({
         ...linkDeps,
-        kv: redis,
+        kv: store(),
         url,
         addedBy: senderName,
         // Only a page that needs the model spends the day's budget; a page with
@@ -330,7 +331,7 @@ export default async function handler(req, res) {
     };
 
     if (messageId) {
-      await redis.set(`email_import:${messageId}`, result, { ex: 60 * 60 * 24 * 30 });
+      await store().set(`email_import:${messageId}`, result, { ex: 60 * 60 * 24 * 30 });
     }
 
     return res.status(200).json({ success: true, ...result });
@@ -367,8 +368,8 @@ async function persistRecipe(parsedRecipe, senderName) {
 
   // Duplicate check and photo lookup run at the same time to keep imports fast
   const [dup, image] = await Promise.all([
-    findDuplicate(redis, { title }),
-    findDishImage(title, { kv: getKv() }),
+    findDuplicate(store(), { title }),
+    findDishImage(title, { kv: store() }),
   ]);
 
   if (dup) {
@@ -400,8 +401,8 @@ async function persistRecipe(parsedRecipe, senderName) {
   // The shared writer, like every other import: it caps lengths and strips
   // markup. The text here comes from a model reading a stranger's email, so it
   // is the last place that should reach Redis unsanitised.
-  const saved = await saveRecipeRecord(redis, recipe);
-  await listRecipeId(redis, recipeId);
+  const saved = await saveRecipeRecord(store(), recipe);
+  await listRecipeId(store(), recipeId);
 
   return { id: recipeId, recipe: saved };
 }
