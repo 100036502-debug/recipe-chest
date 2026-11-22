@@ -21,7 +21,7 @@ export default [
   },
   {
     // Both are classic browser scripts loaded before app.js.
-    files: ['js/utils.js', 'js/share.js'],
+    files: ['js/utils.js', 'js/share.js', 'js/theme.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'script',
@@ -66,7 +66,7 @@ export default [
     },
   },
   {
-    files: ['e2e/**/*.js', 'playwright.config.js'],
+    files: ['e2e/**/*.js', 'e2e/**/*.mjs', 'playwright.config.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
