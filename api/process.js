@@ -145,9 +145,11 @@ If there is no recipe in the image, output exactly: NO_RECIPE`;
       addedBy: String(addedBy || 'Anonymous').slice(0, 40),
     };
 
-    await saveRecipeRecord(kv, finalRecipe);
+    // The stored record is the sanitised one (tags stripped from addedBy and
+    // friends); echoing finalRecipe returned unsanitised text to the client.
+    const saved = await saveRecipeRecord(kv, finalRecipe);
     await listRecipeId(kv, id);
-    return res.status(200).json(finalRecipe);
+    return res.status(200).json(saved);
   } catch (error) {
     return sendServerError(res, error, 'Failed to save that recipe.');
   }
