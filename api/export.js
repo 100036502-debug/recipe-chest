@@ -9,7 +9,7 @@
 //      (the limit shrinks automatically if the data is large).
 import { Redis } from '@upstash/redis';
 import { requireAuth, hasBearerSecret } from '../lib/auth.js';
-import { ID_PATTERN, getRecipesByIds } from '../lib/recipes.js';
+import { ID_PATTERN, getRecipesByIds, stripBrokenIngredients } from '../lib/recipes.js';
 import { sendServerError } from '../lib/http.js';
 
 // let, not const: tests swap in a fake store instead of a real connection.
@@ -111,7 +111,7 @@ export default async function handler(req, res) {
     }
 
     // ---- Recipes-only backup (exactly the historical shape) ----
-    const recipes = await getRecipesByIds(kv, ids);
+    const recipes = (await getRecipesByIds(kv, ids)).map(stripBrokenIngredients);
     const payload = {
       app: 'recipe-chest',
       exportedAt: new Date().toISOString(),

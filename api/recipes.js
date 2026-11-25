@@ -1,5 +1,5 @@
 import { requireAuth } from '../lib/auth.js';
-import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, cleanCollections, findDuplicate, getRecipesByIds, normalizeIncomingRecipe } from '../lib/recipes.js';
+import { VALID_MEAL_TYPES, ID_PATTERN, cleanTags, cleanCollections, findDuplicate, getRecipesByIds, normalizeIncomingRecipe, stripBrokenIngredients } from '../lib/recipes.js';
 import { TRASH_TTL_SECONDS, buildTrashEntry, trashKey } from '../lib/trash.js';
 import { sendServerError } from '../lib/http.js';
 import { updateRecipe, sendUpdateResult, revOf } from '../lib/update-recipe.js';
@@ -67,7 +67,9 @@ export default async function handler(req, res) {
       if (!ids || !ids.length) return res.status(200).json([]);
       const recipes = await getRecipesByIds(kv, ids);
       recipes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      return res.status(200).json(recipes);
+      // Recipes imported before the ingredient fix hold the literal text
+      // "[object Object]"; drop those lines on the way out.
+      return res.status(200).json(recipes.map(stripBrokenIngredients));
     } catch (e) {
       return sendServerError(res, e);
     }
