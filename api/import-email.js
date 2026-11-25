@@ -6,7 +6,7 @@ import { resizeImage } from '../lib/image-input.js';
 import { groqChat, GROQ_MODEL, GROQ_VISION_MODEL } from '../lib/groq.js';
 import { findDishImage } from '../lib/image.js';
 import { bumpCounter } from '../lib/rate-limit.js';
-import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe, normalizeIncomingRecipe } from '../lib/recipes.js';
+import { normalizeMealType, cleanTags, findDuplicate, isUsableRecipe, normalizeIncomingRecipe, ingredientToText } from '../lib/recipes.js';
 import { tryParseJson } from '../lib/parse.js';
 import { recipeFromPdfText } from '../lib/pdf-recipe.js';
 import { listRecipeId } from '../lib/recipe-index.js';
@@ -376,8 +376,10 @@ async function persistRecipe(parsedRecipe, senderName) {
     return { id: dup.id, recipe: dup, duplicate: true };
   }
 
+  // Objects are a real model shape ({amount, unit, name}); String() on one
+  // stored the text "[object Object]" for every ingredient.
   const toStrings = (v, max) =>
-    Array.isArray(v) ? v.slice(0, max).map(String).map((s) => s.trim()).filter(Boolean) : [];
+    Array.isArray(v) ? v.slice(0, max).map(ingredientToText).map((s) => s.trim()).filter(Boolean) : [];
 
   const recipeId = `r_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const recipe = {

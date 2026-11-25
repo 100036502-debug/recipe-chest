@@ -2,7 +2,7 @@
 // Same duplicate detection, photo lookup and storage as api/process.js.
 import { parsePdfText, PdfUnreadable } from '../lib/pdf-text.js';
 import { requireAuth } from '../lib/auth.js';
-import { findDuplicate, isUsableRecipe, cleanTags, normalizeMealType, normalizeIncomingRecipe } from '../lib/recipes.js';
+import { findDuplicate, isUsableRecipe, cleanTags, normalizeMealType, normalizeIncomingRecipe, ingredientToText } from '../lib/recipes.js';
 import { findDishImage } from '../lib/image.js';
 import { rateLimited } from '../lib/rate-limit.js';
 import { getKv } from '../lib/redis.js';
@@ -79,7 +79,7 @@ export default async function handler(req, res) {
       id,
       title: String(recipe.title).slice(0, 200),
       description: String(recipe.description || '').slice(0, 500),
-      ingredients: (Array.isArray(recipe.ingredients) ? recipe.ingredients : []).slice(0, 60).map(String),
+      ingredients: (Array.isArray(recipe.ingredients) ? recipe.ingredients : []).slice(0, 60).map(ingredientToText),
       instructions: (Array.isArray(recipe.instructions) ? recipe.instructions : []).slice(0, 60).map(String),
       prepTime: String(recipe.prepTime || '').slice(0, 40),
       cookTime: String(recipe.cookTime || '').slice(0, 40),
